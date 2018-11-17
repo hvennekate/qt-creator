@@ -60,6 +60,7 @@
 #include <texteditor/textdocument.h>
 #include <utils/textutils.h>
 #include <utils/utilsicons.h>
+#include <autotest/cxxtest/cxxtestframework.h>
 
 #include <QAction>
 #include <QList>
@@ -176,6 +177,7 @@ bool AutotestPlugin::initialize(const QStringList &arguments, QString *errorStri
     m_frameworkManager->registerTestFramework(new QtTestFramework);
     m_frameworkManager->registerTestFramework(new QuickTestFramework);
     m_frameworkManager->registerTestFramework(new GTestFramework);
+    m_frameworkManager->registerTestFramework(new CxxTestFramework);
 
     m_frameworkManager->synchronizeSettings(ICore::settings());
     m_testSettingPage = new TestSettingsPage(m_settings);

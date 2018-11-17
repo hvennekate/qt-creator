@@ -50,7 +50,12 @@ SOURCES += \
     quick/quicktestframework.cpp \
     quick/quicktest_utils.cpp \
     testframeworkmanager.cpp \
-    testeditormark.cpp
+    testeditormark.cpp \
+    cxxtest/cxxtestframework.cpp \
+    cxxtest/cxxtestsettings.cpp \
+    cxxtest/cxxtestsettingspage.cpp \
+    cxxtest/cxxtestparser.cpp \
+    cxxtest/cxxtesttreeitem.cpp
 
 
 HEADERS += \
@@ -107,7 +112,13 @@ HEADERS += \
     testframeworkmanager.h \
     testrunconfiguration.h \
     itestsettingspage.h \
-    testeditormark.h
+    testeditormark.h \
+    cxxtest/cxxtestframework.h \
+    cxxtest/cxxtestconstants.h \
+    cxxtest/cxxtestsettings.h \
+    cxxtest/cxxtestsettingspage.h \
+    cxxtest/cxxtestparser.h \
+    cxxtest/cxxtesttreeitem.h
 
 RESOURCES += \
     autotest.qrc
