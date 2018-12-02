@@ -9,10 +9,9 @@ namespace Autotest {
 		class CxxTestTreeItem : public TestTreeItem
 		{
 		public:
-			CxxTestTreeItem(const QString &name = QString(), const QString &filePath = QString(),
-					Type type = Root);
-			QVariant data(int column, int role) const override;
+			CxxTestTreeItem(const QString &name = QString(), const QString &filePath = QString(), Type type = Root);
 			TestTreeItem *copyWithoutChildren() override;
+			QVariant data(int column, int role) const override;
 			bool canProvideTestConfiguration() const override;
 			bool canProvideDebugConfiguration() const override;
 			TestConfiguration *testConfiguration() const override;
@@ -23,11 +22,8 @@ namespace Autotest {
 			TestTreeItem *find(const TestParseResult *result) override;
 			TestTreeItem *findChild(const TestTreeItem *other) override;
 			bool modify(const TestParseResult *result) override;
-			bool isGroupNodeFor(const TestTreeItem *other) const override;
 			bool isGroupable() const override;
 			TestTreeItem *createParentGroupNode() const override;
-			TestTreeItem *applyFilters() override;
-			QSet<QString> internalTargets() const override;
 		};
 
 	} // namespace Internal

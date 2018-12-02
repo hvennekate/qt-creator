@@ -6,11 +6,15 @@
 namespace Autotest {
 	namespace Internal {
 
-		class CxxTestParser : public CppParser
+		class CxxTestParseResult : public TestParseResult
 		{
 		public:
+			explicit CxxTestParseResult(const Core::Id &id);
+			TestTreeItem *createTestTreeItem() const override;
+		};
 
-			// ITestParser interface
+		class CxxTestParser : public CppParser
+		{
 		public:
 			bool processDocument(QFutureInterface<TestParseResultPtr> futureInterface, const QString &fileName) override;
 		};

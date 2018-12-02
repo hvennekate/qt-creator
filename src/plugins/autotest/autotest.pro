@@ -55,7 +55,10 @@ SOURCES += \
     cxxtest/cxxtestsettings.cpp \
     cxxtest/cxxtestsettingspage.cpp \
     cxxtest/cxxtestparser.cpp \
-    cxxtest/cxxtesttreeitem.cpp
+    cxxtest/cxxtesttreeitem.cpp \
+    cxxtest/cxxtestconfiguration.cpp \
+    cxxtest/cxxoutputreader.cpp \
+    cxxtest/cxxtestresult.cpp
 
 
 HEADERS += \
@@ -118,7 +121,10 @@ HEADERS += \
     cxxtest/cxxtestsettings.h \
     cxxtest/cxxtestsettingspage.h \
     cxxtest/cxxtestparser.h \
-    cxxtest/cxxtesttreeitem.h
+    cxxtest/cxxtesttreeitem.h \
+    cxxtest/cxxtestconfiguration.h \
+    cxxtest/cxxoutputreader.h \
+    cxxtest/cxxtestresult.h
 
 RESOURCES += \
     autotest.qrc
