@@ -53,17 +53,22 @@ namespace Autotest {
 			return parentClasses;
 		}
 
-
-
-		CxxTestParseResult *CxxTestParser::generateClassParseResult(CPlusPlus::Symbol *symbol, QString proFile, const QString &fileName)
+		CxxTestParseResult *CxxTestParser::prepareTestParseResult(const QString &fileName, const QString &proFile, CPlusPlus::Symbol *symbol, TestTreeItem::Type type)
 		{
 			auto classParseResult = new CxxTestParseResult(id());
-			classParseResult->itemType = TestTreeItem::TestCase;
+			classParseResult->itemType = type;
 			classParseResult->fileName = fileName;
 			classParseResult->name = QString::fromUtf8(symbol->identifier()->chars());
 			classParseResult->line = symbol->line();
 			classParseResult->column = symbol->column() - 1;
 			classParseResult->proFile = proFile;
+
+			return classParseResult;
+		}
+
+		CxxTestParseResult *CxxTestParser::generateClassParseResult(CPlusPlus::Symbol *symbol, QString proFile, const QString &fileName)
+		{
+			auto classParseResult = prepareTestParseResult(fileName, proFile, symbol, TestTreeItem::TestCase);
 
 			for (unsigned j = 0; j < symbol->asClass()->memberCount(); ++j) {
 				CPlusPlus::Symbol *member = symbol->asClass()->memberAt(j);
@@ -72,14 +77,7 @@ namespace Autotest {
 				if (!identifier || !QString::fromUtf8(identifier->chars()).startsWith("test")) continue;
 				qDebug() << "      " << identifier->chars() << symbol->asClass()->memberAt(j)->isFunction();
 
-				auto testMethod = new CxxTestParseResult(id());
-				testMethod->name = QString::fromUtf8(member->identifier()->chars());
-				testMethod->fileName = fileName;
-				testMethod->line = member->line();
-				testMethod->column = member->column() - 1;
-				testMethod->itemType = TestTreeItem::TestFunctionOrSet;
-				testMethod->proFile = proFile;
-				classParseResult->children.append(testMethod);
+				classParseResult->children.append(prepareTestParseResult(fileName, proFile, member, TestTreeItem::TestFunctionOrSet));
 			}
 
 			return classParseResult;

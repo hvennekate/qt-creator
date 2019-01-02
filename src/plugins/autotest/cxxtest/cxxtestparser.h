@@ -21,6 +21,8 @@ namespace Autotest {
 		private:
 			QSet<QString> parentTestClasses(const QString &fileName, QSet<QString> visitedFileNames) const;
 			CxxTestParseResult *generateClassParseResult(CPlusPlus::Symbol *symbol, QString proFile, const QString &fileName);
+			CxxTestParseResult *prepareTestParseResult(const QString &fileName, const QString &proFile, CPlusPlus::Symbol *symbol, TestTreeItem::Type type);
+
 		public:
 			bool processDocument(QFutureInterface<TestParseResultPtr> futureInterface, const QString &fileName) override;
 		};
