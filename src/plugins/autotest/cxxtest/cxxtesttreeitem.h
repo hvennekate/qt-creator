@@ -19,7 +19,7 @@ namespace Autotest {
 			QList<TestConfiguration *> getAllTestConfigurations() const override;
 			QList<TestConfiguration *> getSelectedTestConfigurations() const override;
 			QList<TestConfiguration *> getTestConfigurationsForFile(const Utils::FileName &fileName) const override;
-			TestTreeItem *find(const TestParseResult *result) override;
+			TestTreeItem *find(const TestParseResult *parseResult) override;
 			TestTreeItem *findChild(const TestTreeItem *other) override;
 			bool modify(const TestParseResult *result) override;
 			bool isGroupable() const override;

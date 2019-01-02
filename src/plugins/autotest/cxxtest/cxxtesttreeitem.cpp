@@ -213,8 +213,15 @@ namespace Autotest {
 			return result;
 		}
 
-		TestTreeItem *CxxTestTreeItem::find(const TestParseResult *result)
+		TestTreeItem *findMatchingTestTreeItem(const CxxTestParseResult *result, const CxxTestTreeItem *parentItem) {
+			return parentItem->findFirstLevelChild([&](const TestTreeItem *other) {
+			    return result->matches(other);
+			});
+		}
+
+		TestTreeItem *CxxTestTreeItem::find(const TestParseResult *parseResult)
 		{
+			const CxxTestParseResult *result = dynamic_cast<const CxxTestParseResult*>(parseResult);
 			if (!result) return nullptr;
 			switch(type()) {
 			case Root:
@@ -224,23 +231,29 @@ namespace Autotest {
 					TestTreeItem *group = childAt(row);
 					if (group->filePath() != path)
 					    continue;
-					if (auto groupChild = group->findChildByFile(result->fileName))
-					    return groupChild;
+					if (auto groupChild = group->find(result))
+					    return groupChild; // TODO check!
 				    }
 				    return nullptr;
 				}
-				return findChildByFile(result->fileName);
 			case GroupNode:
-				return findChildByFile(result->fileName);
 			case TestCase:
-				return findChildByName(result->displayName);
 			case TestFunctionOrSet:
 			case TestDataFunction:
 			case TestSpecialFunction:
-				return findChildByName(result->name);
+				return findMatchingTestTreeItem(result, this);
 			default:
 				return nullptr;
 			}
+		}
+
+		TestTreeItem *findMatchingTestTreeItem(const TestTreeItem *item, const CxxTestTreeItem *parentItem) {
+			return parentItem->findFirstLevelChild([&](const TestTreeItem *other) {
+				return item->name() == other->name()
+						&& item->filePath() == other->filePath()
+						&& item->type() == other->type()
+						&& item->proFile() == other->proFile();
+			});
 		}
 
 		TestTreeItem *CxxTestTreeItem::findChild(const TestTreeItem *other)
@@ -248,17 +261,12 @@ namespace Autotest {
 			if (!other) return nullptr;
 			switch(type()) {
 			case Root:
-				return findChildByFileAndType(other->filePath(), other->type());
 			case GroupNode:
-				return other->type() == TestCase ? findChildByFile(other->filePath()) : nullptr;
 			case TestCase:
-				if (other->type() != TestFunctionOrSet && other->type() != TestDataFunction && other->type() != TestSpecialFunction)
-					return nullptr;
-				return findChildByName(other->filePath());
 			case TestFunctionOrSet:
 			case TestDataFunction:
 			case TestSpecialFunction:
-				return other->type() == TestDataTag ? findChildByName(other->name()) : nullptr;
+				return findMatchingTestTreeItem(other, this);
 			default:
 				return nullptr;
 			}
