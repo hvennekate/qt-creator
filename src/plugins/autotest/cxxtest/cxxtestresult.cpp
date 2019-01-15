@@ -7,14 +7,11 @@
 namespace Autotest {
 	namespace Internal {
 
-		CxxTestResult::CxxTestResult(const QString &id, const QString &name, const TestResult *parent)
-			: TestResult(id, name),
-			  parent(parent)
-		{}
-
-		CxxTestResult::CxxTestResult(const QString &id, const QString &method, const QString &testClass, const TestResult *parent)
-			: TestResult(id, method),
-			  parent(parent)
+		CxxTestResult::CxxTestResult(const QString &id, const QString &world, const QString &suite, const QString &test, const TestResult *parent)
+			: TestResult(id, world),
+			  parent(parent),
+			  suite(suite),
+			  test(test)
 		{}
 
 		const QString CxxTestResult::outputString(bool selected) const
@@ -24,20 +21,21 @@ namespace Autotest {
 
 		const TestTreeItem *CxxTestResult::findTestTreeItem() const
 		{
-			if (!parent) return nullptr;
+			if (suite.isEmpty()) return nullptr;
 			auto id = Core::Id(Constants::FRAMEWORK_PREFIX).withSuffix(CxxTest::Constants::FRAMEWORK_NAME);
 			auto rootNode = TestFrameworkManager::instance()->rootNodeForTestFramework(id);
 			qDebug() << "Root node: " << rootNode;
 			if (!rootNode) return nullptr;
-			const auto item = rootNode->findAnyChild([this](const Utils::TreeItem *item) {
+			const auto suiteNode = rootNode->findAnyChild([this](const Utils::TreeItem *item) {
 				const auto treeItem = dynamic_cast<const TestTreeItem*>(item);
-				return treeItem && treeItem->name() == name()
-						&& (!parent
-						|| (treeItem->parentItem()
-						    && treeItem->parentItem()->name() == parent->description()));
+				return treeItem && treeItem->name() == suite;
 			});
-			qDebug() << item;
-			return dynamic_cast<const TestTreeItem*>(item);
+			qDebug() << suiteNode;
+			if (test.isEmpty()) return  dynamic_cast<const TestTreeItem*>(suiteNode);
+			return  dynamic_cast<const TestTreeItem*>(suiteNode->findAnyChild([this](const Utils::TreeItem *item) {
+				const auto treeItem = dynamic_cast<const TestTreeItem*>(item);
+				return treeItem && treeItem->name() == test;
+			}));
 		}
 
 		bool CxxTestResult::isDirectParentOf(const TestResult *other, bool *needsIntermediate) const

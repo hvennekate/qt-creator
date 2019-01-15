@@ -50,6 +50,8 @@ namespace Autotest {
 			} else if (start.exactMatch(line)) {
 				QString name = start.cap(2);
 				if (start.cap(1) == "world") worldName = name;
+				if (start.cap(1) == "test") testName = name;
+				if (start.cap(1) == "suite") suiteName = name;
 				TestResultPtr result;
 				result = createDefaultResult();
 				result->setDescription(name);
@@ -70,6 +72,9 @@ namespace Autotest {
 				qDebug() << "Completion of:" << name << "currently in:" << parents.top()->description();
 				auto result = createDefaultResult();
 				parents.pop();
+				if (start.cap(1) == "test") testName.clear();
+				if (start.cap(1) == "suite") suiteName.clear();
+				if (start.cap(1) == "world") worldName.clear();
 				if (completion.cap(2) != "test") return;
 				if (completion.cap(1) == "Completed") {
 					result->setResult(Result::Pass);
@@ -113,8 +118,8 @@ namespace Autotest {
 
 		TestResultPtr CxxOutputReader::createDefaultResult() const
 		{
-			qDebug() << "creating result" << id() << worldName << currentParent();
-			return TestResultPtr(new CxxTestResult(id(), worldName, currentParent()));
+			qDebug() << "creating result" << id() << worldName << suiteName << testName << currentParent();
+			return TestResultPtr(new CxxTestResult(id(), worldName, suiteName, testName, currentParent()));
 		}
 
 		const TestResult *CxxOutputReader::currentParent() const

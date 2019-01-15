@@ -9,13 +9,12 @@ namespace Autotest {
 		class CxxTestResult : public TestResult
 		{
 		public:
-			CxxTestResult(const QString &id, const QString &name, const TestResult *parent = nullptr);
-			CxxTestResult(const QString &id, const QString &method, const QString &testClass,  const TestResult *parent = nullptr);
+			CxxTestResult(const QString &id, const QString &world, const QString &suite, const QString &test, const TestResult *parent = nullptr);
 			const QString outputString(bool selected) const override;
 			const TestTreeItem *findTestTreeItem() const override;
 			bool isDirectParentOf(const TestResult *other, bool *needsIntermediate) const override;
 		private:
-			QString testClass;
+			QString test, suite;
 			const TestResult *parent;
 
 		};

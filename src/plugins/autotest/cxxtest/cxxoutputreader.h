@@ -22,6 +22,8 @@ namespace Autotest {
 			const TestResult *currentParent() const;
 			QString project;
 			QString worldName;
+			QString suiteName;
+			QString testName;
 			static long processCounter;
 		};
 
