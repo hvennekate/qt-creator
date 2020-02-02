@@ -46,13 +46,11 @@ public:
 class LANGUAGESERVERPROTOCOL_EXPORT SymbolCapabilities : public DynamicRegistrationCapabilities
 {
 public:
-    SymbolCapabilities();
     using DynamicRegistrationCapabilities::DynamicRegistrationCapabilities;
 
-    class SymbolKindCapabilities : public JsonObject
+    class LANGUAGESERVERPROTOCOL_EXPORT SymbolKindCapabilities : public JsonObject
     {
     public:
-        SymbolKindCapabilities();
         using JsonObject::JsonObject;
 
         /*
@@ -85,13 +83,11 @@ public:
 class LANGUAGESERVERPROTOCOL_EXPORT TextDocumentClientCapabilities : public JsonObject
 {
 public:
-    TextDocumentClientCapabilities();
     using JsonObject::JsonObject;
 
-    class SynchronizationCapabilities : public DynamicRegistrationCapabilities
+    class LANGUAGESERVERPROTOCOL_EXPORT SynchronizationCapabilities : public DynamicRegistrationCapabilities
     {
     public:
-        SynchronizationCapabilities();
         using DynamicRegistrationCapabilities::DynamicRegistrationCapabilities;
 
         // The client supports sending will save notifications.
@@ -124,16 +120,34 @@ public:
     { insert(synchronizationKey, synchronization); }
     void clearSynchronization() { remove(synchronizationKey); }
 
-    class CompletionCapabilities : public DynamicRegistrationCapabilities
+    class LANGUAGESERVERPROTOCOL_EXPORT SemanticHighlightingCapabilities : public JsonObject
     {
     public:
-        CompletionCapabilities();
+        using JsonObject::JsonObject;
+
+        bool semanticHighlighting() const { return typedValue<bool>(semanticHighlightingKey); }
+        void setSemanticHighlighting(bool semanticHighlighting)
+        { insert(semanticHighlightingKey, semanticHighlighting); }
+
+        bool isValid(QStringList *error) const override
+        { return check<bool>(error, semanticHighlightingKey); }
+    };
+
+    Utils::optional<SemanticHighlightingCapabilities> semanticHighlightingCapabilities() const
+    { return optionalValue<SemanticHighlightingCapabilities>(semanticHighlightingCapabilitiesKey); }
+    void setSemanticHighlightingCapabilities(
+        const SemanticHighlightingCapabilities &semanticHighlightingCapabilities)
+    { insert(semanticHighlightingCapabilitiesKey, semanticHighlightingCapabilities); }
+    void clearSemanticHighlightingCapabilities() { remove(semanticHighlightingCapabilitiesKey); }
+
+    class LANGUAGESERVERPROTOCOL_EXPORT CompletionCapabilities : public DynamicRegistrationCapabilities
+    {
+    public:
         using DynamicRegistrationCapabilities::DynamicRegistrationCapabilities;
 
-        class CompletionItemCapbilities : public JsonObject
+        class LANGUAGESERVERPROTOCOL_EXPORT CompletionItemCapbilities : public JsonObject
         {
         public:
-            CompletionItemCapbilities();
             using JsonObject::JsonObject;
 
             /*
@@ -180,7 +194,7 @@ public:
         { insert(completionItemKey, completionItem); }
         void clearCompletionItem() { remove(completionItemKey); }
 
-        class CompletionItemKindCapabilities : public JsonObject
+        class LANGUAGESERVERPROTOCOL_EXPORT CompletionItemKindCapabilities : public JsonObject
         {
         public:
             CompletionItemKindCapabilities();
@@ -227,7 +241,7 @@ public:
     { insert(completionKey, completion); }
     void clearCompletion() { remove(completionKey); }
 
-    class HoverCapabilities : public DynamicRegistrationCapabilities
+    class LANGUAGESERVERPROTOCOL_EXPORT HoverCapabilities : public DynamicRegistrationCapabilities
     {
     public:
         using DynamicRegistrationCapabilities::DynamicRegistrationCapabilities;
@@ -246,12 +260,12 @@ public:
     void setHover(const HoverCapabilities &hover) { insert(hoverKey, hover); }
     void clearHover() { remove(hoverKey); }
 
-    class SignatureHelpCapabilities : public DynamicRegistrationCapabilities
+    class LANGUAGESERVERPROTOCOL_EXPORT SignatureHelpCapabilities : public DynamicRegistrationCapabilities
     {
     public:
         using DynamicRegistrationCapabilities::DynamicRegistrationCapabilities;
 
-        class SignatureInformationCapabilities : public JsonObject
+        class LANGUAGESERVERPROTOCOL_EXPORT SignatureInformationCapabilities : public JsonObject
         {
         public:
             using JsonObject::JsonObject;
@@ -355,10 +369,53 @@ public:
     { insert(implementationKey, implementation); }
     void clearImplementation() { remove(implementationKey); }
 
+    class LANGUAGESERVERPROTOCOL_EXPORT CodeActionCapabilities : public DynamicRegistrationCapabilities
+    {
+    public:
+        using DynamicRegistrationCapabilities::DynamicRegistrationCapabilities;
+
+        class LANGUAGESERVERPROTOCOL_EXPORT CodeActionLiteralSupport : public JsonObject
+        {
+        public:
+            using JsonObject::JsonObject;
+
+            class LANGUAGESERVERPROTOCOL_EXPORT CodeActionKind : public JsonObject
+            {
+            public:
+                using JsonObject::JsonObject;
+                CodeActionKind() : CodeActionKind(QList<QString>()) {}
+                explicit CodeActionKind(const QList<QString> &kinds) { setValueSet(kinds); }
+
+                QList<QString> valueSet() const { return array<QString>(valueSetKey); }
+                void setValueSet(const QList<QString> &valueSet)
+                { insertArray(valueSetKey, valueSet); }
+
+                bool isValid(QStringList *errorHierarchy) const override
+                { return checkArray<QString>(errorHierarchy, valueSetKey); }
+            };
+
+            CodeActionKind codeActionKind() const
+            { return typedValue<CodeActionKind>(codeActionKindKey); }
+            void setCodeActionKind(const CodeActionKind &codeActionKind)
+            { insert(codeActionKindKey, codeActionKind); }
+
+            bool isValid(QStringList *errorHierarchy) const override
+            { return check<CodeActionKind>(errorHierarchy, codeActionKindKey); }
+        };
+
+        Utils::optional<CodeActionLiteralSupport> codeActionLiteralSupport() const
+        { return optionalValue<CodeActionLiteralSupport>(codeActionLiteralSupportKey); }
+        void setCodeActionLiteralSupport(const CodeActionLiteralSupport &codeActionLiteralSupport)
+        { insert(codeActionLiteralSupportKey, codeActionLiteralSupport); }
+        void clearCodeActionLiteralSupport() { remove(codeActionLiteralSupportKey); }
+
+        bool isValid(QStringList *errorHierarchy) const override;
+    };
+
     // Whether code action supports dynamic registration.
-    Utils::optional<DynamicRegistrationCapabilities> codeAction() const
-    { return optionalValue<DynamicRegistrationCapabilities>(codeActionKey); }
-    void setCodeAction(const DynamicRegistrationCapabilities &codeAction)
+    Utils::optional<CodeActionCapabilities> codeAction() const
+    { return optionalValue<CodeActionCapabilities>(codeActionKey); }
+    void setCodeAction(const CodeActionCapabilities &codeAction)
     { insert(codeActionKey, codeAction); }
     void clearCodeAction() { remove(codeActionKey); }
 
@@ -411,7 +468,7 @@ public:
     void setApplyEdit(bool applyEdit) { insert(applyEditKey, applyEdit); }
     void clearApplyEdit() { remove(applyEditKey); }
 
-    class WorkspaceEditCapabilities : public JsonObject
+    class LANGUAGESERVERPROTOCOL_EXPORT WorkspaceEditCapabilities : public JsonObject
     {
     public:
         using JsonObject::JsonObject;
@@ -479,7 +536,6 @@ public:
 class LANGUAGESERVERPROTOCOL_EXPORT ClientCapabilities : public JsonObject
 {
 public:
-    ClientCapabilities();
     using JsonObject::JsonObject;
 
     // Workspace specific client capabilities.

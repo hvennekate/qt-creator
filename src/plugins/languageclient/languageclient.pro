@@ -3,21 +3,42 @@ include(../../qtcreatorplugin.pri)
 DEFINES += LANGUAGECLIENT_LIBRARY
 
 HEADERS += \
-    baseclient.h \
+    client.h \
+    documentsymbolcache.h \
     dynamiccapabilities.h \
     languageclient_global.h \
-    languageclientcodeassist.h \
+    languageclientcompletionassist.h \
+    languageclientformatter.h \
+    languageclientfunctionhint.h \
+    languageclienthoverhandler.h \
+    languageclientinterface.h \
     languageclientmanager.h \
+    languageclientoutline.h \
     languageclientplugin.h \
-    languageclientsettings.h
+    languageclientquickfix.h \
+    languageclientsettings.h \
+    languageclientutils.h \
+    locatorfilter.h \
+    semantichighlightsupport.h
+
 
 SOURCES += \
-    baseclient.cpp \
+    client.cpp \
+    documentsymbolcache.cpp \
     dynamiccapabilities.cpp \
-    languageclientcodeassist.cpp \
+    languageclientcompletionassist.cpp \
+    languageclientformatter.cpp \
+    languageclientfunctionhint.cpp \
+    languageclienthoverhandler.cpp \
+    languageclientinterface.cpp \
     languageclientmanager.cpp \
+    languageclientoutline.cpp \
     languageclientplugin.cpp \
-    languageclientsettings.cpp
+    languageclientquickfix.cpp \
+    languageclientsettings.cpp \
+    languageclientutils.cpp \
+    locatorfilter.cpp \
+    semantichighlightsupport.cpp
 
 RESOURCES += \
     languageclient.qrc

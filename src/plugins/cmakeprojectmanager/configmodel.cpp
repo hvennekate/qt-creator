@@ -36,13 +36,6 @@
 
 namespace CMakeProjectManager {
 
-static bool isTrue(const QString &value)
-{
-    const QString lower = value.toLower();
-    return lower == QStringLiteral("true") || lower == QStringLiteral("on")
-            || lower == QStringLiteral("1") || lower == QStringLiteral("yes");
-}
-
 ConfigModel::ConfigModel(QObject *parent) : Utils::TreeModel<>(parent)
 {
     setHeader({tr("Key"), tr("Value")});
@@ -51,7 +44,7 @@ ConfigModel::ConfigModel(QObject *parent) : Utils::TreeModel<>(parent)
 QVariant ConfigModel::data(const QModelIndex &idx, int role) const
 {
     // Hide/show groups according to "isAdvanced" setting:
-    Utils::TreeItem *item = static_cast<Utils::TreeItem *>(idx.internalPointer());
+    auto item = static_cast<const Utils::TreeItem *>(idx.internalPointer());
     if (role == ItemIsAdvancedRole && item->childCount() > 0) {
         const bool hasNormalChildren = item->findAnyChild([](const Utils::TreeItem *ti) {
             if (auto cmti = dynamic_cast<const Internal::ConfigModelTreeItem*>(ti))
@@ -341,7 +334,7 @@ void ConfigModel::generateTree()
     for (InternalDataItem &di : m_configuration)
         prefixes[prefix(di.key)].append(new Internal::ConfigModelTreeItem(&di));
 
-    Utils::TreeItem *root = new Utils::TreeItem;
+    auto root = new Utils::TreeItem;
 
     for (const QString &p : qAsConst(prefixList)) {
         const QList<Utils::TreeItem *> &prefixItemList = prefixes.value(p);
@@ -431,15 +424,17 @@ QVariant ConfigModelTreeItem::data(int column, int role) const
         }
     case 1: {
         const QString value = currentValue();
+        const auto boolValue = CMakeConfigItem::toBool(value.toUtf8());
+        const bool isTrue = boolValue.has_value() && boolValue.value();
 
         switch (role) {
         case Qt::CheckStateRole:
             return (dataItem->type == ConfigModel::DataItem::BOOLEAN)
-                    ? QVariant(isTrue(value) ? Qt::Checked : Qt::Unchecked) : QVariant();
+                    ? QVariant(isTrue ? Qt::Checked : Qt::Unchecked) : QVariant();
         case Qt::DisplayRole:
             return value;
         case Qt::EditRole:
-            return (dataItem->type == ConfigModel::DataItem::BOOLEAN) ? QVariant(isTrue(value)) : QVariant(value);
+            return (dataItem->type == ConfigModel::DataItem::BOOLEAN) ? QVariant(isTrue) : QVariant(value);
         case Qt::FontRole: {
             QFont font;
             font.setBold((dataItem->isUserChanged || dataItem->isUserNew) && !dataItem->isUnset);

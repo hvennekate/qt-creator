@@ -43,7 +43,9 @@
 
 #include <extensionsystem/pluginmanager.h>
 
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
+#include <utils/globalfilechangeblocker.h>
 #include <utils/hostosinfo.h>
 #include <utils/mimetypes/mimedatabase.h>
 #include <utils/qtcassert.h>
@@ -65,7 +67,7 @@
 #include <QMenu>
 #include <QMessageBox>
 
-Q_LOGGING_CATEGORY(log, "qtc.core.documentmanager", QtWarningMsg)
+static Q_LOGGING_CATEGORY(log, "qtc.core.documentmanager", QtWarningMsg)
 
 /*!
   \class Core::DocumentManager
@@ -152,7 +154,6 @@ public:
     QSet<QString> m_expectedFileNames; // set of file names without normalization
 
     QList<DocumentManager::RecentFile> m_recentFiles;
-    static const int m_maxRecentFiles = 7;
 
     bool m_postponeAutoReload = false;
     bool m_blockActivated = false;
@@ -163,7 +164,7 @@ public:
     QFileSystemWatcher *m_linkWatcher = nullptr; // Delayed creation (only UNIX/if a link is seen).
     QString m_lastVisitedDirectory = QDir::currentPath();
     QString m_defaultLocationForNewFiles;
-    FileName m_projectsDirectory;
+    FilePath m_projectsDirectory;
     // When we are calling into an IDocument
     // we don't want to receive a changed()
     // signal
@@ -214,7 +215,12 @@ void DocumentManagerPrivate::onApplicationFocusChange()
 
 DocumentManagerPrivate::DocumentManagerPrivate()
 {
-    connect(qApp, &QApplication::focusChanged, this, &DocumentManagerPrivate::onApplicationFocusChange);
+    // we do not want to do too much directly in the focus change event, so queue the connection
+    connect(qApp,
+            &QApplication::focusChanged,
+            this,
+            &DocumentManagerPrivate::onApplicationFocusChange,
+            Qt::QueuedConnection);
 }
 
 } // namespace Internal
@@ -229,7 +235,13 @@ DocumentManager::DocumentManager(QObject *parent)
 {
     d = new DocumentManagerPrivate;
     m_instance = this;
-    qApp->installEventFilter(this);
+
+    connect(Utils::GlobalFileChangeBlocker::instance(), &Utils::GlobalFileChangeBlocker::stateChanged,
+            this, [this](bool blocked) {
+        d->m_postponeAutoReload = blocked;
+        if (!blocked)
+            QTimer::singleShot(500, m_instance, &DocumentManager::checkForReload);
+    });
 
     readSettings();
 
@@ -415,9 +427,8 @@ void DocumentManager::renamedFile(const QString &from, const QString &to)
 
     // gather the list of IDocuments
     QList<IDocument *> documentsToRename;
-    QMapIterator<IDocument *, QStringList> it(d->m_documentsWithWatch);
-    while (it.hasNext()) {
-        it.next();
+    for (auto it = d->m_documentsWithWatch.cbegin(), end = d->m_documentsWithWatch.cend();
+            it != end; ++it) {
         if (it.value().contains(fromKey))
             documentsToRename.append(it.key());
     }
@@ -426,14 +437,14 @@ void DocumentManager::renamedFile(const QString &from, const QString &to)
     foreach (IDocument *document, documentsToRename) {
         d->m_blockedIDocument = document;
         removeFileInfo(document);
-        document->setFilePath(FileName::fromString(to));
+        document->setFilePath(FilePath::fromString(to));
         addFileInfo(document);
         d->m_blockedIDocument = nullptr;
     }
     emit m_instance->allDocumentsRenamed(from, to);
 }
 
-void DocumentManager::filePathChanged(const FileName &oldName, const FileName &newName)
+void DocumentManager::filePathChanged(const FilePath &oldName, const FilePath &newName)
 {
     auto doc = qobject_cast<IDocument *>(sender());
     QTC_ASSERT(doc, return);
@@ -597,13 +608,6 @@ void DocumentManager::unexpectFileChange(const QString &fileName)
         updateExpectedState(filePathKey(fileName, ResolveLinks));
 }
 
-void DocumentManager::setAutoReloadPostponed(bool postponed)
-{
-    d->m_postponeAutoReload = postponed;
-    if (!postponed)
-        QTimer::singleShot(500, m_instance, &DocumentManager::checkForReload);
-}
-
 static bool saveModifiedFilesHelper(const QList<IDocument *> &documents,
                                     const QString &message, bool *cancelled, bool silently,
                                     const QString &alwaysSaveMessage, bool *alwaysSave,
@@ -739,7 +743,7 @@ QString DocumentManager::allDocumentFactoryFiltersString(QString *allFilesFilter
         }
     }
 
-    QStringList filters = uniqueFilters.toList();
+    QStringList filters = Utils::toList(uniqueFilters);
     filters.sort();
     const QString allFiles = Utils::allFilesFilterString();
     if (allFilesFilter)
@@ -890,7 +894,7 @@ bool DocumentManager::saveModifiedDocumentsSilently(const QList<IDocument *> &do
 bool DocumentManager::saveModifiedDocumentSilently(IDocument *document, bool *canceled,
                                                    QList<IDocument *> *failedToClose)
 {
-    return saveModifiedDocumentsSilently(QList<IDocument *>() << document, canceled, failedToClose);
+    return saveModifiedDocumentsSilently({document}, canceled, failedToClose);
 }
 
 /*!
@@ -952,11 +956,11 @@ bool DocumentManager::saveModifiedDocument(IDocument *document, const QString &m
                                            const QString &alwaysSaveMessage, bool *alwaysSave,
                                            QList<IDocument *> *failedToClose)
 {
-    return saveModifiedDocuments(QList<IDocument *>() << document, message, canceled,
+    return saveModifiedDocuments({document}, message, canceled,
                                  alwaysSaveMessage, alwaysSave, failedToClose);
 }
 
-void DocumentManager::showFilePropertiesDialog(const FileName &filePath)
+void DocumentManager::showFilePropertiesDialog(const FilePath &filePath)
 {
     FilePropertiesDialog properties(filePath);
     properties.exec();
@@ -1195,8 +1199,7 @@ void DocumentManager::checkForReload()
                     if (previousDeletedAnswer != FileDeletedCloseAll) {
                         previousDeletedAnswer =
                                 fileDeletedPrompt(document->filePath().toString(),
-                                                         trigger == IDocument::TriggerExternal,
-                                                         QApplication::activeWindow());
+                                                  ICore::dialogParent());
                     }
                     switch (previousDeletedAnswer) {
                     case FileDeletedSave:
@@ -1242,9 +1245,7 @@ void DocumentManager::checkForReload()
 
     // handle deleted files
     EditorManager::closeDocuments(documentsToClose, false);
-    QHashIterator<IDocument *, QString> it(documentsToSave);
-    while (it.hasNext()) {
-        it.next();
+    for (auto it = documentsToSave.cbegin(), end = documentsToSave.cend(); it != end; ++it) {
         saveDocument(it.key(), it.value());
         it.key()->checkPermissions();
     }
@@ -1265,15 +1266,11 @@ void DocumentManager::addToRecentFiles(const QString &fileName, Id editorId)
 {
     if (fileName.isEmpty())
         return;
-    QString fileKey = filePathKey(fileName, KeepLinks);
-    QMutableListIterator<RecentFile > it(d->m_recentFiles);
-    while (it.hasNext()) {
-        RecentFile file = it.next();
-        QString recentFileKey(filePathKey(file.first, DocumentManager::KeepLinks));
-        if (fileKey == recentFileKey)
-            it.remove();
-    }
-    if (d->m_recentFiles.count() > d->m_maxRecentFiles)
+    const QString fileKey = filePathKey(fileName, KeepLinks);
+    Utils::erase(d->m_recentFiles, [fileKey](const RecentFile &file) {
+        return fileKey == filePathKey(file.first, DocumentManager::KeepLinks);
+    });
+    while (d->m_recentFiles.count() >= EditorManagerPrivate::maxRecentFiles())
         d->m_recentFiles.removeLast();
     d->m_recentFiles.prepend(RecentFile(fileName, editorId));
 }
@@ -1320,27 +1317,27 @@ void readSettings()
     QSettings *s = ICore::settings();
     d->m_recentFiles.clear();
     s->beginGroup(QLatin1String(settingsGroupC));
-    QStringList recentFiles = s->value(QLatin1String(filesKeyC)).toStringList();
-    QStringList recentEditorIds = s->value(QLatin1String(editorsKeyC)).toStringList();
+    const QStringList recentFiles = s->value(QLatin1String(filesKeyC)).toStringList();
+    const QStringList recentEditorIds = s->value(QLatin1String(editorsKeyC)).toStringList();
     s->endGroup();
     // clean non-existing files
-    QStringListIterator ids(recentEditorIds);
-    foreach (const QString &fileName, recentFiles) {
+    for (int i = 0, n = recentFiles.size(); i < n; ++i) {
+        const QString &fileName = recentFiles.at(i);
         QString editorId;
-        if (ids.hasNext()) // guard against old or weird settings
-            editorId = ids.next();
+        if (i < recentEditorIds.size()) // guard against old or weird settings
+            editorId = recentEditorIds.at(i);
         if (QFileInfo(fileName).isFile())
             d->m_recentFiles.append(DocumentManager::RecentFile(QDir::fromNativeSeparators(fileName), // from native to guard against old settings
                                                Id::fromString(editorId)));
     }
 
     s->beginGroup(QLatin1String(directoryGroupC));
-    const FileName settingsProjectDir = FileName::fromString(s->value(QLatin1String(projectDirectoryKeyC),
+    const FilePath settingsProjectDir = FilePath::fromString(s->value(QLatin1String(projectDirectoryKeyC),
                                                 QString()).toString());
-    if (!settingsProjectDir.isEmpty() && settingsProjectDir.toFileInfo().isDir())
+    if (!settingsProjectDir.isEmpty() && settingsProjectDir.isDir())
         d->m_projectsDirectory = settingsProjectDir;
     else
-        d->m_projectsDirectory = FileName::fromString(PathChooser::homePath());
+        d->m_projectsDirectory = FilePath::fromString(PathChooser::homePath());
     d->m_useProjectsDirectory = s->value(QLatin1String(useProjectDirectoryKeyC),
                                          d->m_useProjectsDirectory).toBool();
 
@@ -1393,7 +1390,7 @@ void DocumentManager::setDefaultLocationForNewFiles(const QString &location)
   \sa setProjectsDirectory, setUseProjectsDirectory
 */
 
-FileName DocumentManager::projectsDirectory()
+FilePath DocumentManager::projectsDirectory()
 {
     return d->m_projectsDirectory;
 }
@@ -1405,7 +1402,7 @@ FileName DocumentManager::projectsDirectory()
   \sa projectsDirectory, useProjectsDirectory
 */
 
-void DocumentManager::setProjectsDirectory(const FileName &directory)
+void DocumentManager::setProjectsDirectory(const FilePath &directory)
 {
     if (d->m_projectsDirectory != directory) {
         d->m_projectsDirectory = directory;
@@ -1468,14 +1465,6 @@ void DocumentManager::setFileDialogLastVisitedDirectory(const QString &directory
 void DocumentManager::notifyFilesChangedInternally(const QStringList &files)
 {
     emit m_instance->filesChangedInternally(files);
-}
-
-bool DocumentManager::eventFilter(QObject *obj, QEvent *e)
-{
-    if (obj == qApp && e->type() == QEvent::ApplicationStateChange) {
-        QTimer::singleShot(0, this, &DocumentManager::checkForReload);
-    }
-    return false;
 }
 
 // -------------- FileChangeBlocker

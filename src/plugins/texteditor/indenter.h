@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2019 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
@@ -25,18 +25,17 @@
 
 #pragma once
 
-#include "texteditor_global.h"
-
-#include "tabsettings.h"
+#include <utils/fileutils.h>
+#include <utils/optional.h>
+#include <utils/textutils.h>
 
 #include <QMap>
+#include <QTextBlock>
+#include <vector>
 
-QT_BEGIN_NAMESPACE
-class QTextDocument;
-class QTextCursor;
-class QTextBlock;
-class QChar;
-QT_END_NAMESPACE
+namespace Utils {
+class FilePath;
+}
 
 namespace TextEditor {
 
@@ -45,44 +44,86 @@ class TabSettings;
 
 using IndentationForBlock = QMap<int, int>;
 
-class TEXTEDITOR_EXPORT Indenter
+class RangeInLines
 {
 public:
-    Indenter();
-    virtual ~Indenter();
+    int startLine;
+    int endLine;
+};
+
+using RangesInLines = std::vector<RangeInLines>;
+
+class Indenter
+{
+public:
+    explicit Indenter(QTextDocument *doc)
+        : m_doc(doc)
+    {}
+
+    void setFileName(const Utils::FilePath &fileName) { m_fileName = fileName; }
+
+    virtual ~Indenter() = default;
 
     // Returns true if key triggers an indent.
-    virtual bool isElectricCharacter(const QChar &ch) const;
+    virtual bool isElectricCharacter(const QChar & /*ch*/) const { return false; }
 
-    // Indent a text block based on previous line. Default does nothing
-    virtual void indentBlock(QTextDocument *doc,
-                             const QTextBlock &block,
-                             const QChar &typedChar,
-                             const TabSettings &tabSettings);
+    virtual void setCodeStylePreferences(ICodeStylePreferences * /*preferences*/) {}
 
-    // Indent at cursor. Calls indentBlock for selection or current line.
-    virtual void indent(QTextDocument *doc,
-                        const QTextCursor &cursor,
-                        const QChar &typedChar,
-                        const TabSettings &tabSettings,
-                        bool autoTriggered = true);
+    virtual void invalidateCache() {}
 
-    // Reindent at cursor. Selection will be adjusted according to the indentation
-    // change of the first block.
-    virtual void reindent(QTextDocument *doc, const QTextCursor &cursor, const TabSettings &tabSettings);
+    virtual int indentFor(const QTextBlock & /*block*/,
+                          const TabSettings & /*tabSettings*/,
+                          int /*cursorPositionInEditor*/ = -1)
+    {
+        return -1;
+    }
 
-    virtual void setCodeStylePreferences(ICodeStylePreferences *preferences);
+    virtual void autoIndent(const QTextCursor &cursor,
+                            const TabSettings &tabSettings,
+                            int cursorPositionInEditor = -1)
+    {
+        indent(cursor, QChar::Null, tabSettings, cursorPositionInEditor);
+    }
 
-    virtual void invalidateCache(QTextDocument *doc);
+    // By default just calls indent with default settings.
+    virtual Utils::Text::Replacements format(const RangesInLines & /*rangesInLines*/)
+    {
+        return Utils::Text::Replacements();
+    }
 
-    virtual int indentFor(const QTextBlock &block, const TextEditor::TabSettings &tabSettings);
+    virtual bool formatOnSave() const { return false; }
 
     // Expects a list of blocks in order of occurrence in the document.
     virtual IndentationForBlock indentationForBlocks(const QVector<QTextBlock> &blocks,
-                                                     const TextEditor::TabSettings &tabSettings);
+                                                     const TabSettings &tabSettings,
+                                                     int cursorPositionInEditor = -1)
+        = 0;
+    virtual Utils::optional<TabSettings> tabSettings() const = 0;
 
-    virtual bool hasTabSettings() const { return false; }
-    virtual TabSettings tabSettings() const { return TabSettings(); }
+    // Indent a text block based on previous line. Default does nothing
+    virtual void indentBlock(const QTextBlock &block,
+                             const QChar &typedChar,
+                             const TabSettings &tabSettings,
+                             int cursorPositionInEditor = -1)
+        = 0;
+
+    // Indent at cursor. Calls indentBlock for selection or current line.
+    virtual void indent(const QTextCursor &cursor,
+                        const QChar &typedChar,
+                        const TabSettings &tabSettings,
+                        int cursorPositionInEditor = -1)
+        = 0;
+
+    // Reindent at cursor. Selection will be adjusted according to the indentation
+    // change of the first block.
+    virtual void reindent(const QTextCursor &cursor,
+                          const TabSettings &tabSettings,
+                          int cursorPositionInEditor = -1)
+        = 0;
+
+protected:
+    QTextDocument *m_doc;
+    Utils::FilePath m_fileName;
 };
 
 } // namespace TextEditor

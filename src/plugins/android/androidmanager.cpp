@@ -24,14 +24,14 @@
 ****************************************************************************/
 
 #include "androidmanager.h"
+
+#include "androidbuildapkstep.h"
 #include "androidconstants.h"
-#include "androiddeployconfiguration.h"
 #include "androidconfigurations.h"
 #include "androidrunconfiguration.h"
 #include "androidglobal.h"
 #include "androidtoolchain.h"
 #include "androiddeployqtstep.h"
-#include "androidqtsupport.h"
 #include "androidqtversion.h"
 #include "androidavdmanager.h"
 #include "androidsdkmanager.h"
@@ -42,6 +42,7 @@
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/project.h>
+#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
@@ -69,13 +70,14 @@ namespace {
     const QLatin1String AndroidManifestName("AndroidManifest.xml");
     const QLatin1String AndroidDefaultPropertiesName("project.properties");
     const QLatin1String AndroidDeviceSn("AndroidDeviceSerialNumber");
+    const QLatin1String AndroidDeviceAbis("AndroidDeviceAbis");
     const QLatin1String ApiLevelKey("AndroidVersion.ApiLevel");
     const QString packageNameRegEx("(?<token>package: )(.*?)(name=)'(?<target>.*?)'");
     const QString activityRegEx("(?<token>launchable-activity: )(.*?)(name=)'(?<target>.*?)'");
     const QString apkVersionRegEx("(?<token>package: )(.*?)(versionCode=)'(?<target>.*?)'");
     const QString versionCodeRegEx("(?<token>versionCode=)(?<version>\\d*)");
 
-    Q_LOGGING_CATEGORY(androidManagerLog, "qtc.android.androidManager", QtWarningMsg)
+    static Q_LOGGING_CATEGORY(androidManagerLog, "qtc.android.androidManager", QtWarningMsg)
 
     QString parseAaptOutput(const QString &output, const QString &regEx) {
         const QRegularExpression regRx(regEx,
@@ -89,6 +91,7 @@ namespace {
 } // anonymous namespace
 
 
+using namespace ProjectExplorer;
 using namespace Utils;
 
 namespace Android {
@@ -107,20 +110,15 @@ public:
 
 using LibrariesMap = QMap<QString, Library>;
 
-static bool openXmlFile(QDomDocument &doc, const Utils::FileName &fileName);
+static bool openXmlFile(QDomDocument &doc, const Utils::FilePath &fileName);
 static bool openManifest(ProjectExplorer::Target *target, QDomDocument &doc);
 static int parseMinSdk(const QDomElement &manifestElem);
 
-static QList<AndroidQtSupport *> g_androidQtSupportProviders;
-
-AndroidQtSupport::AndroidQtSupport()
+static const ProjectNode *currentProjectNode(Target *target)
 {
-    g_androidQtSupportProviders.append(this);
-}
-
-AndroidQtSupport::~AndroidQtSupport()
-{
-    g_androidQtSupportProviders.removeOne(this);
+    if (RunConfiguration *rc = target->activeRunConfiguration())
+        return target->project()->findNodeForBuildKey(rc->buildKey());
+    return nullptr;
 }
 
 QString AndroidManager::packageName(ProjectExplorer::Target *target)
@@ -132,7 +130,7 @@ QString AndroidManager::packageName(ProjectExplorer::Target *target)
     return manifestElem.attribute(QLatin1String("package"));
 }
 
-QString AndroidManager::packageName(const Utils::FileName &manifestFile)
+QString AndroidManager::packageName(const Utils::FilePath &manifestFile)
 {
     QDomDocument doc;
     if (!openXmlFile(doc, manifestFile))
@@ -177,7 +175,7 @@ int AndroidManager::packageVersionCode(const QString &deviceSerial,
     return -1;
 }
 
-void AndroidManager::apkInfo(const Utils::FileName &apkPath,
+void AndroidManager::apkInfo(const Utils::FilePath &apkPath,
                                     QString *packageName,
                                     int *version,
                                     QString *activityPath)
@@ -238,11 +236,10 @@ int AndroidManager::minimumSDK(ProjectExplorer::Target *target)
 int AndroidManager::minimumSDK(const ProjectExplorer::Kit *kit)
 {
     int minSDKVersion = -1;
-    QtSupport::BaseQtVersion *version = QtSupport::QtKitInformation::qtVersion(kit);
+    QtSupport::BaseQtVersion *version = QtSupport::QtKitAspect::qtVersion(kit);
     if (version && version->targetDeviceTypes().contains(Constants::ANDROID_DEVICE_TYPE)) {
-        Utils::FileName stockManifestFilePath =
-                Utils::FileName::fromUserInput(version->qmakeProperty("QT_INSTALL_PREFIX") +
-                                               QLatin1String("/src/android/templates/AndroidManifest.xml"));
+        Utils::FilePath stockManifestFilePath = Utils::FilePath::fromUserInput(
+            version->prefix().toString() + "/src/android/templates/AndroidManifest.xml");
         QDomDocument doc;
         if (openXmlFile(doc, stockManifestFilePath)) {
             minSDKVersion = parseMinSdk(doc.documentElement());
@@ -253,47 +250,61 @@ int AndroidManager::minimumSDK(const ProjectExplorer::Kit *kit)
 
 QString AndroidManager::buildTargetSDK(ProjectExplorer::Target *target)
 {
-    auto androidBuildApkStep
-            = AndroidGlobal::buildStep<AndroidBuildApkStep>(target->activeBuildConfiguration());
-    if (androidBuildApkStep)
-        return androidBuildApkStep->buildTargetSdk();
+    if (auto bc = target->activeBuildConfiguration()) {
+        if (auto androidBuildApkStep = bc->buildSteps()->firstOfType<AndroidBuildApkStep>())
+            return androidBuildApkStep->buildTargetSdk();
+    }
 
     QString fallback = AndroidConfig::apiLevelNameFor(
                 AndroidConfigurations::sdkManager()->latestAndroidSdkPlatform());
     return fallback;
 }
 
-bool AndroidManager::signPackage(ProjectExplorer::Target *target)
+QStringList AndroidManager::applicationAbis(const Target *target)
 {
-    auto androidBuildApkStep
-            = AndroidGlobal::buildStep<AndroidBuildApkStep>(target->activeBuildConfiguration());
-    if (androidBuildApkStep)
-        return androidBuildApkStep->signPackage();
-    return false;
+    auto qt = static_cast<AndroidQtVersion *>(QtSupport::QtKitAspect::qtVersion(target->kit()));
+    return qt->androidAbis();
 }
 
-QString AndroidManager::targetArch(ProjectExplorer::Target *target)
+QJsonObject AndroidManager::deploymentSettings(const Target *target)
 {
-    auto qt = static_cast<AndroidQtVersion *>(QtSupport::QtKitInformation::qtVersion(target->kit()));
-    return qt->targetArch();
+    QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(target->kit());
+    if (!qt)
+        return {};
+
+    auto tc = ProjectExplorer::ToolChainKitAspect::toolChain(target->kit(), ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    if (!tc || tc->typeId() != Constants::ANDROID_TOOLCHAIN_TYPEID)
+        return {};
+    QJsonObject settings;
+    settings["_description"] = "This file is generated by QtCreator to be read by androiddeployqt and should not be modified by hand.";
+    settings["qt"] = qt->prefix().toString();
+    settings["ndk"] = AndroidConfigurations::currentConfig().ndkLocation().toString();
+    settings["sdk"] = AndroidConfigurations::currentConfig().sdkLocation().toString();
+    settings["stdcpp-path"] = AndroidConfigurations::currentConfig().toolchainPath().pathAppended("sysroot/usr/lib/").toString();
+    settings["toolchain-prefix"] =  "llvm";
+    settings["tool-prefix"] = "llvm";
+    settings["useLLVM"] = true;
+    settings["ndk-host"] = AndroidConfigurations::currentConfig().toolchainHost();
+    return settings;
 }
 
-Utils::FileName AndroidManager::dirPath(const ProjectExplorer::Target *target)
+Utils::FilePath AndroidManager::dirPath(const ProjectExplorer::Target *target)
 {
-    if (target->activeBuildConfiguration())
-        return target->activeBuildConfiguration()->buildDirectory().appendPath(QLatin1String(Constants::ANDROID_BUILDDIRECTORY));
-    return Utils::FileName();
+    if (auto *bc = target->activeBuildConfiguration())
+        return bc->buildDirectory().pathAppended(Constants::ANDROID_BUILDDIRECTORY);
+    return Utils::FilePath();
 }
 
-Utils::FileName AndroidManager::apkPath(const ProjectExplorer::Target *target)
+Utils::FilePath AndroidManager::apkPath(const ProjectExplorer::Target *target)
 {
-    QTC_ASSERT(target, return Utils::FileName());
+    QTC_ASSERT(target, return Utils::FilePath());
 
-    auto buildApkStep
-        = Android::AndroidGlobal::buildStep<AndroidBuildApkStep>(target->activeBuildConfiguration());
-
+    auto bc = target->activeBuildConfiguration();
+    if (!bc)
+        return {};
+    auto buildApkStep = bc->buildSteps()->firstOfType<AndroidBuildApkStep>();
     if (!buildApkStep)
-        return Utils::FileName();
+        return Utils::FilePath();
 
     QString apkPath("build/outputs/apk/android-build-");
     if (buildApkStep->signPackage())
@@ -301,16 +312,69 @@ Utils::FileName AndroidManager::apkPath(const ProjectExplorer::Target *target)
     else
         apkPath += QLatin1String("debug.apk");
 
-    return dirPath(target).appendPath(apkPath);
+    return dirPath(target).pathAppended(apkPath);
 }
 
-Utils::FileName AndroidManager::manifestSourcePath(ProjectExplorer::Target *target)
+bool AndroidManager::matchedAbis(const QStringList &deviceAbis, const QStringList &appAbis)
 {
-    if (AndroidQtSupport *androidQtSupport = AndroidManager::androidQtSupport(target)) {
+    for (const auto &abi : appAbis) {
+        if (deviceAbis.contains(abi))
+            return true;
+    }
+    return false;
+}
+
+QString AndroidManager::devicePreferredAbi(const QStringList &deviceAbis, const QStringList &appAbis)
+{
+    for (const auto &abi : appAbis) {
+        if (deviceAbis.contains(abi))
+            return abi;
+    }
+    return {};
+}
+
+Abi AndroidManager::androidAbi2Abi(const QString &androidAbi)
+{
+    if (androidAbi == "arm64-v8a") {
+        return Abi{Abi::Architecture::ArmArchitecture,
+                   Abi::OS::LinuxOS,
+                   Abi::OSFlavor::AndroidLinuxFlavor,
+                   Abi::BinaryFormat::ElfFormat,
+                   64, androidAbi};
+    } else if (androidAbi == "armeabi-v7a") {
+        return Abi{Abi::Architecture::ArmArchitecture,
+                   Abi::OS::LinuxOS,
+                   Abi::OSFlavor::AndroidLinuxFlavor,
+                   Abi::BinaryFormat::ElfFormat,
+                   32, androidAbi};
+    } else if (androidAbi == "x86_64") {
+        return Abi{Abi::Architecture::X86Architecture,
+                   Abi::OS::LinuxOS,
+                   Abi::OSFlavor::AndroidLinuxFlavor,
+                   Abi::BinaryFormat::ElfFormat,
+                   64, androidAbi};
+    } else if (androidAbi == "x86") {
+        return Abi{Abi::Architecture::X86Architecture,
+                   Abi::OS::LinuxOS,
+                   Abi::OSFlavor::AndroidLinuxFlavor,
+                   Abi::BinaryFormat::ElfFormat,
+                   32, androidAbi};
+    } else {
+        return Abi{Abi::Architecture::UnknownArchitecture,
+                   Abi::OS::LinuxOS,
+                   Abi::OSFlavor::AndroidLinuxFlavor,
+                   Abi::BinaryFormat::ElfFormat,
+                   0, androidAbi};
+    }
+}
+
+Utils::FilePath AndroidManager::manifestSourcePath(ProjectExplorer::Target *target)
+{
+    if (const ProjectNode *node = currentProjectNode(target)) {
         const QString packageSource
-                = androidQtSupport->targetData(Android::Constants::AndroidPackageSourceDir, target).toString();
+                = node->data(Android::Constants::AndroidPackageSourceDir).toString();
         if (!packageSource.isEmpty()) {
-            const FileName manifest = FileName::fromUserInput(packageSource + "/AndroidManifest.xml");
+            const FilePath manifest = FilePath::fromUserInput(packageSource + "/AndroidManifest.xml");
             if (manifest.exists())
                 return manifest;
         }
@@ -318,24 +382,22 @@ Utils::FileName AndroidManager::manifestSourcePath(ProjectExplorer::Target *targ
     return manifestPath(target);
 }
 
-Utils::FileName AndroidManager::manifestPath(ProjectExplorer::Target *target)
+Utils::FilePath AndroidManager::manifestPath(ProjectExplorer::Target *target)
 {
-    return dirPath(target).appendPath(AndroidManifestName);
+    QVariant manifest = target->namedSettings(AndroidManifestName);
+    if (manifest.isValid())
+        return manifest.value<FilePath>();
+    return dirPath(target).pathAppended(AndroidManifestName);
 }
 
-Utils::FileName AndroidManager::defaultPropertiesPath(ProjectExplorer::Target *target)
+void AndroidManager::setManifestPath(Target *target, const FilePath &path)
 {
-    return dirPath(target).appendPath(AndroidDefaultPropertiesName);
+     target->setNamedSettings(AndroidManifestName, QVariant::fromValue(path));
 }
 
-bool AndroidManager::bundleQt(ProjectExplorer::Target *target)
+Utils::FilePath AndroidManager::defaultPropertiesPath(ProjectExplorer::Target *target)
 {
-    auto androidBuildApkStep
-            = AndroidGlobal::buildStep<AndroidBuildApkStep>(target->activeBuildConfiguration());
-    if (androidBuildApkStep)
-        return !androidBuildApkStep->useMinistro();
-
-    return false;
+    return dirPath(target).pathAppended(AndroidDefaultPropertiesName);
 }
 
 QString AndroidManager::deviceSerialNumber(ProjectExplorer::Target *target)
@@ -348,6 +410,31 @@ void AndroidManager::setDeviceSerialNumber(ProjectExplorer::Target *target, cons
     qCDebug(androidManagerLog) << "Device serial for the target changed"
                                << target->displayName() << deviceSerialNumber;
     target->setNamedSettings(AndroidDeviceSn, deviceSerialNumber);
+}
+
+static QString preferredAbi(const QStringList &appAbis, Target *target)
+{
+    const auto deviceAbis = target->namedSettings(AndroidDeviceAbis).toStringList();
+    for (const auto &abi : deviceAbis) {
+        if (appAbis.contains(abi))
+            return abi;
+    }
+    return {};
+}
+
+QString AndroidManager::apkDevicePreferredAbi(Target *target)
+{
+    auto libsPath = dirPath(target).pathAppended("libs");
+    QStringList apkAbis;
+    for (const auto &abi : QDir{libsPath.toString()}.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+        if (!QDir{libsPath.pathAppended(abi).toString()}.entryList(QStringList("*.so"), QDir::Files | QDir::NoDotAndDotDot).isEmpty())
+            apkAbis << abi;
+    return preferredAbi(apkAbis, target);
+}
+
+void AndroidManager::setDeviceAbis(ProjectExplorer::Target *target, const QStringList &deviceAbis)
+{
+    target->setNamedSettings(AndroidDeviceAbis, deviceAbis);
 }
 
 int AndroidManager::deviceApiLevel(ProjectExplorer::Target *target)
@@ -364,7 +451,7 @@ void AndroidManager::setDeviceApiLevel(ProjectExplorer::Target *target, int leve
 
 QPair<int, int> AndroidManager::apiLevelRange()
 {
-    return qMakePair(16, 27);
+    return qMakePair(16, 29);
 }
 
 QString AndroidManager::androidNameForApiLevel(int x)
@@ -418,6 +505,10 @@ QString AndroidManager::androidNameForApiLevel(int x)
         return QLatin1String("Android 8.0");
     case 27:
         return QLatin1String("Android 8.1");
+    case 28:
+        return QLatin1String("Android 9");
+    case 29:
+        return QLatin1String("Android 10");
     default:
         return tr("Unknown Android version. API Level: %1").arg(QString::number(x));
     }
@@ -428,7 +519,7 @@ static void raiseError(const QString &reason)
     QMessageBox::critical(nullptr, AndroidManager::tr("Error creating Android templates."), reason);
 }
 
-static bool openXmlFile(QDomDocument &doc, const Utils::FileName &fileName)
+static bool openXmlFile(QDomDocument &doc, const Utils::FilePath &fileName)
 {
     QFile f(fileName.toString());
     if (!f.open(QIODevice::ReadOnly))
@@ -460,39 +551,13 @@ static int parseMinSdk(const QDomElement &manifestElem)
     return 0;
 }
 
-void AndroidManager::cleanLibsOnDevice(ProjectExplorer::Target *target)
-{
-    const QString targetArch = AndroidManager::targetArch(target);
-    if (targetArch.isEmpty())
-        return;
-    const int deviceAPILevel = AndroidManager::minimumSDK(target);
-    AndroidDeviceInfo info = AndroidConfigurations::showDeviceDialog(target->project(), deviceAPILevel, targetArch);
-    if (!info.isValid()) // aborted
-        return;
-
-    QString deviceSerialNumber = info.serialNumber;
-
-    if (info.type == AndroidDeviceInfo::Emulator) {
-        deviceSerialNumber = AndroidAvdManager().startAvd(info.avdname);
-        if (deviceSerialNumber.isEmpty())
-            Core::MessageManager::write(tr("Starting Android virtual device failed."));
-    }
-
-    QStringList arguments = AndroidDeviceInfo::adbSelector(deviceSerialNumber);
-    arguments << "shell" << "rm" << "-r" << "/data/local/tmp/qt";
-
-    QString error;
-    if (!runAdbCommandDetached(arguments, &error))
-        Core::MessageManager::write(tr("Cleaning Qt libraries on device failed.\n%1").arg(error));
-}
-
 void AndroidManager::installQASIPackage(ProjectExplorer::Target *target, const QString &packagePath)
 {
-    const QString targetArch = AndroidManager::targetArch(target);
-    if (targetArch.isEmpty())
+    const QStringList appAbis = AndroidManager::applicationAbis(target);
+    if (appAbis.isEmpty())
         return;
     const int deviceAPILevel = AndroidManager::minimumSDK(target);
-    AndroidDeviceInfo info = AndroidConfigurations::showDeviceDialog(target->project(), deviceAPILevel, targetArch);
+    AndroidDeviceInfo info = AndroidConfigurations::showDeviceDialog(target->project(), deviceAPILevel, appAbis);
     if (!info.isValid()) // aborted
         return;
 
@@ -514,15 +579,11 @@ bool AndroidManager::checkKeystorePassword(const QString &keystorePath, const QS
 {
     if (keystorePasswd.isEmpty())
         return false;
-    QStringList arguments;
-    arguments << QLatin1String("-list")
-              << QLatin1String("-keystore")
-              << keystorePath
-              << QLatin1String("--storepass")
-              << keystorePasswd;
-    Utils::SynchronousProcess proc;
+    const CommandLine cmd(AndroidConfigurations::currentConfig().keytoolPath(),
+                          {"-list", "-keystore", keystorePath, "--storepass", keystorePasswd});
+    SynchronousProcess proc;
     proc.setTimeoutS(10);
-    Utils::SynchronousProcessResponse response = proc.run(AndroidConfigurations::currentConfig().keytoolPath().toString(), arguments);
+    SynchronousProcessResponse response = proc.run(cmd);
     return (response.result == Utils::SynchronousProcessResponse::Finished && response.exitCode == 0);
 }
 
@@ -536,11 +597,11 @@ bool AndroidManager::checkCertificatePassword(const QString &keystorePath, const
     else
         arguments << certificatePasswd;
 
-    Utils::SynchronousProcess proc;
+    SynchronousProcess proc;
     proc.setTimeoutS(10);
-    Utils::SynchronousProcessResponse response
-            = proc.run(AndroidConfigurations::currentConfig().keytoolPath().toString(), arguments);
-    return response.result == Utils::SynchronousProcessResponse::Finished && response.exitCode == 0;
+    SynchronousProcessResponse response
+            = proc.run({AndroidConfigurations::currentConfig().keytoolPath(), arguments});
+    return response.result == SynchronousProcessResponse::Finished && response.exitCode == 0;
 }
 
 bool AndroidManager::checkCertificateExists(const QString &keystorePath,
@@ -550,20 +611,11 @@ bool AndroidManager::checkCertificateExists(const QString &keystorePath,
     QStringList arguments = { "-list", "-keystore", keystorePath,
                               "--storepass", keystorePasswd, "-alias", alias };
 
-    Utils::SynchronousProcess proc;
+    SynchronousProcess proc;
     proc.setTimeoutS(10);
-    Utils::SynchronousProcessResponse response
-            = proc.run(AndroidConfigurations::currentConfig().keytoolPath().toString(), arguments);
-    return response.result == Utils::SynchronousProcessResponse::Finished && response.exitCode == 0;
-}
-
-AndroidQtSupport *AndroidManager::androidQtSupport(ProjectExplorer::Target *target)
-{
-    for (AndroidQtSupport *provider : g_androidQtSupportProviders) {
-        if (provider->canHandle(target))
-            return provider;
-    }
-    return nullptr;
+    SynchronousProcessResponse response
+            = proc.run({AndroidConfigurations::currentConfig().keytoolPath(), arguments});
+    return response.result == SynchronousProcessResponse::Finished && response.exitCode == 0;
 }
 
 using GradleProperties = QMap<QByteArray, QByteArray>;
@@ -628,23 +680,33 @@ static bool mergeGradleProperties(const QString &path, GradleProperties properti
 }
 
 
-bool AndroidManager::updateGradleProperties(ProjectExplorer::Target *target)
+bool AndroidManager::updateGradleProperties(ProjectExplorer::Target *target, const QString &buildKey)
 {
-    QtSupport::BaseQtVersion *version = QtSupport::QtKitInformation::qtVersion(target->kit());
+    QtSupport::BaseQtVersion *version = QtSupport::QtKitAspect::qtVersion(target->kit());
     if (!version)
         return false;
 
-    AndroidQtSupport *qtSupport = androidQtSupport(target);
-    if (!qtSupport)
+    QString key = buildKey;
+    if (key.isEmpty()) {
+        // FIXME: This case is triggered from AndroidBuildApkWidget::createApplicationGroup
+        // and should be avoided.
+        if (RunConfiguration *rc = target->activeRunConfiguration())
+            key = rc->buildKey();
+    }
+
+    QTC_ASSERT(!key.isEmpty(), return false);
+    const ProjectNode *node = target->project()->findNodeForBuildKey(key);
+    if (!node)
         return false;
 
-    QFileInfo sourceDirInfo(qtSupport->targetData(Constants::AndroidPackageSourceDir, target).toString());
-    FileName packageSourceDir = FileName::fromString(sourceDirInfo.canonicalFilePath());
-    if (!packageSourceDir.appendPath("gradlew").exists())
+    const QString sourceDirName = node->data(Constants::AndroidPackageSourceDir).toString();
+    QFileInfo sourceDirInfo(sourceDirName);
+    const FilePath packageSourceDir = FilePath::fromString(sourceDirInfo.canonicalFilePath())
+            .pathAppended("gradlew");
+    if (!packageSourceDir.exists())
         return false;
 
-    Utils::FileName wrapperProps = packageSourceDir;
-    wrapperProps.appendPath(QLatin1String("gradle/wrapper/gradle-wrapper.properties"));
+    const FilePath wrapperProps = packageSourceDir.pathAppended("gradle/wrapper/gradle-wrapper.properties");
     if (wrapperProps.exists()) {
         GradleProperties wrapperProperties = readGradleProperties(wrapperProps.toString());
         QString distributionUrl = QString::fromLocal8Bit(wrapperProperties["distributionUrl"]);
@@ -657,13 +719,14 @@ bool AndroidManager::updateGradleProperties(ProjectExplorer::Target *target)
 
     GradleProperties localProperties;
     localProperties["sdk.dir"] = AndroidConfigurations::currentConfig().sdkLocation().toString().toLocal8Bit();
-    if (!mergeGradleProperties(packageSourceDir.appendPath("local.properties").toString(), localProperties))
+    const FilePath localPropertiesFile = packageSourceDir.pathAppended("local.properties");
+    if (!mergeGradleProperties(localPropertiesFile.toString(), localProperties))
         return false;
 
-    QString gradlePropertiesPath = packageSourceDir.appendPath("gradle.properties").toString();
+    const QString gradlePropertiesPath = packageSourceDir.pathAppended("gradle.properties").toString();
     GradleProperties gradleProperties = readGradleProperties(gradlePropertiesPath);
-    gradleProperties["qt5AndroidDir"] = version->qmakeProperty("QT_INSTALL_PREFIX")
-            .append(QLatin1String("/src/android/java")).toLocal8Bit();
+    gradleProperties["qt5AndroidDir"] = (version->prefix().toString() + "/src/android/java")
+                                            .toLocal8Bit();
     gradleProperties["buildDir"] = ".build";
     gradleProperties["androidCompileSdkVersion"] = buildTargetSDK(target).split(QLatin1Char('-')).last().toLocal8Bit();
     if (gradleProperties["androidBuildToolsVersion"].isEmpty()) {
@@ -675,11 +738,10 @@ bool AndroidManager::updateGradleProperties(ProjectExplorer::Target *target)
     return mergeGradleProperties(gradlePropertiesPath, gradleProperties);
 }
 
-int AndroidManager::findApiLevel(const Utils::FileName &platformPath)
+int AndroidManager::findApiLevel(const Utils::FilePath &platformPath)
 {
     int apiLevel = -1;
-    Utils::FileName propertiesPath = platformPath;
-    propertiesPath.appendPath("/source.properties");
+    const Utils::FilePath propertiesPath = platformPath.pathAppended("/source.properties");
     if (propertiesPath.exists()) {
         QSettings sdkProperties(propertiesPath.toString(), QSettings::IniFormat);
         bool validInt = false;
@@ -695,52 +757,54 @@ QProcess *AndroidManager::runAdbCommandDetached(const QStringList &args, QString
 {
     std::unique_ptr<QProcess> p(new QProcess);
     const QString adb = AndroidConfigurations::currentConfig().adbToolPath().toString();
-    qCDebug(androidManagerLog) << "Running command:" << adb << args.join(' ');
+    qCDebug(androidManagerLog) << "Running command (async):" << CommandLine(adb, args).toUserOutput();
     p->start(adb, args);
     if (p->waitForStarted(500) && p->state() == QProcess::Running) {
         if (deleteOnFinish) {
-            connect(p.get(), static_cast<void (QProcess::*)(int)>(&QProcess::finished),
+            connect(p.get(), QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                     p.get(), &QObject::deleteLater);
         }
         return p.release();
     }
 
     QString errorStr = QString::fromUtf8(p->readAllStandardError());
-    qCDebug(androidManagerLog) << "Running command failed" << adb << args.join(' ') << errorStr;
+    qCDebug(androidManagerLog) << "Running command (async) failed:"
+                               << CommandLine(adb, args).toUserOutput()
+                               << "Output:" << errorStr;
     if (err)
         *err = errorStr;
     return nullptr;
 }
 
-SdkToolResult AndroidManager::runCommand(const QString &executable, const QStringList &args,
+SdkToolResult AndroidManager::runCommand(const CommandLine &command,
                                          const QByteArray &writeData, int timeoutS)
 {
     Android::SdkToolResult cmdResult;
     Utils::SynchronousProcess cmdProc;
     cmdProc.setTimeoutS(timeoutS);
-    qCDebug(androidManagerLog) << "Running command: " << executable << args.join(' ');
-    Utils::SynchronousProcessResponse response = cmdProc.run(executable, args, writeData);
+    qCDebug(androidManagerLog) << "Running command (sync):" << command.toUserOutput();
+    SynchronousProcessResponse response = cmdProc.run(command, writeData);
     cmdResult.m_stdOut = response.stdOut().trimmed();
     cmdResult.m_stdErr = response.stdErr().trimmed();
     cmdResult.m_success = response.result == Utils::SynchronousProcessResponse::Finished;
-    qCDebug(androidManagerLog) << "Running command finshed:" << executable << args.join(' ')
+    qCDebug(androidManagerLog) << "Running command (sync) finshed:" << command.toUserOutput()
                                << "Success:" << cmdResult.m_success
                                << "Output:" << response.allRawOutput();
     if (!cmdResult.success())
-        cmdResult.m_exitMessage = response.exitMessage(executable, timeoutS);
+        cmdResult.m_exitMessage = response.exitMessage(command.executable().toString(), timeoutS);
     return cmdResult;
 }
 
 SdkToolResult AndroidManager::runAdbCommand(const QStringList &args,
                                             const QByteArray &writeData, int timeoutS)
 {
-    return runCommand(AndroidConfigurations::currentConfig().adbToolPath().toString(), args,
+    return runCommand({AndroidConfigurations::currentConfig().adbToolPath(), args},
                       writeData, timeoutS);
 }
 
 SdkToolResult AndroidManager::runAaptCommand(const QStringList &args, int timeoutS)
 {
-    return runCommand(AndroidConfigurations::currentConfig().aaptToolPath().toString(), args, {},
+    return runCommand({AndroidConfigurations::currentConfig().aaptToolPath(), args}, {},
                       timeoutS);
 }
 } // namespace Android

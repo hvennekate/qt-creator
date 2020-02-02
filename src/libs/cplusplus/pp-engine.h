@@ -133,7 +133,7 @@ private:
         unsigned m_bytesOffsetRef;
         unsigned m_utf16charsOffsetRef;
         QByteArray *m_result;
-        unsigned m_lineRef;
+        int m_lineRef;
 
         ExpansionStatus m_expansionStatus;
         void setExpansionStatus(ExpansionStatus status)
@@ -181,7 +181,7 @@ private:
         /// \param idToken the identifier token that ought to be in the input
         ///        after a #ifndef or a #define .
         inline void updateIncludeGuardState(IncludeGuardStateHint hint,
-                                            PPToken *idToken = 0)
+                                            PPToken *idToken = nullptr)
         {
             // some quick checks for the majority of the uninteresting cases:
             if (m_includeGuardState == IncludeGuardState_NoGuard)
@@ -220,13 +220,14 @@ private:
 
     bool scanComment(PPToken *tk);
     bool consumeComments(PPToken *tk);
-    bool collectActualArguments(PPToken *tk, QVector<QVector<PPToken> > *actuals);
+    bool collectActualArguments(PPToken *tk, QVector<QVector<PPToken> > *actuals,
+                                const QByteArray &parentMacroName);
     void scanActualArgument(PPToken *tk, QVector<PPToken> *tokens);
 
     void handlePreprocessorDirective(PPToken *tk);
     void handleIncludeDirective(PPToken *tk, bool includeNext);
     void handleDefineDirective(PPToken *tk);
-    QByteArray expand(PPToken *tk, PPToken *lastConditionToken = 0);
+    QByteArray expand(PPToken *tk, PPToken *lastConditionToken = nullptr);
     const Internal::PPToken evalExpression(PPToken *tk, Value &result);
     void handleIfDirective(PPToken *tk);
     void handleElifDirective(PPToken *tk, const PPToken &poundToken);

@@ -25,7 +25,6 @@
 
 #include "refactoringserver.h"
 
-#include "symbolfinder.h"
 #include "clangquery.h"
 #include "symbolindexing.h"
 
@@ -58,31 +57,14 @@ void RefactoringServer::end()
     QCoreApplication::exit();
 }
 
-void RefactoringServer::requestSourceLocationsForRenamingMessage(RequestSourceLocationsForRenamingMessage &&message)
-{
-    SymbolFinder symbolFinder(message.line, message.column, m_filePathCache);
-
-    symbolFinder.addFile(std::string(message.filePath.directory()),
-                         std::string(message.filePath.name()),
-                         std::string(message.unsavedContent),
-                         std::vector<std::string>(message.commandLine));
-
-    symbolFinder.findSymbol();
-
-    client()->sourceLocationsForRenamingMessage({symbolFinder.takeSymbolName(),
-                                                 symbolFinder.takeSourceLocations(),
-                                                 message.textDocumentRevision});
-}
-
 void RefactoringServer::requestSourceRangesAndDiagnosticsForQueryMessage(
         RequestSourceRangesAndDiagnosticsForQueryMessage &&message)
 {
     ClangQuery clangQuery(m_filePathCache, message.takeQuery());
 
-    clangQuery.addFile(std::string(message.source.filePath.directory()),
-                       std::string(message.source.filePath.name()),
-                       std::string(message.source.unsavedFileContent),
-                       std::vector<std::string>(message.source.commandLineArguments));
+    clangQuery.addFile(std::move(message.source.filePath),
+                       std::move(message.source.unsavedFileContent),
+                       std::move(message.source.commandLineArguments));
 
     clangQuery.findLocations();
 
@@ -99,6 +81,7 @@ void RefactoringServer::requestSourceRangesForQueryMessage(RequestSourceRangesFo
 
 void RefactoringServer::updateProjectParts(UpdateProjectPartsMessage &&message)
 {
+    m_filePathCache.populateIfEmpty();
     m_symbolIndexing.updateProjectParts(message.takeProjectsParts());
 }
 
@@ -160,7 +143,8 @@ void RefactoringServer::setGathererProcessingSlotCount(uint count)
 
 void RefactoringServer::setProgress(int progress, int total)
 {
-    client()->progress({ProgressType::Indexing, progress, total});
+    if (client())
+        client()->progress({ProgressType::Indexing, progress, total});
 }
 
 void RefactoringServer::gatherSourceRangesForQueryMessages(

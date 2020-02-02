@@ -72,7 +72,7 @@ EditorView::EditorView(SplitterOrView *parentSplitterOrView, QWidget *parent) :
 {
     auto tl = new QVBoxLayout(this);
     tl->setSpacing(0);
-    tl->setMargin(0);
+    tl->setContentsMargins(0, 0, 0, 0);
     {
         connect(m_toolBar, &EditorToolBar::goBackClicked,
                 this, &EditorView::goBackInNavigationHistory);
@@ -268,7 +268,7 @@ void EditorView::updateEditorHistory(IEditor *editor, QList<EditLocation> &histo
         const EditLocation &item = history.at(i);
         if (item.document == document
                 || (!item.document
-                    && !DocumentModel::indexOfFilePath(FileName::fromString(item.fileName)))) {
+                    && !DocumentModel::indexOfFilePath(FilePath::fromString(item.fileName)))) {
             history.removeAt(i--);
         }
     }
@@ -348,12 +348,12 @@ void EditorView::removeEditor(IEditor *editor)
     m_toolBar->removeToolbarForEditor(editor);
 
     if (wasCurrent)
-        setCurrentEditor(m_editors.count() ? m_editors.last() : nullptr);
+        setCurrentEditor(!m_editors.isEmpty() ? m_editors.last() : nullptr);
 }
 
 IEditor *EditorView::currentEditor() const
 {
-    if (m_editors.count() > 0)
+    if (!m_editors.isEmpty())
         return m_widgetEditorMap.value(m_container->currentWidget());
     return nullptr;
 }
@@ -610,6 +610,28 @@ void EditorView::goForwardInNavigationHistory()
     updateNavigatorActions();
 }
 
+void EditorView::goToEditLocation(const EditLocation &location)
+{
+    IEditor *editor = nullptr;
+
+    if (location.document) {
+        editor = EditorManagerPrivate::activateEditorForDocument(this, location.document,
+                                                                 EditorManager::IgnoreNavigationHistory);
+    }
+
+    if (!editor) {
+        if (fileNameWasRemoved(location.fileName))
+            return;
+
+        editor = EditorManagerPrivate::openEditor(this, location.fileName, location.id,
+                                                  EditorManager::IgnoreNavigationHistory);
+    }
+
+    if (editor) {
+        editor->restoreState(location.state.toByteArray());
+    }
+}
+
 
 SplitterOrView::SplitterOrView(IEditor *editor)
 {
@@ -713,7 +735,7 @@ EditorView *SplitterOrView::takeView()
     return oldView;
 }
 
-void SplitterOrView::split(Qt::Orientation orientation)
+void SplitterOrView::split(Qt::Orientation orientation, bool activateView)
 {
     Q_ASSERT(m_view && m_splitter == nullptr);
     m_splitter = new MiniSplitter(this);
@@ -744,7 +766,8 @@ void SplitterOrView::split(Qt::Orientation orientation)
         otherView->view()->setCloseSplitIcon(Utils::Icons::CLOSE_SPLIT_BOTTOM.icon());
     }
 
-    EditorManagerPrivate::activateView(otherView->view());
+    if (activateView)
+        EditorManagerPrivate::activateView(otherView->view());
     emit splitStateChanged();
 }
 
@@ -911,7 +934,7 @@ void SplitterOrView::restoreState(const QByteArray &state)
         qint32 orientation;
         QByteArray splitter, first, second;
         stream >> orientation >> splitter >> first >> second;
-        split((Qt::Orientation)orientation);
+        split((Qt::Orientation) orientation, false);
         m_splitter->restoreState(splitter);
         static_cast<SplitterOrView*>(m_splitter->widget(0))->restoreState(first);
         static_cast<SplitterOrView*>(m_splitter->widget(1))->restoreState(second);

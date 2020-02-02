@@ -60,11 +60,11 @@ class VCSBASE_EXPORT VcsBaseClientImpl : public QObject
 
 public:
     explicit VcsBaseClientImpl(VcsBaseClientSettings *settings);
-    ~VcsBaseClientImpl() override;
+    ~VcsBaseClientImpl() override = default;
 
     VcsBaseClientSettings &settings() const;
 
-    virtual Utils::FileName vcsBinary() const;
+    virtual Utils::FilePath vcsBinary() const;
     int vcsTimeoutS() const;
 
     enum JobOutputBindMode {
@@ -105,7 +105,7 @@ public:
     vcsFullySynchronousExec(const QString &workingDir, const QStringList &args,
                             unsigned flags = 0, int timeoutS = -1, QTextCodec *codec = nullptr) const;
     Utils::SynchronousProcessResponse
-    vcsFullySynchronousExec(const QString &workingDir, const Utils::FileName &binary, const QStringList &args,
+    vcsFullySynchronousExec(const QString &workingDir, const Utils::CommandLine &cmdLine,
                             unsigned flags = 0, int timeoutS = -1, QTextCodec *codec = nullptr) const;
 
 
@@ -129,7 +129,7 @@ protected:
 private:
     void saveSettings();
 
-    VcsBaseClientImplPrivate *d;
+    VcsBaseClientSettings *m_clientSettings;
 };
 
 class VCSBASE_EXPORT VcsBaseClient : public VcsBaseClientImpl
@@ -202,7 +202,7 @@ signals:
     // Passes on changed signals from VcsJob to Control
     void changed(const QVariant &v);
 
-protected:
+public:
     enum VcsCommandTag
     {
         CreateRepositoryCommand,
@@ -221,6 +221,7 @@ protected:
         LogCommand,
         StatusCommand
     };
+protected:
     virtual QString vcsCommandString(VcsCommandTag cmd) const;
     virtual Core::Id vcsEditorKind(VcsCommandTag cmd) const = 0;
     virtual Utils::ExitCodeInterpreter exitCodeInterpreter(VcsCommandTag cmd) const;

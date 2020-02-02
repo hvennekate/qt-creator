@@ -40,12 +40,12 @@ namespace QmlDesigner {
 class ZoomAction;
 class LineEditAction;
 class BackgroundAction;
+class Option3DAction;
 class FormEditorView;
 class FormEditorScene;
 class FormEditorGraphicsView;
 class ToolBox;
 class QmlItemNode;
-
 
 class FormEditorWidget : public QWidget
 {
@@ -54,9 +54,11 @@ public:
     FormEditorWidget(FormEditorView *view);
 
     ZoomAction *zoomAction() const;
+    Option3DAction *option3DAction() const;
     QAction *showBoundingRectAction() const;
     QAction *snappingAction() const;
     QAction *snappingAndAnchoringAction() const;
+    QAction *resetAction() const;
 
     void setScene(FormEditorScene *scene);
     ToolBox *toolBox() const;
@@ -64,7 +66,7 @@ public:
     double spacing() const;
     double containerPadding() const;
 
-    void contextHelpId(const Core::IContext::HelpIdCallback &callback) const;
+    void contextHelp(const Core::IContext::HelpCallback &callback) const;
 
     void setRootItemRect(const QRectF &rect);
     QRectF rootItemRect() const;
@@ -96,9 +98,7 @@ private:
     void changeRootItemWidth(const QString &widthText);
     void changeRootItemHeight(const QString &heightText);
     void changeBackgound(const QColor &color);
-    void resetNodeInstanceView();
 
-private:
     QPointer<FormEditorView> m_formEditorView;
     QPointer<FormEditorGraphicsView> m_graphicsView;
     QPointer<ZoomAction> m_zoomAction;
@@ -112,6 +112,7 @@ private:
     QPointer<LineEditAction> m_rootWidthAction;
     QPointer<LineEditAction> m_rootHeightAction;
     QPointer<BackgroundAction> m_backgroundAction;
+    QPointer<Option3DAction> m_option3DAction;
     QPointer<QAction> m_resetAction;
     QPointer<DocumentWarningWidget> m_documentErrorWidget;
 };

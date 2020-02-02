@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "filestatus.h"
+#include "sourcedependency.h"
 #include "sourceentry.h"
 #include "usedmacro.h"
 
@@ -33,12 +35,32 @@ namespace ClangBackEnd {
 class BuildDependency
 {
 public:
-    SourceEntries includes;
-    FilePathIds topIncludeIds;
-    FilePathIds topsSystemIncludeIds;
+    void clear()
+    {
+        sources.clear();
+        usedMacros.clear();
+        sourceFiles.clear();
+        fileStatuses.clear();
+        sourceDependencies.clear();
+    }
+
+    friend bool operator==(const BuildDependency &first, const BuildDependency &second)
+    {
+        return first.sources == second.sources &&
+            first.usedMacros == second.usedMacros &&
+            first.sourceFiles == second.sourceFiles &&
+            first.sourceDependencies == second.sourceDependencies &&
+            first.fileStatuses == second.fileStatuses;
+    }
+
+public:
+    SourceEntries sources;
     UsedMacros usedMacros;
+    FilePathIds sourceFiles;
+    SourceDependencies sourceDependencies;
+    FileStatuses fileStatuses;
 };
 
 using BuildDependencies = std::vector<BuildDependency>;
 
-}
+} // namespace ClangBackEnd

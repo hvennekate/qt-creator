@@ -80,6 +80,7 @@ public:
         EditorPlaceholderColor,
         FancyToolBarSeparatorColor,
         FancyTabBarBackgroundColor,
+        FancyTabBarSelectedBackgroundColor,
         FancyTabWidgetDisabledSelectedTextColor,
         FancyTabWidgetDisabledUnselectedTextColor,
         FancyTabWidgetEnabledSelectedTextColor,
@@ -95,15 +96,15 @@ public:
         MenuBarItemTextColorNormal,
         MenuItemTextColorDisabled,
         MenuItemTextColorNormal,
-        MiniProjectTargetSelectorBackgroundColor,
+        MiniProjectTargetSelectorBackgroundColor, // TODO: Deprecate. -> Utils::StyleHelper().baseColor()
         MiniProjectTargetSelectorBorderColor,
-        MiniProjectTargetSelectorSummaryBackgroundColor,
+        MiniProjectTargetSelectorSummaryBackgroundColor, // TODO: Deprecate. -> Utils::StyleHelper().baseColor()
         MiniProjectTargetSelectorTextColor,
         OutputPaneButtonFlashColor,
         OutputPaneToggleButtonTextColorChecked,
         OutputPaneToggleButtonTextColorUnchecked,
         PanelStatusBarBackgroundColor,
-        PanelsWidgetSeparatorLineColor,
+        PanelsWidgetSeparatorLineColor, // TODO: Deprecate. Unused.
         PanelTextColorDark,
         PanelTextColorMid,
         PanelTextColorLight,

@@ -24,9 +24,9 @@
 ****************************************************************************/
 
 #include "mainwindow.h"
+
 #include "icore.h"
 #include "jsexpander.h"
-#include "toolsettings.h"
 #include "mimetypesettings.h"
 #include "fancytabwidget.h"
 #include "documentmanager.h"
@@ -55,6 +55,7 @@
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/actionmanager_p.h>
 #include <coreplugin/actionmanager/command.h>
+#include <coreplugin/dialogs/externaltoolconfig.h>
 #include <coreplugin/dialogs/newdialog.h>
 #include <coreplugin/dialogs/shortcutsettings.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -99,25 +100,26 @@ namespace Internal {
 
 enum { debugMainWindow = 0 };
 
-MainWindow::MainWindow() :
-    AppMainWindow(),
-    m_coreImpl(new ICore(this)),
-    m_lowPrioAdditionalContexts(Constants::C_GLOBAL),
-    m_settingsDatabase(new SettingsDatabase(QFileInfo(PluginManager::settings()->fileName()).path(),
-                                            QLatin1String(Constants::IDE_CASED_ID),
-                                            this)),
-    m_progressManager(new ProgressManagerPrivate),
-    m_jsExpander(new JsExpander),
-    m_vcsManager(new VcsManager),
-    m_modeStack(new FancyTabWidget(this)),
-    m_generalSettings(new GeneralSettings),
-    m_systemSettings(new SystemSettings),
-    m_shortcutSettings(new ShortcutSettings),
-    m_toolSettings(new ToolSettings),
-    m_mimeTypeSettings(new MimeTypeSettings),
-    m_systemEditor(new SystemEditor),
-    m_toggleLeftSideBarButton(new QToolButton),
-    m_toggleRightSideBarButton(new QToolButton)
+MainWindow::MainWindow()
+    : AppMainWindow()
+    , m_coreImpl(new ICore(this))
+    , m_lowPrioAdditionalContexts(Constants::C_GLOBAL)
+    , m_settingsDatabase(
+          new SettingsDatabase(QFileInfo(PluginManager::settings()->fileName()).path(),
+                               QLatin1String(Constants::IDE_CASED_ID),
+                               this))
+    , m_progressManager(new ProgressManagerPrivate)
+    , m_jsExpander(JsExpander::createGlobalJsExpander())
+    , m_vcsManager(new VcsManager)
+    , m_modeStack(new FancyTabWidget(this))
+    , m_generalSettings(new GeneralSettings)
+    , m_systemSettings(new SystemSettings)
+    , m_shortcutSettings(new ShortcutSettings)
+    , m_toolSettings(new ToolSettings)
+    , m_mimeTypeSettings(new MimeTypeSettings)
+    , m_systemEditor(new SystemEditor)
+    , m_toggleLeftSideBarButton(new QToolButton)
+    , m_toggleRightSideBarButton(new QToolButton)
 {
     (void) new DocumentManager(this);
 
@@ -126,9 +128,6 @@ MainWindow::MainWindow() :
     setWindowTitle(Constants::IDE_DISPLAY_NAME);
     if (HostOsInfo::isLinuxHost())
         QApplication::setWindowIcon(Icons::QTCREATORLOGO_BIG.icon());
-    QCoreApplication::setApplicationName(QLatin1String(Constants::IDE_CASED_ID));
-    QCoreApplication::setApplicationVersion(QLatin1String(Constants::IDE_VERSION_LONG));
-    QCoreApplication::setOrganizationName(QLatin1String(Constants::IDE_SETTINGSVARIANT_STR));
     QString baseName = QApplication::style()->objectName();
     // Sometimes we get the standard windows 95 style as a fallback
     if (HostOsInfo::isAnyUnixHost() && !HostOsInfo::isMacHost()
@@ -147,6 +146,8 @@ MainWindow::MainWindow() :
     }
 
     QApplication::setStyle(new ManhattanStyle(baseName));
+    m_generalSettings->setShowShortcutsInContextMenu(
+        m_generalSettings->showShortcutsInContextMenu());
 
     setDockNestingEnabled(true);
 
@@ -194,6 +195,31 @@ MainWindow::MainWindow() :
     });
     connect(dropSupport, &DropSupport::filesDropped,
             this, &MainWindow::openDroppedFiles);
+}
+
+// Edit View 3D needs to know when the main window's state or activation change
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::WindowStateChange) {
+        emit m_coreImpl->windowStateChanged(m_previousWindowStates, windowState());
+        m_previousWindowStates = windowState();
+    } else if (event->type() == QEvent::ActivationChange) {
+        // check the last 3 children for a possible active window
+        auto rIter = children().rbegin();
+        bool hasPopup = false;
+        for (int i = 0; i < 3; ++i) {
+            if (rIter < children().rend()) {
+                auto child = qobject_cast<QWidget *>(*(rIter++));
+                if (child && child->isActiveWindow()) {
+                    hasPopup = true;
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        emit m_coreImpl->windowActivationChanged(isActiveWindow(), hasPopup);
+    }
 }
 
 NavigationWidget *MainWindow::navigationWidget(Side side) const
@@ -311,8 +337,24 @@ void MainWindow::extensionsInitialized()
     QTimer::singleShot(0, m_coreImpl, &ICore::coreOpened);
 }
 
+static void setRestart(bool restart)
+{
+    qApp->setProperty("restart", restart);
+}
+
+void MainWindow::restart()
+{
+    setRestart(true);
+    exit();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    const auto cancelClose = [event] {
+        event->ignore();
+        setRestart(false);
+    };
+
     // work around QTBUG-43344
     static bool alreadyClosed = false;
     if (alreadyClosed) {
@@ -320,17 +362,17 @@ void MainWindow::closeEvent(QCloseEvent *event)
         return;
     }
 
-    ICore::saveSettings();
+    ICore::saveSettings(ICore::MainWindowClosing);
 
     // Save opened files
     if (!DocumentManager::saveAllModifiedDocuments()) {
-        event->ignore();
+        cancelClose();
         return;
     }
 
     foreach (const std::function<bool()> &listener, m_preCloseListeners) {
         if (!listener()) {
-            event->ignore();
+            cancelClose();
             return;
         }
     }
@@ -361,6 +403,11 @@ IContext *MainWindow::currentContextObject() const
 QStatusBar *MainWindow::statusBar() const
 {
     return m_modeStack->statusBar();
+}
+
+InfoBar *MainWindow::infoBar() const
+{
+    return m_modeStack->infoBar();
 }
 
 void MainWindow::registerDefaultContainers()
@@ -427,6 +474,16 @@ void MainWindow::registerDefaultContainers()
     ac->appendGroup(Constants::G_HELP_SUPPORT);
     ac->appendGroup(Constants::G_HELP_ABOUT);
     ac->appendGroup(Constants::G_HELP_UPDATES);
+
+    // macOS touch bar
+    ac = ActionManager::createTouchBar(Constants::TOUCH_BAR,
+                                       QIcon(),
+                                       "Main TouchBar" /*never visible*/);
+    ac->appendGroup(Constants::G_TOUCHBAR_HELP);
+    ac->appendGroup(Constants::G_TOUCHBAR_EDITOR);
+    ac->appendGroup(Constants::G_TOUCHBAR_NAVIGATION);
+    ac->appendGroup(Constants::G_TOUCHBAR_OTHER);
+    ac->touchBar()->setApplicationTouchBar();
 }
 
 void MainWindow::registerDefaultActions()

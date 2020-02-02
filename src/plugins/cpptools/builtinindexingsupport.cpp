@@ -52,6 +52,7 @@ using namespace CppTools;
 using namespace CppTools::Internal;
 
 static const bool FindErrorsIndexing = qgetenv("QTC_FIND_ERRORS_INDEXING") == "1";
+static Q_LOGGING_CATEGORY(indexerLog, "qtc.cpptools.indexer", QtWarningMsg)
 
 namespace {
 
@@ -70,7 +71,6 @@ class WriteTaskFileForDiagnostics
 
 public:
     WriteTaskFileForDiagnostics()
-        : m_processedDiagnostics(0)
     {
         const QString fileName = Utils::TemporaryDirectory::masterDirectoryPath()
                 + "/qtc_findErrorsIndexing.diagnostics."
@@ -120,7 +120,7 @@ public:
 private:
     QFile m_file;
     QTextStream m_out;
-    int m_processedDiagnostics;
+    int m_processedDiagnostics = 0;
 };
 
 void classifyFiles(const QSet<QString> &files, QStringList *headers, QStringList *sources)
@@ -197,7 +197,7 @@ void index(QFutureInterface<void> &indexingFuture,
     const int sourceCount = sources.size();
     QStringList files = sources + headers;
 
-    sourceProcessor->setTodo(files.toSet());
+    sourceProcessor->setTodo(Utils::toSet(files));
 
     const QString conf = CppModelManager::configurationFileName();
     bool processingHeaders = false;
@@ -206,6 +206,8 @@ void index(QFutureInterface<void> &indexingFuture,
     const ProjectExplorer::HeaderPaths fallbackHeaderPaths = cmm->headerPaths();
     const CPlusPlus::LanguageFeatures defaultFeatures =
             CPlusPlus::LanguageFeatures::defaultFeatures();
+
+    qCDebug(indexerLog) << "About to index" << files.size() << "files.";
     for (int i = 0; i < files.size(); ++i) {
         if (indexingFuture.isCanceled() || superFuture.isCanceled())
             break;
@@ -226,6 +228,7 @@ void index(QFutureInterface<void> &indexingFuture,
             processingHeaders = true;
         }
 
+        qCDebug(indexerLog) << "  Indexing" << i + 1 << "of" << files.size() << ":" << fileName;
         ProjectExplorer::HeaderPaths headerPaths = parts.isEmpty()
                 ? fallbackHeaderPaths
                 : parts.first()->headerPaths;
@@ -237,6 +240,7 @@ void index(QFutureInterface<void> &indexingFuture,
         if (isSourceFile)
             sourceProcessor->resetEnvironment();
     }
+    qCDebug(indexerLog) << "Indexing finished.";
 }
 
 void parse(QFutureInterface<void> &indexingFuture,
@@ -262,16 +266,15 @@ class BuiltinSymbolSearcher: public SymbolSearcher
 {
 public:
     BuiltinSymbolSearcher(const CPlusPlus::Snapshot &snapshot,
-                          Parameters parameters, QSet<QString> fileNames)
+                          const Parameters &parameters, const QSet<QString> &fileNames)
         : m_snapshot(snapshot)
         , m_parameters(parameters)
         , m_fileNames(fileNames)
     {}
 
-    ~BuiltinSymbolSearcher()
-    {}
+    ~BuiltinSymbolSearcher() override = default;
 
-    void runSearch(QFutureInterface<Core::SearchResultItem> &future)
+    void runSearch(QFutureInterface<Core::SearchResultItem> &future) override
     {
         future.setProgressRange(0, m_snapshot.size());
         future.setProgressValue(0);
@@ -312,7 +315,7 @@ public:
                         item.path = scope.split(QLatin1String("::"), QString::SkipEmptyParts);
                         item.text = text;
                         item.icon = info->icon();
-                        item.userData = qVariantFromValue(info);
+                        item.userData = QVariant::fromValue(info);
                         resultItems << item;
                     }
 
@@ -343,8 +346,7 @@ BuiltinIndexingSupport::BuiltinIndexingSupport()
     m_synchronizer.setCancelOnWait(true);
 }
 
-BuiltinIndexingSupport::~BuiltinIndexingSupport()
-{}
+BuiltinIndexingSupport::~BuiltinIndexingSupport() = default;
 
 QFuture<void> BuiltinIndexingSupport::refreshSourceFiles(
         const QFutureInterface<void> &superFuture,
@@ -382,7 +384,8 @@ QFuture<void> BuiltinIndexingSupport::refreshSourceFiles(
     return result;
 }
 
-SymbolSearcher *BuiltinIndexingSupport::createSymbolSearcher(SymbolSearcher::Parameters parameters, QSet<QString> fileNames)
+SymbolSearcher *BuiltinIndexingSupport::createSymbolSearcher(
+        const SymbolSearcher::Parameters &parameters, const QSet<QString> &fileNames)
 {
     return new BuiltinSymbolSearcher(CppModelManager::instance()->snapshot(), parameters, fileNames);
 }

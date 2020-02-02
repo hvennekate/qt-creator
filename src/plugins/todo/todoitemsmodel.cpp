@@ -40,9 +40,7 @@ namespace Internal {
 
 TodoItemsModel::TodoItemsModel(QObject *parent) :
     QAbstractTableModel(parent),
-    m_todoItemsList(0),
-    m_currentSortColumn(Constants::OutputColumnIndex(0)),
-    m_currentSortOrder(Qt::AscendingOrder)
+    m_currentSortColumn(Constants::OutputColumnIndex(0))
 {
 }
 
@@ -80,7 +78,7 @@ QVariant TodoItemsModel::data(const QModelIndex &index, int role) const
 
     TodoItem item = m_todoItemsList->at(index.row());
 
-    if (role == Qt::TextColorRole)
+    if (role == Qt::ForegroundRole)
         return item.color;
 
     switch (index.column()) {

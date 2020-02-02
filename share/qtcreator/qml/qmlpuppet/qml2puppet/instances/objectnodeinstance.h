@@ -34,7 +34,7 @@
 #include <QSharedPointer>
 #include <QWeakPointer>
 
-#include "enumeration.h"
+#include <enumeration.h>
 
 QT_BEGIN_NAMESPACE
 class QQmlContext;
@@ -193,6 +193,10 @@ public:
 
     virtual PropertyNameList ignoredProperties() const;
 
+    void virtual setHideInEditor(bool b);
+
+    void setModifiedFlag(bool b);
+
 protected:
     explicit ObjectNodeInstance(QObject *object);
     void doResetProperty(const PropertyName &propertyName);
@@ -205,6 +209,7 @@ protected:
     static QVariant enumationValue(const Enumeration &enumeration);
 
     void initializePropertyWatcher(const ObjectNodeInstance::Pointer &objectNodeInstance);
+    void ensureVector3DDotProperties(PropertyNameList &list) const;
 private:
     QString m_id;
 
@@ -218,6 +223,7 @@ private:
     qint32 m_instanceId;
     bool m_deleteHeldInstance;
     bool m_isInLayoutable;
+    bool m_isModified = false;
     static QHash<EnumerationName, QVariant> m_enumationValueHash;
 };
 

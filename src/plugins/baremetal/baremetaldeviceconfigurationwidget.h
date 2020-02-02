@@ -28,25 +28,30 @@
 
 #include <projectexplorer/devicesupport/idevicewidget.h>
 
+namespace Utils { class PathChooser; }
+
 namespace BareMetal {
 namespace Internal {
 
-class GdbServerProviderChooser;
+class DebugServerProviderChooser;
 
-class BareMetalDeviceConfigurationWidget
+// BareMetalDeviceConfigurationWidget
+
+class BareMetalDeviceConfigurationWidget final
       : public ProjectExplorer::IDeviceWidget
 {
     Q_OBJECT
 
 public:
-    explicit BareMetalDeviceConfigurationWidget(
-        const ProjectExplorer::IDevice::Ptr &deviceConfig, QWidget *parent = nullptr);
+    explicit BareMetalDeviceConfigurationWidget(const ProjectExplorer::IDevice::Ptr &deviceConfig);
 
 private:
-    void gdbServerProviderChanged();
-    void updateDeviceFromUi() override;
+    void debugServerProviderChanged();
+    void peripheralDescriptionFileChanged();
+    void updateDeviceFromUi() final;
 
-    GdbServerProviderChooser *m_gdbServerProviderChooser;
+    DebugServerProviderChooser *m_debugServerProviderChooser = nullptr;
+    Utils::PathChooser *m_peripheralDescriptionFileChooser = nullptr;
 };
 
 } // namespace Internal

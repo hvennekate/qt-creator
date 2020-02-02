@@ -33,16 +33,41 @@
 
 namespace CppTools {
 
-ProjectFile::ProjectFile(const QString &filePath, Kind kind)
+ProjectFile::ProjectFile(const QString &filePath, Kind kind, bool active)
     : path(filePath)
     , kind(kind)
+    , active(active)
 {
 }
 
 bool ProjectFile::operator==(const ProjectFile &other) const
 {
-    return path == other.path
-        && kind == other.kind;
+    return active == other.active
+        && kind == other.kind
+        && path == other.path;
+}
+
+ProjectFile::Kind ProjectFile::classifyByMimeType(const QString &mt)
+{
+    if (mt == CppTools::Constants::C_SOURCE_MIMETYPE)
+        return CSource;
+    if (mt == CppTools::Constants::C_HEADER_MIMETYPE)
+        return CHeader;
+    if (mt == CppTools::Constants::CPP_SOURCE_MIMETYPE)
+        return CXXSource;
+    if (mt == CppTools::Constants::CPP_HEADER_MIMETYPE)
+        return CXXHeader;
+    if (mt == CppTools::Constants::OBJECTIVE_C_SOURCE_MIMETYPE)
+        return ObjCSource;
+    if (mt == CppTools::Constants::OBJECTIVE_CPP_SOURCE_MIMETYPE)
+        return ObjCXXSource;
+    if (mt == CppTools::Constants::QDOC_MIMETYPE)
+        return CXXSource;
+    if (mt == CppTools::Constants::MOC_MIMETYPE)
+        return CXXSource;
+    if (mt == CppTools::Constants::AMBIGUOUS_HEADER_MIMETYPE)
+        return AmbiguousHeader;
+    return Unsupported;
 }
 
 ProjectFile::Kind ProjectFile::classify(const QString &filePath)
@@ -51,24 +76,7 @@ ProjectFile::Kind ProjectFile::classify(const QString &filePath)
         return AmbiguousHeader;
 
     const Utils::MimeType mimeType = Utils::mimeTypeForFile(filePath);
-    const QString mt = mimeType.name();
-    if (mt == QLatin1String(CppTools::Constants::C_SOURCE_MIMETYPE))
-        return CSource;
-    if (mt == QLatin1String(CppTools::Constants::C_HEADER_MIMETYPE))
-        return CHeader;
-    if (mt == QLatin1String(CppTools::Constants::CPP_SOURCE_MIMETYPE))
-        return CXXSource;
-    if (mt == QLatin1String(CppTools::Constants::CPP_HEADER_MIMETYPE))
-        return CXXHeader;
-    if (mt == QLatin1String(CppTools::Constants::OBJECTIVE_C_SOURCE_MIMETYPE))
-        return ObjCSource;
-    if (mt == QLatin1String(CppTools::Constants::OBJECTIVE_CPP_SOURCE_MIMETYPE))
-        return ObjCXXSource;
-    if (mt == QLatin1String(CppTools::Constants::QDOC_MIMETYPE))
-        return CXXSource;
-    if (mt == QLatin1String(CppTools::Constants::MOC_MIMETYPE))
-        return CXXSource;
-    return Unsupported;
+    return classifyByMimeType(mimeType.name());
 }
 
 bool ProjectFile::isAmbiguousHeader(const QString &filePath)
@@ -114,6 +122,42 @@ bool ProjectFile::isHeader() const
 bool ProjectFile::isSource() const
 {
     return isSource(kind);
+}
+
+bool ProjectFile::isC(ProjectFile::Kind kind)
+{
+    switch (kind) {
+    case ProjectFile::CHeader:
+    case ProjectFile::CSource:
+    case ProjectFile::ObjCHeader:
+    case ProjectFile::ObjCSource:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool ProjectFile::isCxx(ProjectFile::Kind kind)
+{
+    switch (kind) {
+    case ProjectFile::CXXHeader:
+    case ProjectFile::CXXSource:
+    case ProjectFile::ObjCXXHeader:
+    case ProjectFile::ObjCXXSource:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool ProjectFile::isC() const
+{
+    return isC(kind);
+}
+
+bool ProjectFile::isCxx() const
+{
+    return isCxx(kind);
 }
 
 #define RETURN_TEXT_FOR_CASE(enumValue) case ProjectFile::enumValue: return #enumValue

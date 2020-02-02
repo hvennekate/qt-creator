@@ -27,11 +27,13 @@
 #include "deploymenttimeinfo.h"
 
 #include <projectexplorer/deployablefile.h>
+#include <projectexplorer/kitinformation.h>
 #include <projectexplorer/target.h>
-#include <qtsupport/qtkitinformation.h>
-#include <utils/qtcassert.h>
+
 #include <ssh/sshconnection.h>
 #include <ssh/sshconnectionmanager.h>
+
+#include <utils/qtcassert.h>
 
 #include <QDateTime>
 #include <QFileInfo>
@@ -51,16 +53,13 @@ enum State { Inactive, SettingUpDevice, Connecting, Deploying };
 class AbstractRemoteLinuxDeployServicePrivate
 {
 public:
-    AbstractRemoteLinuxDeployServicePrivate()
-        : connection(0), state(Inactive), stopRequested(false) {}
-
     IDevice::ConstPtr deviceConfiguration;
     QPointer<Target> target;
 
     DeploymentTimeInfo deployTimes;
-    SshConnection *connection;
-    State state;
-    bool stopRequested;
+    SshConnection *connection = nullptr;
+    State state = Inactive;
+    bool stopRequested = false;
 };
 } // namespace Internal
 
@@ -117,7 +116,7 @@ bool AbstractRemoteLinuxDeployService::hasRemoteFileChanged(
 void AbstractRemoteLinuxDeployService::setTarget(Target *target)
 {
     d->target = target;
-    d->deviceConfiguration = DeviceKitInformation::device(profile());
+    d->deviceConfiguration = DeviceKitAspect::device(profile());
 }
 
 void AbstractRemoteLinuxDeployService::setDevice(const IDevice::ConstPtr &device)
@@ -129,9 +128,9 @@ void AbstractRemoteLinuxDeployService::start()
 {
     QTC_ASSERT(d->state == Inactive, return);
 
-    QString errorMsg;
-    if (!isDeploymentPossible(&errorMsg)) {
-        emit errorMessage(errorMsg);
+    const CheckResult check = isDeploymentPossible();
+    if (!check) {
+        emit errorMessage(check.errorMessage());
         emit finished();
         return;
     }
@@ -168,14 +167,11 @@ void AbstractRemoteLinuxDeployService::stop()
     }
 }
 
-bool AbstractRemoteLinuxDeployService::isDeploymentPossible(QString *whyNot) const
+CheckResult AbstractRemoteLinuxDeployService::isDeploymentPossible() const
 {
-    if (!deviceConfiguration()) {
-        if (whyNot)
-            *whyNot = tr("No device configuration set.");
-        return false;
-    }
-    return true;
+    if (!deviceConfiguration())
+        return CheckResult::failure(tr("No device configuration set."));
+    return CheckResult::success();
 }
 
 QVariantMap AbstractRemoteLinuxDeployService::exportDeployTimes() const
@@ -199,14 +195,16 @@ void AbstractRemoteLinuxDeployService::handleDeviceSetupDone(bool success)
 
     d->state = Connecting;
     d->connection = QSsh::acquireConnection(deviceConfiguration()->sshParameters());
-    connect(d->connection, &SshConnection::error,
+    connect(d->connection, &SshConnection::errorOccurred,
             this, &AbstractRemoteLinuxDeployService::handleConnectionFailure);
     if (d->connection->state() == SshConnection::Connected) {
         handleConnected();
     } else {
         connect(d->connection, &SshConnection::connected,
                 this, &AbstractRemoteLinuxDeployService::handleConnected);
-        emit progressMessage(tr("Connecting to device..."));
+        emit progressMessage(tr("Connecting to device \"%1\" (%2).")
+                             .arg(deviceConfiguration()->displayName())
+                             .arg(deviceConfiguration()->sshParameters().host()));
         if (d->connection->state() == SshConnection::Unconnected)
             d->connection->connectToHost();
     }
@@ -260,9 +258,9 @@ void AbstractRemoteLinuxDeployService::setFinished()
 {
     d->state = Inactive;
     if (d->connection) {
-        disconnect(d->connection, 0, this, 0);
+        disconnect(d->connection, nullptr, this, nullptr);
         QSsh::releaseConnection(d->connection);
-        d->connection = 0;
+        d->connection = nullptr;
     }
     d->stopRequested = false;
     emit finished();

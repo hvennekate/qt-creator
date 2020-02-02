@@ -33,6 +33,10 @@
 #include <QTextStream>
 #include <QCheckBox>
 
+const char AUTO_FORMAT_ON_SAVE[] = "QmlJSEditor.AutoFormatOnSave";
+const char AUTO_FORMAT_ONLY_CURRENT_PROJECT[] = "QmlJSEditor.AutoFormatOnlyCurrentProject";
+const char QML_CONTEXTPANE_KEY[] = "QmlJSEditor.ContextPaneEnabled";
+const char QML_CONTEXTPANEPIN_KEY[] = "QmlJSEditor.ContextPanePinned";
 
 using namespace QmlJSEditor;
 using namespace QmlJSEditor::Internal;
@@ -52,33 +56,22 @@ void QmlJsEditingSettings::set()
 
 void QmlJsEditingSettings::fromSettings(QSettings *settings)
 {
-    settings->beginGroup(QLatin1String(QmlJSEditor::Constants::SETTINGS_CATEGORY_QML));
-    m_enableContextPane = settings->value(
-                QLatin1String(QmlJSEditor::Constants::QML_CONTEXTPANE_KEY),
-                QVariant(false)).toBool();
-    m_pinContextPane = settings->value(
-                QLatin1String(QmlJSEditor::Constants::QML_CONTEXTPANEPIN_KEY),
-                QVariant(false)).toBool();
-    m_autoFormatOnSave = settings->value(
-                QLatin1String(QmlJSEditor::Constants::AUTO_FORMAT_ON_SAVE),
-                QVariant(false)).toBool();
-    m_autoFormatOnlyCurrentProject = settings->value(
-                QLatin1String(QmlJSEditor::Constants::AUTO_FORMAT_ONLY_CURRENT_PROJECT),
-                QVariant(false)).toBool();
+    settings->beginGroup(QmlJSEditor::Constants::SETTINGS_CATEGORY_QML);
+    m_enableContextPane = settings->value(QML_CONTEXTPANE_KEY, QVariant(false)).toBool();
+    m_pinContextPane = settings->value(QML_CONTEXTPANEPIN_KEY, QVariant(false)).toBool();
+    m_autoFormatOnSave = settings->value(AUTO_FORMAT_ON_SAVE, QVariant(false)).toBool();
+    m_autoFormatOnlyCurrentProject
+        = settings->value(AUTO_FORMAT_ONLY_CURRENT_PROJECT, QVariant(false)).toBool();
     settings->endGroup();
 }
 
 void QmlJsEditingSettings::toSettings(QSettings *settings) const
 {
-    settings->beginGroup(QLatin1String(QmlJSEditor::Constants::SETTINGS_CATEGORY_QML));
-    settings->setValue(QLatin1String(QmlJSEditor::Constants::QML_CONTEXTPANE_KEY),
-                       m_enableContextPane);
-    settings->setValue(QLatin1String(QmlJSEditor::Constants::QML_CONTEXTPANEPIN_KEY),
-                       m_pinContextPane);
-    settings->setValue(QLatin1String(QmlJSEditor::Constants::AUTO_FORMAT_ON_SAVE),
-                       m_autoFormatOnSave);
-    settings->setValue(QLatin1String(QmlJSEditor::Constants::AUTO_FORMAT_ONLY_CURRENT_PROJECT),
-                       m_autoFormatOnlyCurrentProject);
+    settings->beginGroup(QmlJSEditor::Constants::SETTINGS_CATEGORY_QML);
+    settings->setValue(QML_CONTEXTPANE_KEY, m_enableContextPane);
+    settings->setValue(QML_CONTEXTPANEPIN_KEY, m_pinContextPane);
+    settings->setValue(AUTO_FORMAT_ON_SAVE, m_autoFormatOnSave);
+    settings->setValue(AUTO_FORMAT_ONLY_CURRENT_PROJECT, m_autoFormatOnlyCurrentProject);
     settings->endGroup();
 }
 
@@ -130,29 +123,36 @@ void QmlJsEditingSettings::setAutoFormatOnlyCurrentProject(const bool autoFormat
     m_autoFormatOnlyCurrentProject = autoFormatOnlyCurrentProject;
 }
 
-QmlJsEditingSettignsPageWidget::QmlJsEditingSettignsPageWidget(QWidget *parent) :
-    QWidget(parent)
+class QmlJsEditingSettingsPageWidget final : public Core::IOptionsPageWidget
 {
-    m_ui.setupUi(this);
-}
+    Q_DECLARE_TR_FUNCTIONS(QmlDesigner::Internal::QmlJsEditingSettingsPage)
 
-QmlJsEditingSettings QmlJsEditingSettignsPageWidget::settings() const
-{
-    QmlJsEditingSettings s;
-    s.setEnableContextPane(m_ui.textEditHelperCheckBox->isChecked());
-    s.setPinContextPane(m_ui.textEditHelperCheckBoxPin->isChecked());
-    s.setAutoFormatOnSave(m_ui.autoFormatOnSave->isChecked());
-    s.setAutoFormatOnlyCurrentProject(m_ui.autoFormatOnlyCurrentProject->isChecked());
-    return s;
-}
+public:
+    QmlJsEditingSettingsPageWidget()
+    {
+        m_ui.setupUi(this);
 
-void QmlJsEditingSettignsPageWidget::setSettings(const QmlJsEditingSettings &s)
-{
-    m_ui.textEditHelperCheckBox->setChecked(s.enableContextPane());
-    m_ui.textEditHelperCheckBoxPin->setChecked(s.pinContextPane());
-    m_ui.autoFormatOnSave->setChecked(s.autoFormatOnSave());
-    m_ui.autoFormatOnlyCurrentProject->setChecked(s.autoFormatOnlyCurrentProject());
-}
+        auto s = QmlJsEditingSettings::get();
+        m_ui.textEditHelperCheckBox->setChecked(s.enableContextPane());
+        m_ui.textEditHelperCheckBoxPin->setChecked(s.pinContextPane());
+        m_ui.autoFormatOnSave->setChecked(s.autoFormatOnSave());
+        m_ui.autoFormatOnlyCurrentProject->setChecked(s.autoFormatOnlyCurrentProject());
+    }
+
+    void apply() final
+    {
+        QmlJsEditingSettings s;
+        s.setEnableContextPane(m_ui.textEditHelperCheckBox->isChecked());
+        s.setPinContextPane(m_ui.textEditHelperCheckBoxPin->isChecked());
+        s.setAutoFormatOnSave(m_ui.autoFormatOnSave->isChecked());
+        s.setAutoFormatOnlyCurrentProject(m_ui.autoFormatOnlyCurrentProject->isChecked());
+        s.set();
+    }
+
+private:
+    Ui::QmlJsEditingSettingsPage m_ui;
+};
+
 
 QmlJsEditingSettings QmlJsEditingSettings::get()
 {
@@ -161,31 +161,11 @@ QmlJsEditingSettings QmlJsEditingSettings::get()
     return settings;
 }
 
-QmlJsEditingSettingsPage::QmlJsEditingSettingsPage() :
-    m_widget(0)
+QmlJsEditingSettingsPage::QmlJsEditingSettingsPage()
 {
     setId("C.QmlJsEditing");
-    setDisplayName(tr("QML/JS Editing"));
+    setDisplayName(QmlJsEditingSettingsPageWidget::tr("QML/JS Editing"));
     setCategory(Constants::SETTINGS_CATEGORY_QML);
+    setWidgetCreator([] { return new QmlJsEditingSettingsPageWidget; });
 }
 
-QWidget *QmlJsEditingSettingsPage::widget()
-{
-    if (!m_widget) {
-        m_widget = new QmlJsEditingSettignsPageWidget;
-        m_widget->setSettings(QmlJsEditingSettings::get());
-    }
-    return m_widget;
-}
-
-void QmlJsEditingSettingsPage::apply()
-{
-    if (!m_widget) // page was never shown
-        return;
-    m_widget->settings().set();
-}
-
-void QmlJsEditingSettingsPage::finish()
-{
-    delete m_widget;
-}

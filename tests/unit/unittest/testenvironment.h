@@ -27,41 +27,24 @@
 
 #include <environment.h>
 
-#include <utf8string.h>
-#include <utils/hostosinfo.h>
+#include <filepath.h>
 
 #include <QTemporaryDir>
-#include <QVector>
 
 class TestEnvironment final : public ClangBackEnd::Environment
 {
 public:
-    TestEnvironment() {
-        temporaryDirectory.setAutoRemove(true);
-    }
-    QString pchBuildDirectory() const override
-    {
-        return temporaryDirectory.path();
-    }
+    TestEnvironment() { temporaryDirectory.setAutoRemove(true); }
 
-    QString clangCompilerPath() const override
+    Utils::PathString pchBuildDirectory() const override { return temporaryDirectory.path(); }
+    uint hardwareConcurrency() const { return 2; }
+    ClangBackEnd::NativeFilePathView preIncludeSearchPath() const override
     {
-        return QString::fromUtf8(CLANG_COMPILER_PATH);
-    }
-
-    uint hardwareConcurrency() const
-    {
-        return 2;
-    }
-
-    static QVector<Utf8String> addPlatformArguments(std::initializer_list<Utf8String> arguments = {})
-    {
-        QVector<Utf8String> result{arguments};
-        if (Utils::HostOsInfo::isWindowsHost())
-            result.append(Utf8StringLiteral("-fno-delayed-template-parsing"));
-        return result;
+        return includeSearchPath;
     }
 
 private:
     QTemporaryDir temporaryDirectory;
+    ClangBackEnd::NativeFilePath includeSearchPath{
+        ClangBackEnd::FilePath{TESTDATA_DIR "/preincludes"}};
 };

@@ -43,7 +43,7 @@ def main():
             # open example project
             openQmakeProject(examplePath)
             # wait for parsing to complete
-            progressBarWait(30000)
+            waitForProjectParsing()
             checkCodeModelSettings(useClang)
             # open .cpp file in editor
             if not openDocument("openglwindow.Sources.main\\.cpp"):
@@ -69,7 +69,7 @@ def main():
             replaceEditorContent(waitForObject(":Qt Creator.replaceEdit_Utils::FilterLineEdit"), "find")
             oldCodeText = str(editorWidget.plainText)
             clickButton(waitForObject(":Qt Creator.Replace All_QToolButton"))
-            mouseClick(waitForObject(":Qt Creator.replaceEdit_Utils::FilterLineEdit"), 5, 5, 0, Qt.LeftButton)
+            mouseClick(waitForObject(":Qt Creator.replaceEdit_Utils::FilterLineEdit"))
             newCodeText = str(editorWidget.plainText)
             test.compare(newCodeText, oldCodeText.replace("window", "find").replace("Window", "find"),
                          "Verifying if: Found text is replaced with new word properly.")

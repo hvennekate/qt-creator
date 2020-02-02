@@ -27,7 +27,9 @@
 
 #include "builddependenciesstorageinterface.h"
 #include "modifiedtimecheckerinterface.h"
-#include "builddependenciesgeneratorinterface.h"
+#include "builddependencygeneratorinterface.h"
+
+#include <sqlitetransaction.h>
 
 #include <algorithm>
 
@@ -51,24 +53,35 @@ OutputContainer setUnion(InputContainer1 &&input1,
     return results;
 }
 
-BuildDependency BuildDependenciesProvider::create(const V2::ProjectPartContainer &projectPart) const
+BuildDependency BuildDependenciesProvider::create(const ProjectPartContainer &projectPart)
 {
-    SourceEntries includes = createSourceEntriesFromStorage(projectPart.sourcePathIds,
-                                                            projectPart.projectPartId);
-
-    if (!m_modifiedTimeChecker.isUpToDate(includes))
-        return m_buildDependenciesGenerator.create(projectPart);
-
-    return createBuildDependencyFromStorage(std::move(includes));
-
+    return create(projectPart,
+                  createSourceEntriesFromStorage(projectPart.sourcePathIds, projectPart.projectPartId));
 }
 
-BuildDependency BuildDependenciesProvider::createBuildDependencyFromStorage(SourceEntries &&includes) const
+BuildDependency BuildDependenciesProvider::create(const ProjectPartContainer &projectPart,
+                                                  SourceEntries &&sourceEntries)
+{
+    m_ensureAliveMessageIsSentCallback();
+
+    if (!m_modifiedTimeChecker.isUpToDate(sourceEntries)) {
+        BuildDependency buildDependency = m_generator.create(projectPart);
+
+        storeBuildDependency(buildDependency, projectPart.projectPartId);
+
+        return buildDependency;
+    }
+
+    return createBuildDependencyFromStorage(std::move(sourceEntries));
+}
+
+BuildDependency BuildDependenciesProvider::createBuildDependencyFromStorage(
+    SourceEntries &&includes) const
 {
     BuildDependency buildDependency;
 
     buildDependency.usedMacros = createUsedMacrosFromStorage(includes);
-    buildDependency.includes = std::move(includes);
+    buildDependency.sources = std::move(includes);
 
     return buildDependency;
 }
@@ -78,31 +91,50 @@ UsedMacros BuildDependenciesProvider::createUsedMacrosFromStorage(const SourceEn
     UsedMacros usedMacros;
     usedMacros.reserve(1024);
 
+    Sqlite::DeferredTransaction transaction(m_transactionBackend);
+
     for (const SourceEntry &entry : includes) {
-        UsedMacros macros = m_buildDependenciesStorage.fetchUsedMacros(entry.sourceId);
+        UsedMacros macros = m_storage.fetchUsedMacros(entry.sourceId);
         std::sort(macros.begin(), macros.end());
         usedMacros.insert(usedMacros.end(),
                           std::make_move_iterator(macros.begin()),
                           std::make_move_iterator(macros.end()));
     }
 
+    transaction.commit();
+
     return usedMacros;
 }
 
 SourceEntries BuildDependenciesProvider::createSourceEntriesFromStorage(
-        const FilePathIds &sourcePathIds, Utils::SmallStringView projectPartId) const
+    const FilePathIds &sourcePathIds, ProjectPartId projectPartId) const
 {
     SourceEntries includes;
 
+    Sqlite::DeferredTransaction transaction(m_transactionBackend);
+
     for (FilePathId sourcePathId : sourcePathIds) {
-        SourceEntries entries = m_buildDependenciesStorage.fetchDependSources(sourcePathId,
-                                                                              projectPartId);
+        SourceEntries entries = m_storage.fetchDependSources(sourcePathId, projectPartId);
         SourceEntries mergedEntries = setUnion<SourceEntries>(includes, entries);
 
         includes = std::move(mergedEntries);
     }
 
+    transaction.commit();
+
     return includes;
+}
+
+void BuildDependenciesProvider::storeBuildDependency(const BuildDependency &buildDependency,
+                                                     ProjectPartId projectPartId)
+{
+    Sqlite::ImmediateTransaction transaction(m_transactionBackend);
+    m_storage.insertOrUpdateSources(buildDependency.sources, projectPartId);
+    m_storage.insertOrUpdateFileStatuses(buildDependency.fileStatuses);
+    m_storage.insertOrUpdateSourceDependencies(buildDependency.sourceDependencies);
+    m_storage.insertOrUpdateUsedMacros(buildDependency.usedMacros);
+
+    transaction.commit();
 }
 
 } // namespace ClangBackEnd

@@ -40,6 +40,7 @@ QT_END_NAMESPACE
 namespace Utils {
 class CategorySortFilterModel;
 class FancyLineEdit;
+class InfoLabel;
 class ProgressIndicator;
 } // namespace Utils
 
@@ -69,7 +70,7 @@ private:
     void updateSelection(const QModelIndex &current, const QModelIndex &previous);
     QAction *createForceAction(int type, const QModelIndex &idx);
 
-    bool eventFilter(QObject *target, QEvent *event);
+    bool eventFilter(QObject *target, QEvent *event) override;
 
     CMakeBuildConfiguration *m_buildConfiguration;
     QTreeView *m_configView;
@@ -86,10 +87,8 @@ private:
     QPushButton *m_reconfigureButton;
     QTimer m_showProgressTimer;
     Utils::FancyLineEdit *m_filterEdit;
-    QLabel *m_errorLabel;
-    QLabel *m_warningLabel;
-    QLabel *m_errorMessageLabel;
-    QLabel *m_warningMessageLabel;
+    Utils::InfoLabel *m_errorMessageLabel;
+    Utils::InfoLabel *m_warningMessageLabel;
 };
 
 } // namespace Internal

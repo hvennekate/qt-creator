@@ -32,9 +32,9 @@
 #include <QTextDocument>
 
 namespace ClangCodeModel {
+namespace Internal {
 
 using FileToFixits = QMap<QString, QVector<ClangBackEnd::FixItContainer>>;
-using FileToFixitsIterator = QMapIterator<QString, QVector<ClangBackEnd::FixItContainer>>;
 using RefactoringFilePtr = QSharedPointer<TextEditor::RefactoringFile>;
 
 ClangFixItOperation::ClangFixItOperation(
@@ -50,7 +50,7 @@ int ClangFixItOperation::priority() const
     return 10;
 }
 
-QString ClangCodeModel::ClangFixItOperation::description() const
+QString ClangFixItOperation::description() const
 {
     return QStringLiteral("Apply Fix: ") + fixItText.toString();
 }
@@ -74,9 +74,7 @@ void ClangFixItOperation::perform()
     const TextEditor::RefactoringChanges refactoringChanges;
     const FileToFixits fileToFixIts = fixitsPerFile(fixItContainers);
 
-    FileToFixitsIterator i(fileToFixIts);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = fileToFixIts.cbegin(), end = fileToFixIts.cend(); i != end; ++i) {
         const QString filePath = i.key();
         const QVector<ClangBackEnd::FixItContainer> fixits = i.value();
 
@@ -120,5 +118,5 @@ Utils::ChangeSet ClangFixItOperation::toChangeSet(
     return changeSet;
 }
 
+} // namespace Internal
 } // namespace ClangCodeModel
-

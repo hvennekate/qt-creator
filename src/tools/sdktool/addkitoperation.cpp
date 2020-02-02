@@ -57,7 +57,7 @@ const char SDK[] = "PE.Profile.SDK";
 const char ENV[] = "PE.Profile.Environment";
 const char DATA[] = "PE.Profile.Data";
 
-// Standard KitInformation:
+// Standard KitAspects:
 const char DEBUGGER[] = "Debugger.Information";
 const char DEBUGGER_ENGINE[] = "EngineType";
 const char DEBUGGER_BINARY[] = "Binary";
@@ -602,6 +602,11 @@ QVariantMap AddKitOperation::addKit(const QVariantMap &map, const QVariantMap &t
         std::cerr << "Error: Device " << qPrintable(device) << " does not exist." << std::endl;
         return QVariantMap();
     }
+
+    // Treat a qt that was explicitly set to '' as "no Qt"
+    if (!qtId.isNull() && qtId.isEmpty())
+        qtId = "-1";
+
     if (!cmakeId.isEmpty() && !AddCMakeOperation::exists(cmakeMap, cmakeId)) {
         std::cerr << "Error: CMake tool " << qPrintable(cmakeId) << " does not exist." << std::endl;
         return QVariantMap();
@@ -623,19 +628,12 @@ QVariantMap AddKitOperation::addKit(const QVariantMap &map, const QVariantMap &t
     // remove data:
     QVariantMap cleaned = RmKeysOperation::rmKeys(map, {COUNT, DEFAULT});
 
-    // Sanity check: Make sure displayName is unique.
-    QStringList nameKeys = FindKeyOperation::findKey(map, DISPLAYNAME);
-    QStringList nameList;
-    foreach (const QString &nameKey, nameKeys)
-        nameList << GetOperation::get(map, nameKey).toString();
-    const QString uniqueName = makeUnique(displayName, nameList);
-
     // insert data:
-    KeyValuePairList data = { KeyValuePair({kit, ID}, QVariant(id)),
-                              KeyValuePair({kit, DISPLAYNAME}, QVariant(uniqueName)),
-                              KeyValuePair({kit, ICON}, QVariant(icon)),
-                              KeyValuePair({kit, AUTODETECTED}, QVariant(true)),
-                              KeyValuePair({kit, SDK}, QVariant(true))};
+    KeyValuePairList data = {KeyValuePair({kit, ID}, QVariant(id)),
+                             KeyValuePair({kit, DISPLAYNAME}, QVariant(displayName)),
+                             KeyValuePair({kit, ICON}, QVariant(icon)),
+                             KeyValuePair({kit, AUTODETECTED}, QVariant(true)),
+                             KeyValuePair({kit, SDK}, QVariant(true))};
 
     if (!debuggerId.isEmpty() || !debugger.isEmpty()) {
         if (debuggerId.isEmpty()) {

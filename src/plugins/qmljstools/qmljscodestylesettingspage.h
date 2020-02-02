@@ -50,8 +50,8 @@ class QmlJSCodeStylePreferencesWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit QmlJSCodeStylePreferencesWidget(QWidget *parent = 0);
-    ~QmlJSCodeStylePreferencesWidget();
+    explicit QmlJSCodeStylePreferencesWidget(QWidget *parent = nullptr);
+    ~QmlJSCodeStylePreferencesWidget() override;
 
     void setPreferences(TextEditor::ICodeStylePreferences *preferences);
 
@@ -61,24 +61,22 @@ private:
     void slotSettingsChanged();
     void updatePreview();
 
-    TextEditor::ICodeStylePreferences *m_preferences;
+    TextEditor::ICodeStylePreferences *m_preferences = nullptr;
     Ui::QmlJSCodeStyleSettingsPage *m_ui;
 };
 
 
 class QmlJSCodeStyleSettingsPage : public Core::IOptionsPage
 {
-    Q_OBJECT
-
 public:
-    explicit QmlJSCodeStyleSettingsPage(QWidget *parent = 0);
+    QmlJSCodeStyleSettingsPage();
 
-    QWidget *widget();
-    void apply();
-    void finish();
+    QWidget *widget() override;
+    void apply() override;
+    void finish() override;
 
 private:
-    TextEditor::ICodeStylePreferences *m_pageTabPreferences;
+    TextEditor::ICodeStylePreferences *m_pageTabPreferences = nullptr;
     QPointer<TextEditor::CodeStyleEditor> m_widget;
 };
 

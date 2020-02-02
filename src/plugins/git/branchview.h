@@ -57,6 +57,7 @@ public:
 
     void refreshIfSame(const QString &repository);
     void refresh(const QString &repository, bool force);
+    void refreshCurrentBranch();
 
     QToolButton *addButton() const;
     QToolButton *refreshButton() const;
@@ -76,7 +77,7 @@ private:
     bool checkout();
     bool remove();
     bool rename();
-    bool reset();
+    bool reset(const QByteArray &resetType);
     bool isFastForwardMerge();
     bool merge(bool allowFastForward);
     void rebase();

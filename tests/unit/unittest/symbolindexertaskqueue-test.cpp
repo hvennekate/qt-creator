@@ -25,6 +25,7 @@
 
 #include "googletest.h"
 
+#include "mocksqlitedatabase.h"
 #include "mocktaskscheduler.h"
 
 #include <symbolindexertaskqueue.h>
@@ -35,6 +36,7 @@ using ClangBackEnd::FilePathId;
 using ClangBackEnd::SymbolsCollectorInterface;
 using ClangBackEnd::SymbolIndexerTask;
 using ClangBackEnd::SymbolStorageInterface;
+using ClangBackEnd::SlotUsage;
 
 using Callable = ClangBackEnd::SymbolIndexerTask::Callable;
 
@@ -53,7 +55,8 @@ protected:
     NiceMock<MockFunction<void(int, int)>> mockSetProgressCallback;
     ClangBackEnd::ProgressCounter progressCounter{mockSetProgressCallback.AsStdFunction()};
     NiceMock<MockTaskScheduler<Callable>> mockTaskScheduler;
-    ClangBackEnd::SymbolIndexerTaskQueue queue{mockTaskScheduler, progressCounter};
+    NiceMock<MockSqliteDatabase> mockSqliteDatabase;
+    ClangBackEnd::SymbolIndexerTaskQueue queue{mockTaskScheduler, progressCounter, mockSqliteDatabase};
 };
 
 TEST_F(SymbolIndexerTaskQueue, AddTasks)
@@ -75,15 +78,15 @@ TEST_F(SymbolIndexerTaskQueue, AddTasks)
 
 TEST_F(SymbolIndexerTaskQueue, AddTasksCallsProgressCounter)
 {
-    queue.addOrUpdateTasks({{{1, 1}, 1, Callable{}},
-                            {{1, 3}, 1, Callable{}},
-                            {{1, 5}, 1, Callable{}}});
+    queue.addOrUpdateTasks({{1, 1, Callable{}},
+                            {3, 1, Callable{}},
+                            {5, 1, Callable{}}});
 
 
     EXPECT_CALL(mockSetProgressCallback, Call(0, 4));
 
-    queue.addOrUpdateTasks({{{1, 2}, 1, Callable{}},
-                            {{1, 3}, 1, Callable{}}});
+    queue.addOrUpdateTasks({{2, 1, Callable{}},
+                            {3, 1, Callable{}}});
 
 }
 
@@ -144,15 +147,15 @@ TEST_F(SymbolIndexerTaskQueue, RemoveTaskByProjectParts)
 
 TEST_F(SymbolIndexerTaskQueue, RemoveTasksCallsProgressCounter)
 {
-    queue.addOrUpdateTasks({{{1, 1}, 1, Callable{}},
-                            {{1, 3}, 1, Callable{}},
-                            {{1, 5}, 1, Callable{}}});
-    queue.addOrUpdateTasks({{{1, 2}, 2, Callable{}},
-                            {{1, 3}, 2, Callable{}}});
-    queue.addOrUpdateTasks({{{1, 2}, 3, Callable{}},
-                            {{1, 3}, 3, Callable{}}});
-    queue.addOrUpdateTasks({{{1, 2}, 4, Callable{}},
-                            {{1, 3}, 4, Callable{}}});
+    queue.addOrUpdateTasks({{1, 1, Callable{}},
+                            {3, 1, Callable{}},
+                            {5, 1, Callable{}}});
+    queue.addOrUpdateTasks({{2, 2, Callable{}},
+                            {3, 2, Callable{}}});
+    queue.addOrUpdateTasks({{2, 3, Callable{}},
+                            {3, 3, Callable{}}});
+    queue.addOrUpdateTasks({{2, 4, Callable{}},
+                            {3, 4, Callable{}}});
 
 
     EXPECT_CALL(mockSetProgressCallback, Call(0, 5));
@@ -167,7 +170,7 @@ TEST_F(SymbolIndexerTaskQueue, ProcessTasksCallsFreeSlotsAndAddTasksInScheduler)
                             {3, 1, Callable{}},
                             {5, 1, Callable{}}});
 
-    EXPECT_CALL(mockTaskScheduler, freeSlots()).WillRepeatedly(Return(2));
+    EXPECT_CALL(mockTaskScheduler, slotUsage()).WillRepeatedly(Return(SlotUsage{2, 0}));
     EXPECT_CALL(mockTaskScheduler, addTasks(SizeIs(2)));
 
     queue.processEntries();
@@ -177,7 +180,7 @@ TEST_F(SymbolIndexerTaskQueue, ProcessTasksCallsFreeSlotsAndAddTasksWithNoTaskIn
 {
     InSequence s;
 
-    EXPECT_CALL(mockTaskScheduler, freeSlots()).WillRepeatedly(Return(2));
+    EXPECT_CALL(mockTaskScheduler, slotUsage()).WillRepeatedly(Return(SlotUsage{2, 0}));
     EXPECT_CALL(mockTaskScheduler, addTasks(IsEmpty()));
 
     queue.processEntries();
@@ -190,7 +193,7 @@ TEST_F(SymbolIndexerTaskQueue, ProcessTasksCallsFreeSlotsAndMoveAllTasksInSchedu
                             {3, 1, Callable{}},
                             {5, 1, Callable{}}});
 
-    EXPECT_CALL(mockTaskScheduler, freeSlots()).WillRepeatedly(Return(4));
+    EXPECT_CALL(mockTaskScheduler, slotUsage()).WillRepeatedly(Return(SlotUsage{4, 0}));
     EXPECT_CALL(mockTaskScheduler, addTasks(SizeIs(3)));
 
     queue.processEntries();
@@ -201,10 +204,41 @@ TEST_F(SymbolIndexerTaskQueue, ProcessTasksRemovesProcessedTasks)
     queue.addOrUpdateTasks({{1, 1, Callable{}},
                             {3, 1, Callable{}},
                             {5, 1, Callable{}}});
-    ON_CALL(mockTaskScheduler, freeSlots()).WillByDefault(Return(2));
+    ON_CALL(mockTaskScheduler, slotUsage()).WillByDefault(Return(SlotUsage{2, 0}));
 
     queue.processEntries();
 
     ASSERT_THAT(queue.tasks(), SizeIs(1));
 }
+
+TEST_F(SymbolIndexerTaskQueue,
+       ProcessTasksWritesBackTheDatabaseLogIfTheQueueIsEmptyAndTheIndexerHasNothingToDo)
+{
+    InSequence s;
+
+    EXPECT_CALL(mockTaskScheduler, slotUsage()).WillRepeatedly(Return(SlotUsage{2, 0}));
+    EXPECT_CALL(mockSqliteDatabase, walCheckpointFull());
+
+    queue.processEntries();
 }
+
+TEST_F(SymbolIndexerTaskQueue, ProcessTasksDoesNotWritesBackTheDatabaseLogIfTheIndexerHasSomethingToDo)
+{
+    InSequence s;
+
+    EXPECT_CALL(mockTaskScheduler, slotUsage()).WillRepeatedly(Return(SlotUsage{1, 1}));
+    EXPECT_CALL(mockSqliteDatabase, walCheckpointFull()).Times(0);
+
+    queue.processEntries();
+}
+
+TEST_F(SymbolIndexerTaskQueue, HandleExeptionInWalCheckPoint)
+{
+    InSequence s;
+
+    EXPECT_CALL(mockTaskScheduler, slotUsage()).WillRepeatedly(Return(SlotUsage{2, 0}));
+    EXPECT_CALL(mockSqliteDatabase, walCheckpointFull()).WillOnce(Throw(Sqlite::DatabaseIsBusy{""}));
+
+    queue.processEntries();
+}
+} // namespace

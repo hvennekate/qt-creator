@@ -29,6 +29,7 @@
 #include <projectexplorer/projectmacro.h>
 #include <projectexplorer/projectexplorerconstants.h>
 
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
 using namespace CPlusPlus;
@@ -50,8 +51,10 @@ static QByteArray overwrittenToolchainDefines(const ProjectPart &projectPart)
     return defines;
 }
 
-BuiltinEditorDocumentParser::BuiltinEditorDocumentParser(const QString &filePath)
+BuiltinEditorDocumentParser::BuiltinEditorDocumentParser(const QString &filePath,
+                                                         int fileSizeLimitInMb)
     : BaseEditorDocumentParser(filePath)
+    , m_fileSizeLimitInMb(fileSizeLimitInMb)
 {
     qRegisterMetaType<CPlusPlus::Snapshot>("CPlusPlus::Snapshot");
 }
@@ -143,9 +146,9 @@ void BuiltinEditorDocumentParser::updateImpl(const QFutureInterface<void> &futur
         state.snapshot = Snapshot();
     } else {
         // Remove changed files from the snapshot
-        QSet<Utils::FileName> toRemove;
+        QSet<Utils::FilePath> toRemove;
         foreach (const Document::Ptr &doc, state.snapshot) {
-            const Utils::FileName fileName = Utils::FileName::fromString(doc->fileName());
+            const Utils::FilePath fileName = Utils::FilePath::fromString(doc->fileName());
             if (workingCopy.contains(fileName)) {
                 if (workingCopy.get(fileName).second != doc->editorRevision())
                     addFileAndDependencies(&state.snapshot, &toRemove, fileName);
@@ -158,7 +161,7 @@ void BuiltinEditorDocumentParser::updateImpl(const QFutureInterface<void> &futur
 
         if (!toRemove.isEmpty()) {
             invalidateSnapshot = true;
-            foreach (const Utils::FileName &fileName, toRemove)
+            foreach (const Utils::FilePath &fileName, toRemove)
                 state.snapshot.remove(fileName);
         }
     }
@@ -191,6 +194,7 @@ void BuiltinEditorDocumentParser::updateImpl(const QFutureInterface<void> &futur
             if (releaseSourceAndAST_)
                 doc->releaseSourceAndAST();
         });
+        sourceProcessor.setFileSizeLimitInMb(m_fileSizeLimitInMb);
         sourceProcessor.setCancelChecker([future]() {
            return future.isCanceled();
         });
@@ -258,15 +262,15 @@ BuiltinEditorDocumentParser::Ptr BuiltinEditorDocumentParser::get(const QString 
 }
 
 void BuiltinEditorDocumentParser::addFileAndDependencies(Snapshot *snapshot,
-                                                         QSet<Utils::FileName> *toRemove,
-                                                         const Utils::FileName &fileName) const
+                                                         QSet<Utils::FilePath> *toRemove,
+                                                         const Utils::FilePath &fileName) const
 {
     QTC_ASSERT(snapshot, return);
 
     toRemove->insert(fileName);
-    if (fileName != Utils::FileName::fromString(filePath())) {
-        Utils::FileNameList deps = snapshot->filesDependingOn(fileName);
-        toRemove->unite(QSet<Utils::FileName>::fromList(deps));
+    if (fileName != Utils::FilePath::fromString(filePath())) {
+        Utils::FilePaths deps = snapshot->filesDependingOn(fileName);
+        toRemove->unite(Utils::toSet(deps));
     }
 }
 

@@ -7,6 +7,7 @@ QtcPlugin {
     Depends { name: "Utils"}
 
     Depends { name: "Core" }
+    Depends { name: "DiffEditor" }
     Depends { name: "TextEditor" }
     Depends { name: "VcsBase" }
 
@@ -24,8 +25,6 @@ QtcPlugin {
         "mercurialcommitpanel.ui",
         "mercurialcommitwidget.cpp",
         "mercurialcommitwidget.h",
-        "mercurialcontrol.cpp",
-        "mercurialcontrol.h",
         "mercurialeditor.cpp",
         "mercurialeditor.h",
         "mercurialplugin.cpp",

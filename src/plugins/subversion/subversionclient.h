@@ -35,18 +35,19 @@ namespace Subversion {
 namespace Internal {
 
 class SubversionDiffEditorController;
+class SubversionSettings;
 
 class SubversionClient : public VcsBase::VcsBaseClient
 {
     Q_OBJECT
 
 public:
-    SubversionClient();
+    SubversionClient(SubversionSettings *settings);
 
-    VcsBase::VcsCommand *createCommitCmd(const QString &repositoryRoot,
-                                         const QStringList &files,
-                                         const QString &commitMessageFile,
-                                         const QStringList &extraOptions = QStringList()) const;
+    bool doCommit(const QString &repositoryRoot,
+                  const QStringList &files,
+                  const QString &commitMessageFile,
+                  const QStringList &extraOptions = QStringList()) const;
     void commit(const QString &repositoryRoot,
                 const QStringList &files,
                 const QString &commitMessageFile,
@@ -68,7 +69,7 @@ public:
     // Add authorization options to the command line arguments.
     static QStringList addAuthenticationOptions(const VcsBase::VcsBaseClientSettings &settings);
 
-    QString synchronousTopic(const QString &repository);
+    QString synchronousTopic(const QString &repository) const;
 
     static QString escapeFile(const QString &file);
     static QStringList escapeFiles(const QStringList &files);
@@ -78,9 +79,9 @@ protected:
 
 private:
     SubversionDiffEditorController *findOrCreateDiffEditor(const QString &documentId, const QString &source,
-                                           const QString &title, const QString &workingDirectory) const;
+                                           const QString &title, const QString &workingDirectory);
 
-    mutable Utils::FileName m_svnVersionBinary;
+    mutable Utils::FilePath m_svnVersionBinary;
     mutable QString m_svnVersion;
 };
 

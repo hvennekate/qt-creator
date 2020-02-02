@@ -29,6 +29,7 @@
 #include "commitdata.h"
 
 #include <coreplugin/editormanager/ieditor.h>
+#include <coreplugin/iversioncontrol.h>
 #include <vcsbase/vcsbaseclient.h>
 
 #include <utils/fileutils.h>
@@ -53,6 +54,7 @@ namespace VcsBase {
 }
 
 namespace DiffEditor {
+class ChunkSelection;
 class DiffEditorController;
 }
 
@@ -76,6 +78,11 @@ enum StashFlag {
     NoPrompt       = 0x02
 };
 
+enum PushFailure {
+    NonFastForward,
+    NoRemoteBranch
+};
+
 class SubmoduleData
 {
 public:
@@ -85,6 +92,16 @@ public:
 };
 
 using SubmoduleDataMap = QMap<QString, SubmoduleData>;
+
+class UpstreamStatus
+{
+public:
+    UpstreamStatus() = default;
+    UpstreamStatus(int ahead, int behind) : ahead(ahead), behind(behind) {}
+
+    int ahead = 0;
+    int behind = 0;
+};
 
 class GitClient : public VcsBase::VcsBaseClientImpl
 {
@@ -119,18 +136,20 @@ public:
         PushAction m_pushAction = NoPush;
     };
 
-    explicit GitClient();
+    explicit GitClient(GitSettings *settings);
 
-    Utils::FileName vcsBinary() const override;
+    Utils::FilePath vcsBinary() const override;
     unsigned gitVersion(QString *errorMessage = nullptr) const;
 
     VcsBase::VcsCommand *vcsExecAbortable(const QString &workingDirectory,
                                           const QStringList &arguments,
-                                          bool isRebase = false);
+                                          bool isRebase = false,
+                                          QString abortCommand = QString());
 
     QString findRepositoryForDirectory(const QString &directory) const;
     QString findGitDirForRepository(const QString &repositoryDir) const;
     bool managesFile(const QString &workingDirectory, const QString &fileName) const;
+    QStringList unmanagedFiles(const QString &workingDirectory, const QStringList &filePaths) const;
 
     void diffFile(const QString &workingDirectory, const QString &fileName) const;
     void diffFiles(const QString &workingDirectory,
@@ -151,6 +170,7 @@ public:
             const QString &workingDir, const QString &file, const QString &revision = QString(),
             int lineNumber = -1, const QStringList &extraOptions = QStringList()) override;
     void reset(const QString &workingDirectory, const QString &argument, const QString &commit = QString());
+    void removeStaleRemoteBranches(const QString &workingDirectory, const QString &remote);
     void recoverDeletedFiles(const QString &workingDirectory);
     void addFile(const QString &workingDirectory, const QString &fileName);
     bool synchronousLog(const QString &workingDirectory, const QStringList &arguments,
@@ -174,8 +194,8 @@ public:
                                   QString revision = QString(), QString *errorMessage = nullptr,
                                   bool revertStaging = true);
     enum class StashMode { NoStash, TryStash };
-    void checkout(const QString &workingDirectory, const QString &ref,
-                  StashMode stashMode = StashMode::TryStash);
+    VcsBase::VcsCommand *checkout(const QString &workingDirectory, const QString &ref,
+                                  StashMode stashMode = StashMode::TryStash);
 
     QStringList setupCheckoutArguments(const QString &workingDirectory, const QString &ref);
     void updateSubmodulesIfNeeded(const QString &workingDirectory, bool prompt);
@@ -263,6 +283,7 @@ public:
     // git svn support (asynchronous).
     void synchronousSubversionFetch(const QString &workingDirectory);
     void subversionLog(const QString &workingDirectory);
+    void subversionDeltaCommit(const QString &workingDirectory);
 
     void stashPop(const QString &workingDirectory, const QString &stash = QString());
     void revert(const QStringList &files, bool revertStaging);
@@ -305,7 +326,7 @@ public:
     void launchGitK(const QString &workingDirectory, const QString &fileName);
     void launchGitK(const QString &workingDirectory) { launchGitK(workingDirectory, QString()); }
     bool launchGitGui(const QString &workingDirectory);
-    Utils::FileName gitBinDirectory();
+    Utils::FilePath gitBinDirectory() const;
 
     void launchRepositoryBrowser(const QString &workingDirectory);
 
@@ -325,10 +346,14 @@ public:
     static QString msgNoChangedFiles();
     static QString msgNoCommits(bool includeRemote);
     void show(const QString &source, const QString &id, const QString &name = QString());
+    void archive(const QString &workingDirectory, QString commit);
 
+    VcsBase::VcsCommand *asyncUpstreamStatus(const QString &workingDirectory,
+                                             const QString &branch, const QString &upstream);
 private:
     void finishSubmoduleUpdate();
-    void chunkActionsRequested(QMenu *menu, int fileIndex, int chunkIndex);
+    void chunkActionsRequested(QMenu *menu, int fileIndex, int chunkIndex,
+                               const DiffEditor::ChunkSelection &selection);
 
     void stage(DiffEditor::DiffEditorController *diffController,
                const QString &patch, bool revert);
@@ -368,26 +393,21 @@ private:
                                     QString msgBoxText, const QString &buttonName,
                                     const QString &gitCommand, ContinueCommandMode continueMode);
 
-    mutable Utils::FileName m_gitVersionForBinary;
+    mutable Utils::FilePath m_gitVersionForBinary;
     mutable unsigned m_cachedGitVersion;
 
     QString m_gitQtcEditor;
     QMap<QString, StashInfo> m_stashInfo;
+    QString m_pushFallbackCommand;
     QStringList m_updatedSubmodules;
     bool m_disableEditor;
     QFutureSynchronizer<void> m_synchronizer; // for commit updates
 };
 
-class GitRemote {
+class GitRemote : public Core::IVersionControl::RepoUrl
+{
 public:
-    GitRemote(const QString &url);
-
-    QString protocol;
-    QString userName;
-    QString host;
-    QString path;
-    quint16 port = 0;
-    bool    isValid = false;
+    GitRemote(const QString &location);
 };
 
 } // namespace Internal

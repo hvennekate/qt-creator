@@ -124,6 +124,11 @@ QStringList ProFileEvaluator::sourcesToFiles(const QVector<ProFileEvaluator::Sou
     return result;
 }
 
+QStringList ProFileEvaluator::featureRoots() const
+{
+    return d->m_featureRoots->paths;
+}
+
 // VFS note: all search paths are assumed to be real.
 QStringList ProFileEvaluator::absolutePathValues(
         const QString &variable, const QString &baseDirectory) const
@@ -139,7 +144,7 @@ QStringList ProFileEvaluator::absolutePathValues(
 
 QVector<ProFileEvaluator::SourceFile> ProFileEvaluator::absoluteFileValues(
         const QString &variable, const QString &baseDirectory, const QStringList &searchDirs,
-        QHash<ProString, bool> *handled) const
+        QHash<ProString, bool> *handled, QSet<QString> &directoriesWithWildcards) const
 {
     QMakeVfs::VfsFlags flags = (d->m_cumulative ? QMakeVfs::VfsCumulative : QMakeVfs::VfsExact);
     QVector<SourceFile> result;
@@ -186,6 +191,9 @@ QVector<ProFileEvaluator::SourceFile> ProFileEvaluator::absoluteFileValues(
                     foreach (const QString &fn, theDir.entryList(QStringList(wildcard)))
                         if (fn != QLatin1String(".") && fn != QLatin1String(".."))
                             result << SourceFile{absDir + QLatin1Char('/') + fn, str.sourceFile()};
+                    QString directoryWithWildcard(absDir);
+                    directoryWithWildcard.detach();
+                    directoriesWithWildcards.insert(directoryWithWildcard);
                 } // else if (acceptMissing)
             }
         }

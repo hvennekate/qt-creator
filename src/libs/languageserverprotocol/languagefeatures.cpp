@@ -25,6 +25,8 @@
 
 #include "languagefeatures.h"
 
+#include <cstddef>
+
 namespace LanguageServerProtocol {
 
 constexpr const char HoverRequest::methodName[];
@@ -46,20 +48,21 @@ constexpr const char DocumentRangeFormattingRequest::methodName[];
 constexpr const char DocumentOnTypeFormattingRequest::methodName[];
 constexpr const char RenameRequest::methodName[];
 constexpr const char SignatureHelpRequest::methodName[];
+constexpr const char SemanticHighlightNotification::methodName[];
 
-MarkedString LanguageServerProtocol::Hover::content() const
+HoverContent LanguageServerProtocol::Hover::content() const
 {
-    return MarkedString(value(contentKey));
+    return HoverContent(value(contentsKey));
 }
 
-void Hover::setContent(const MarkedString &content)
+void Hover::setContent(const HoverContent &content)
 {
-    if (auto val = Utils::get_if<MarkedLanguageString>(&content))
-        insert(contentKey, *val);
+    if (auto val = Utils::get_if<MarkedString>(&content))
+        insert(contentsKey, *val);
     else if (auto val = Utils::get_if<MarkupContent>(&content))
-        insert(contentKey, *val);
-    else if (auto val = Utils::get_if<QList<MarkedLanguageString>>(&content))
-        insert(contentKey, LanguageClientArray<MarkedLanguageString>(*val).toJson());
+        insert(contentsKey, *val);
+    else if (auto val = Utils::get_if<QList<MarkedString>>(&content))
+        insert(contentsKey, LanguageClientArray<MarkedString>(*val).toJson());
     else
         QTC_ASSERT_STRING("LanguageClient Using unknown type Hover::setContent");
 }
@@ -104,6 +107,16 @@ DocumentHighlightsRequest::DocumentHighlightsRequest(const TextDocumentPositionP
 DocumentSymbolsRequest::DocumentSymbolsRequest(const DocumentSymbolParams &params)
     : Request(methodName, params)
 { }
+
+Utils::optional<QList<CodeActionKind> > CodeActionParams::CodeActionContext::only() const
+{
+    return optionalArray<CodeActionKind>(onlyKey);
+}
+
+void CodeActionParams::CodeActionContext::setOnly(const QList<CodeActionKind> &only)
+{
+    insertArray(onlyKey, only);
+}
 
 bool CodeActionParams::CodeActionContext::isValid(QStringList *error) const
 {
@@ -215,7 +228,7 @@ bool DocumentRangeFormattingParams::isValid(QStringList *error) const
 }
 
 DocumentRangeFormattingRequest::DocumentRangeFormattingRequest(
-        const DocumentFormattingParams &params)
+        const DocumentRangeFormattingParams &params)
     : Request(methodName, params)
 { }
 
@@ -277,15 +290,30 @@ GotoResult::GotoResult(const QJsonValue &value)
     }
 }
 
+template<typename Symbol>
+QList<Symbol> documentSymbolsResultArray(const QJsonArray &array)
+{
+    QList<Symbol> ret;
+    for (const auto &arrayValue : array) {
+        if (arrayValue.isObject())
+            ret << Symbol(arrayValue.toObject());
+    }
+    return ret;
+}
+
 DocumentSymbolsResult::DocumentSymbolsResult(const QJsonValue &value)
 {
     if (value.isArray()) {
-        QList<SymbolInformation> symbols;
-        for (auto arrayValue : value.toArray()) {
-            if (arrayValue.isObject())
-                symbols.append(SymbolInformation(arrayValue.toObject()));
+        QJsonArray array = value.toArray();
+        if (array.isEmpty()) {
+            *this = QList<SymbolInformation>();
+        } else {
+            QJsonObject arrayObject = array.first().toObject();
+            if (arrayObject.contains(rangeKey))
+                *this = documentSymbolsResultArray<DocumentSymbol>(array);
+            else
+                *this = documentSymbolsResultArray<SymbolInformation>(array);
         }
-        *this = symbols;
     } else {
         *this = nullptr;
     }
@@ -307,31 +335,52 @@ DocumentHighlightsResult::DocumentHighlightsResult(const QJsonValue &value)
 
 MarkedString::MarkedString(const QJsonValue &value)
 {
+    if (value.isObject()) {
+        MarkedLanguageString string(value.toObject());
+        if (string.isValid(nullptr))
+            emplace<MarkedLanguageString>(string);
+    } else if (value.isString()) {
+        emplace<QString>(value.toString());
+    }
+}
+
+LanguageServerProtocol::MarkedString::operator QJsonValue() const
+{
+    if (auto val = Utils::get_if<QString>(this))
+        return *val;
+    if (auto val = Utils::get_if<MarkedLanguageString>(this))
+        return QJsonValue(*val);
+    return {};
+}
+
+HoverContent::HoverContent(const QJsonValue &value)
+{
     if (value.isArray()) {
-        emplace<QList<MarkedLanguageString>>(
-            LanguageClientArray<MarkedLanguageString>(value).toList());
+        emplace<QList<MarkedString>>(LanguageClientArray<MarkedString>(value).toList());
     } else if (value.isObject()) {
         const QJsonObject &object = value.toObject();
         MarkedLanguageString markedLanguageString(object);
         if (markedLanguageString.isValid(nullptr))
-            emplace<MarkedLanguageString>(markedLanguageString);
+            emplace<MarkedString>(markedLanguageString);
         else
             emplace<MarkupContent>(MarkupContent(object));
+    } else if (value.isString()) {
+        emplace<MarkedString>(MarkedString(value.toString()));
     }
 }
 
-bool MarkedString::isValid(QStringList *errorHierarchy) const
+bool HoverContent::isValid(QStringList *errorHierarchy) const
 {
-    if (Utils::holds_alternative<MarkedLanguageString>(*this)
+    if (Utils::holds_alternative<MarkedString>(*this)
             || Utils::holds_alternative<MarkupContent>(*this)
-            || Utils::holds_alternative<QList<MarkedLanguageString>>(*this)) {
+            || Utils::holds_alternative<QList<MarkedString>>(*this)) {
         return true;
     }
     if (errorHierarchy) {
         *errorHierarchy << QCoreApplication::translate(
-                               "LanguageServerProtocol::MarkedString",
-                               "MarkedString should be either MarkedLanguageString, "
-                               "MarkupContent, or QList<MarkedLanguageString>.");
+                               "LanguageServerProtocol::HoverContent",
+                               "HoverContent should be either MarkedString, "
+                               "MarkupContent, or QList<MarkedString>.");
     }
     return false;
 }
@@ -364,5 +413,88 @@ bool DocumentFormattingProperty::isValid(QStringList *error) const
 SignatureHelpRequest::SignatureHelpRequest(const TextDocumentPositionParams &params)
     : Request(methodName, params)
 { }
+
+CodeActionResult::CodeActionResult(const QJsonValue &val)
+{
+    using ResultArray = QList<Utils::variant<Command, CodeAction>>;
+    if (val.isArray()) {
+        const QJsonArray array = val.toArray();
+        ResultArray result;
+        for (const QJsonValue &val : array) {
+            Command command(val);
+            if (command.isValid(nullptr))
+                result << command;
+            else
+                result << CodeAction(val);
+        }
+        emplace<ResultArray>(result);
+        return;
+    }
+    emplace<std::nullptr_t>(nullptr);
+}
+
+bool CodeAction::isValid(QStringList *error) const
+{
+    return check<QString>(error, titleKey)
+           && checkOptional<CodeActionKind>(error, codeActionKindKey)
+           && checkOptionalArray<Diagnostic>(error, diagnosticsKey)
+           && checkOptional<WorkspaceEdit>(error, editKey)
+           && checkOptional<Command>(error, commandKey);
+}
+
+Utils::optional<QList<SemanticHighlightToken>> SemanticHighlightingInformation::tokens() const
+{
+    QList<SemanticHighlightToken> resultTokens;
+
+    const QByteArray tokensByteArray = QByteArray::fromBase64(
+        typedValue<QString>(tokensKey).toLocal8Bit());
+    constexpr int tokensByteSize = 8;
+    int index = 0;
+    while (index + tokensByteSize <= tokensByteArray.size()) {
+        resultTokens << SemanticHighlightToken(tokensByteArray.mid(index, tokensByteSize));
+        index += tokensByteSize;
+    }
+    return Utils::make_optional(resultTokens);
+}
+
+void SemanticHighlightingInformation::setTokens(const QList<SemanticHighlightToken> &tokens)
+{
+    QByteArray byteArray;
+    byteArray.reserve(8 * tokens.size());
+    for (const SemanticHighlightToken &token : tokens)
+        token.appendToByteArray(byteArray);
+    insert(tokensKey, QString::fromLocal8Bit(byteArray.toBase64()));
+}
+
+SemanticHighlightToken::SemanticHighlightToken(const QByteArray &token)
+{
+    QTC_ASSERT(token.size() == 8, return );
+    character = ( quint32(token.at(0)) << 24
+                | quint32(token.at(1)) << 16
+                | quint32(token.at(2)) << 8
+                | quint32(token.at(3)));
+
+    length = quint16(token.at(4) << 8 | token.at(5));
+
+    scope = quint16(token.at(6) << 8 | token.at(7));
+}
+
+void SemanticHighlightToken::appendToByteArray(QByteArray &byteArray) const
+{
+    byteArray.append(char((character & 0xff000000) >> 24));
+    byteArray.append(char((character & 0x00ff0000) >> 16));
+    byteArray.append(char((character & 0x0000ff00) >> 8));
+    byteArray.append(char((character & 0x000000ff)));
+    byteArray.append(char((length & 0xff00) >> 8));
+    byteArray.append(char((length & 0x00ff)));
+    byteArray.append(char((scope & 0xff00) >> 8));
+    byteArray.append(char((scope & 0x00ff)));
+}
+
+bool SemanticHighlightingParams::isValid(QStringList *error) const
+{
+    return check<VersionedTextDocumentIdentifier>(error, textDocumentKey)
+            && checkArray<SemanticHighlightingInformation>(error, linesKey);
+}
 
 } // namespace LanguageServerProtocol

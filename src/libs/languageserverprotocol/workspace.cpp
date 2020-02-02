@@ -91,4 +91,21 @@ DidChangeWatchedFilesNotification::DidChangeWatchedFilesNotification(
     : Notification(methodName, params)
 { }
 
+ExecuteCommandParams::ExecuteCommandParams(const Command &command)
+{
+    setCommand(command.command());
+    if (command.arguments().has_value())
+        setArguments(command.arguments().value());
+}
+
+LanguageServerProtocol::WorkSpaceFolderResult::operator const QJsonValue() const
+{
+    if (!Utils::holds_alternative<QList<WorkSpaceFolder>>(*this))
+        return QJsonValue::Null;
+    QJsonArray array;
+    for (auto folder : Utils::get<QList<WorkSpaceFolder>>(*this))
+        array.append(QJsonValue(folder));
+    return array;
+}
+
 } // namespace LanguageServerProtocol

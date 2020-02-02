@@ -82,10 +82,10 @@ static inline QString cdbBreakPointFileName(const BreakpointParameters &params,
                                             const QList<QPair<QString, QString> > &sourcePathMapping)
 {
     if (params.fileName.isEmpty())
-        return params.fileName;
+        return {};
     if (params.pathUsage == BreakpointUseShortPath)
-        return Utils::FileName::fromString(params.fileName).fileName();
-    return cdbSourcePathMapping(QDir::toNativeSeparators(params.fileName), sourcePathMapping, SourceToDebugger);
+        return params.fileName.fileName();
+    return cdbSourcePathMapping(params.fileName.toUserOutput(), sourcePathMapping, SourceToDebugger);
 }
 
 static BreakpointParameters fixWinMSVCBreakpoint(const BreakpointParameters &p)
@@ -122,6 +122,8 @@ static BreakpointParameters fixWinMSVCBreakpoint(const BreakpointParameters &p)
     case BreakpointAtMain: {
         BreakpointParameters rc(BreakpointByFunction);
         rc.functionName = "main";
+        rc.module = p.module;
+        rc.oneShot = true;
         return rc;
     }
     } // switch
@@ -138,8 +140,7 @@ QString breakPointCdbId(const Breakpoint &bp)
 
 QString cdbAddBreakpointCommand(const BreakpointParameters &bpIn,
                                 const QList<QPair<QString, QString> > &sourcePathMapping,
-                                const QString &responseId,
-                                bool oneshot)
+                                const QString &responseId)
 {
     const BreakpointParameters params = fixWinMSVCBreakpoint(bpIn);
     QString rc;
@@ -154,7 +155,7 @@ QString cdbAddBreakpointCommand(const BreakpointParameters &bpIn,
     str << (params.type == WatchpointAtAddress ? "ba" : "bu")
         << responseId
         << ' ';
-    if (oneshot)
+    if (params.oneShot)
         str << "/1 ";
     switch (params.type) {
     case BreakpointAtFork:
@@ -249,7 +250,8 @@ void parseBreakPoint(const GdbMi &gdbmi, BreakpointParameters *r,
         r->module = moduleG.data();
     const GdbMi sourceFileName = gdbmi["srcfile"];
     if (sourceFileName.isValid()) {
-        r->fileName = sourceFileName.data();
+        r->fileName = Utils::FilePath::fromUserInput(
+            Utils::FileUtils::normalizePathName(sourceFileName.data()));
         const GdbMi lineNumber = gdbmi["srcline"];
         if (lineNumber.isValid())
             r->lineNumber = lineNumber.data().toULongLong(nullptr, 0);
@@ -496,7 +498,8 @@ DisassemblerLines parseCdbDisassembler(const QString &a)
     quint64 functionOffset = 0;
     QString sourceFile;
 
-    foreach (const QString &line, a.split('\n')) {
+    const QStringList lines = a.split('\n');
+    for (const QString &line : lines) {
         // New function. Append as comment line.
         if (parseCdbDisassemblerFunctionLine(line, &currentFunction, &functionOffset, &sourceFile)) {
             functionAddress = 0;

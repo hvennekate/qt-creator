@@ -28,9 +28,10 @@
 #include "qmakeprojectmanager_global.h"
 #include "qmakeparsernodes.h"
 
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/projectnodes.h>
 
-namespace Utils { class FileName; }
+namespace Utils { class FilePath; }
 
 namespace QmakeProjectManager {
 class QmakeProFileNode;
@@ -40,26 +41,18 @@ class QmakeProject;
 class QMAKEPROJECTMANAGER_EXPORT QmakePriFileNode : public ProjectExplorer::ProjectNode
 {
 public:
-    QmakePriFileNode(QmakeProject *project, QmakeProFileNode *qmakeProFileNode,
-                     const Utils::FileName &filePath, QmakePriFile *pf);
+    QmakePriFileNode(QmakeBuildSystem *buildSystem, QmakeProFileNode *qmakeProFileNode,
+                     const Utils::FilePath &filePath, QmakePriFile *pf);
 
     QmakePriFile *priFile() const;
-
-    // ProjectNode interface
-    bool supportsAction(ProjectExplorer::ProjectAction action, const Node *node) const override;
 
     bool showInSimpleTree() const override { return false; }
 
     bool canAddSubProject(const QString &proFilePath) const override;
-
     bool addSubProject(const QString &proFilePath) override;
     bool removeSubProject(const QString &proFilePath) override;
+    QStringList subProjectFileNamePatterns() const override;
 
-    bool addFiles(const QStringList &filePaths, QStringList *notAdded = nullptr) override;
-    bool removeFiles(const QStringList &filePaths, QStringList *notRemoved = nullptr) override;
-    bool deleteFiles(const QStringList &filePaths) override;
-    bool canRenameFile(const QString &filePath, const QString &newFilePath) override;
-    bool renameFile(const QString &filePath, const QString &newFilePath) override;
     AddNewInformation addNewInformation(const QStringList &files, Node *context) const override;
 
     bool deploysFolder(const QString &folder) const override;
@@ -67,7 +60,7 @@ public:
     QmakeProFileNode *proFileNode() const;
 
 protected:
-    QmakeProject *m_project = nullptr;
+    QPointer<QmakeBuildSystem> m_buildSystem;
 
 private:
     QmakeProFileNode *m_qmakeProFileNode = nullptr;
@@ -78,21 +71,39 @@ private:
 class QMAKEPROJECTMANAGER_EXPORT QmakeProFileNode : public QmakePriFileNode
 {
 public:
-    QmakeProFileNode(QmakeProject *project, const Utils::FileName &filePath, QmakeProFile *pf);
+    QmakeProFileNode(QmakeBuildSystem *buildSystem, const Utils::FilePath &filePath, QmakeProFile *pf);
 
     QmakeProFile *proFile() const;
 
+    QString makefile() const;
+    QString objectsDirectory() const;
+    QString objectExtension() const;
+
+    bool isDebugAndRelease() const;
+    bool isObjectParallelToSource() const;
+    bool isQtcRunnable() const;
+    bool includedInExactParse() const;
+
     bool showInSimpleTree() const override;
 
+    QString buildKey() const override;
+    bool parseInProgress() const override;
+    bool validParse() const override;
+
+    void build() override;
+
+    QStringList targetApplications() const override;
     AddNewInformation addNewInformation(const QStringList &files, Node *context) const override;
+    QVariant data(Core::Id role) const override;
+    bool setData(Core::Id role, const QVariant &value) const override;
 
     QmakeProjectManager::ProjectType projectType() const;
-    QString buildDir() const;
+    Utils::FilePath buildDir(ProjectExplorer::BuildConfiguration *bc) const;
 
     QStringList variableValue(const Variable var) const;
     QString singleVariableValue(const Variable var) const;
 
-    QmakeProFileNode *findProFileFor(const Utils::FileName &string) const;
+    TargetInformation targetInformation() const;
 
     bool showInSimpleTree(ProjectType projectType) const;
 };

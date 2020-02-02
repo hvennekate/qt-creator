@@ -47,8 +47,7 @@ public:
         ON_CALL(*this, setUnsavedFiles(_)).WillByDefault(Invoke(this, &MockSymbolsCollector::setHasUnsavedFiles));
     }
 
-    MOCK_METHOD0(collectSymbols,
-                 void());
+    MOCK_METHOD0(collectSymbols, bool());
 
     MOCK_METHOD2(setFile,
                  void(ClangBackEnd::FilePathId filePathId,
@@ -74,9 +73,6 @@ public:
 
     MOCK_CONST_METHOD0(usedMacros,
                        const ClangBackEnd::UsedMacros &());
-
-    MOCK_CONST_METHOD0(fileStatuses,
-                       const ClangBackEnd::FileStatuses &());
 
     MOCK_CONST_METHOD0(sourceDependencies,
                        const ClangBackEnd::SourceDependencies &());

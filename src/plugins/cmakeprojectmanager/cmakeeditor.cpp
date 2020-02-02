@@ -41,11 +41,11 @@
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/session.h>
 
-#include <texteditor/highlighterutils.h>
 #include <texteditor/texteditoractionhandler.h>
 #include <texteditor/texteditorconstants.h>
 
 #include <utils/qtcassert.h>
+#include <utils/textutils.h>
 
 #include <QFileInfo>
 #include <QTextBlock>
@@ -61,7 +61,7 @@ namespace Internal {
 // CMakeEditor
 //
 
-void CMakeEditor::contextHelpId(const HelpIdCallback &callback) const
+void CMakeEditor::contextHelp(const HelpCallback &callback) const
 {
     int pos = position();
 
@@ -72,7 +72,7 @@ void CMakeEditor::contextHelpId(const HelpIdCallback &callback) const
             break;
         chr = characterAt(pos);
         if (chr == QLatin1Char('(')) {
-            callback(QString());
+            BaseTextEditor::contextHelp(callback);
             return;
         }
     } while (chr.unicode() != QChar::ParagraphSeparator);
@@ -98,12 +98,13 @@ void CMakeEditor::contextHelpId(const HelpIdCallback &callback) const
 
     // Not a command
     if (chr != QLatin1Char('(')) {
-        callback(QString());
+        BaseTextEditor::contextHelp(callback);
         return;
     }
 
-    QString command = textAt(begin, end - begin).toLower();
-    callback(QLatin1String("command/") + command);
+    const QString id = "command/" + textAt(begin, end - begin).toLower();
+    callback(
+        {{id, Utils::Text::wordUnderCursor(editorWidget()->textCursor())}, {}, HelpItem::Unknown});
 }
 
 //
@@ -131,12 +132,9 @@ void CMakeEditorWidget::contextMenuEvent(QContextMenuEvent *e)
 
 static bool isValidFileNameChar(const QChar &c)
 {
-    return c.isLetterOrNumber()
-            || c == QLatin1Char('.')
-            || c == QLatin1Char('_')
-            || c == QLatin1Char('-')
-            || c == QLatin1Char('/')
-            || c == QLatin1Char('\\');
+    return c.isLetterOrNumber() || c == QLatin1Char('.') || c == QLatin1Char('_')
+           || c == QLatin1Char('-') || c == QLatin1Char('/') || c == QLatin1Char('\\') || c == '{'
+           || c == '}' || c == '$';
 }
 
 void CMakeEditorWidget::findLinkAt(const QTextCursor &cursor,
@@ -186,9 +184,12 @@ void CMakeEditorWidget::findLinkAt(const QTextCursor &cursor,
     if (buffer.isEmpty())
         return processLinkCallback(link);
 
-    // TODO: Resolve variables
-
     QDir dir(textDocument()->filePath().toFileInfo().absolutePath());
+    buffer.replace("${CMAKE_CURRENT_SOURCE_DIR}", dir.path());
+    buffer.replace("${CMAKE_CURRENT_LIST_DIR}", dir.path());
+
+    // TODO: Resolve more variables
+
     QString fileName = dir.filePath(buffer);
     QFileInfo fi(fileName);
     if (fi.exists()) {
@@ -229,7 +230,7 @@ CMakeEditorFactory::CMakeEditorFactory()
     setEditorCreator([]() { return new CMakeEditor; });
     setEditorWidgetCreator([]() { return new CMakeEditorWidget; });
     setDocumentCreator(createCMakeDocument);
-    setIndenterCreator([]() { return new CMakeIndenter; });
+    setIndenterCreator([](QTextDocument *doc) { return new CMakeIndenter(doc); });
     setUseGenericHighlighter(true);
     setCommentDefinition(Utils::CommentDefinition::HashStyle);
     setCodeFoldingSupported(true);

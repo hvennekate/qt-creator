@@ -19,22 +19,33 @@ Product {
 
     Depends { name: "cpp" }
     Depends { name: "qtc" }
-    Depends { name: product.name + " dev headers"; required: false }
-    Depends { name: "Qt.core"; versionAtLeast: "5.9.0" }
+    Depends {
+        name: product.name + " dev headers";
+        required: false
+        Properties {
+            condition: Utilities.versionCompare(qbs.version, "1.13") >= 0
+            enableFallback: false
+        }
+    }
+    Depends { name: "Qt.core"; versionAtLeast: "5.11.0" }
 
     // TODO: Should fall back to what came from Qt.core for Qt < 5.7, but we cannot express that
     //       atm. Conditionally pulling in a module that sets the property is also not possible,
     //       because conflicting scalar values would be reported (QBS-1225 would fix that).
     cpp.minimumMacosVersion: project.minimumMacosVersion
 
-    Properties {
-        condition: qbs.toolchain.contains("gcc") && !qbs.toolchain.contains("clang")
-        cpp.cxxFlags: base.concat(["-Wno-noexcept-type"])
+    cpp.cxxFlags: {
+        var flags = [];
+        if (qbs.toolchain.contains("gcc") && !qbs.toolchain.contains("clang")) {
+            flags.push("-Wno-noexcept-type");
+            if (Utilities.versionCompare(cpp.compilerVersion, "9") >= 0)
+                flags.push("-Wno-deprecated-copy", "-Wno-init-list-lifetime");
+        } else if (qbs.toolchain.contains("msvc")) {
+            flags.push("/w44996");
+        }
+        return flags;
     }
-    Properties {
-        condition: qbs.toolchain.contains("msvc")
-        cpp.cxxFlags: base.concat(["/w44996"])
-    }
+
     cpp.cxxLanguageVersion: "c++14"
     cpp.defines: qtc.generalDefines
     cpp.minimumWindowsVersion: "6.1"

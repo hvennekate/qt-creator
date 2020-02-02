@@ -42,7 +42,7 @@ QString unqualifyName(const QString &qualifiedName)
 class DerivedHierarchyVisitor : public CPlusPlus::SymbolVisitor
 {
 public:
-    DerivedHierarchyVisitor(const QString &qualifiedName)
+    explicit DerivedHierarchyVisitor(const QString &qualifiedName)
         : _qualifiedName(qualifiedName)
         , _unqualifiedName(unqualifyName(qualifiedName))
     {}
@@ -71,13 +71,13 @@ void DerivedHierarchyVisitor::execute(const CPlusPlus::Document::Ptr &doc,
     _otherBases.clear();
     _context = CPlusPlus::LookupContext(doc, snapshot);
 
-    for (unsigned i = 0; i < doc->globalSymbolCount(); ++i)
+    for (int i = 0; i < doc->globalSymbolCount(); ++i)
         accept(doc->globalSymbolAt(i));
 }
 
 bool DerivedHierarchyVisitor::visit(CPlusPlus::Class *symbol)
 {
-    for (unsigned i = 0; i < symbol->baseClassCount(); ++i) {
+    for (int i = 0; i < symbol->baseClassCount(); ++i) {
         CPlusPlus::BaseClass *baseSymbol = symbol->baseClassAt(i);
 
         QString baseName = _actualBases.value(baseSymbol);
@@ -119,8 +119,7 @@ bool DerivedHierarchyVisitor::visit(CPlusPlus::Class *symbol)
 
 } // namespace
 
-TypeHierarchy::TypeHierarchy() : _symbol(0)
-{}
+TypeHierarchy::TypeHierarchy() = default;
 
 TypeHierarchy::TypeHierarchy(CPlusPlus::Symbol *symbol) : _symbol(symbol)
 {}
@@ -194,9 +193,9 @@ QStringList TypeHierarchyBuilder::filesDependingOn(CPlusPlus::Symbol *symbol) co
     if (!symbol)
         return deps;
 
-    Utils::FileName file = Utils::FileName::fromUtf8(symbol->fileName(), symbol->fileNameLength());
+    Utils::FilePath file = Utils::FilePath::fromUtf8(symbol->fileName(), symbol->fileNameLength());
     deps << file.toString();
-    foreach (const Utils::FileName &fileName, _snapshot.filesDependingOn(file))
+    foreach (const Utils::FilePath &fileName, _snapshot.filesDependingOn(file))
         deps.append(fileName.toString());
     return deps;
 }

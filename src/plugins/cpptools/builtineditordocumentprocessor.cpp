@@ -71,7 +71,7 @@ QList<QTextEdit::ExtraSelection> toTextEditorSelections(
         QTextCursor c(textDocument->findBlockByNumber(m.line() - 1));
         const QString text = c.block().text();
         const int startPos = m.column() > 0 ? m.column() - 1 : 0;
-        if (m.length() > 0 && startPos + m.length() <= (unsigned)text.size()) {
+        if (m.length() > 0 && startPos + m.length() <= text.size()) {
             c.setPosition(c.position() + startPos);
             c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, m.length());
         } else {
@@ -95,14 +95,14 @@ CppTools::CheckSymbols *createHighlighter(const CPlusPlus::Document::Ptr &doc,
                                           const CPlusPlus::Snapshot &snapshot,
                                           QTextDocument *textDocument)
 {
-    QTC_ASSERT(doc, return 0);
-    QTC_ASSERT(doc->translationUnit(), return 0);
-    QTC_ASSERT(doc->translationUnit()->ast(), return 0);
-    QTC_ASSERT(textDocument, return 0);
+    QTC_ASSERT(doc, return nullptr);
+    QTC_ASSERT(doc->translationUnit(), return nullptr);
+    QTC_ASSERT(doc->translationUnit()->ast(), return nullptr);
+    QTC_ASSERT(textDocument, return nullptr);
 
     using namespace CPlusPlus;
     using namespace CppTools;
-    typedef TextEditor::HighlightingResult Result;
+    using Result = TextEditor::HighlightingResult;
     QList<Result> macroUses;
 
     using Utils::Text::convertPosition;
@@ -131,12 +131,12 @@ CppTools::CheckSymbols *createHighlighter(const CPlusPlus::Document::Ptr &doc,
 
         // Filter out C++ keywords
         const Tokens tokens = tokenize(name);
-        if (tokens.length() && (tokens.at(0).isKeyword() || tokens.at(0).isObjCAtKeyword()))
+        if (!tokens.isEmpty() && (tokens.at(0).isKeyword() || tokens.at(0).isObjCAtKeyword()))
             continue;
 
         int line, column;
         convertPosition(textDocument, macro.utf16charsBegin(), &line, &column);
-        ++column; //Highlighting starts at (column-1) --> compensate here
+
         Result use(line, column, name.size(), SemanticHighlighter::MacroUse);
         macroUses.append(use);
     }
@@ -163,11 +163,12 @@ BuiltinEditorDocumentProcessor::BuiltinEditorDocumentProcessor(
         TextEditor::TextDocument *document,
         bool enableSemanticHighlighter)
     : BaseEditorDocumentProcessor(document->document(), document->filePath().toString())
-    , m_parser(new BuiltinEditorDocumentParser(document->filePath().toString()))
+    , m_parser(new BuiltinEditorDocumentParser(document->filePath().toString(),
+                                               indexerFileSizeLimitInMb()))
     , m_codeWarningsUpdated(false)
     , m_semanticHighlighter(enableSemanticHighlighter
                             ? new CppTools::SemanticHighlighter(document)
-                            : 0)
+                            : nullptr)
 {
     using namespace Internal;
 

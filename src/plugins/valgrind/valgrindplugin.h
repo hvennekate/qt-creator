@@ -32,24 +32,22 @@
 namespace Valgrind {
 namespace Internal {
 
-class ValgrindGlobalSettings;
-
 class ValgrindPlugin : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Valgrind.json")
 
 public:
-    ValgrindPlugin() {}
-    ~ValgrindPlugin() override;
+    ValgrindPlugin() = default;
+    ~ValgrindPlugin() final;
 
-    bool initialize(const QStringList &arguments, QString *errorString) override;
-    void extensionsInitialized() override;
-    ShutdownFlag aboutToShutdown() override;
+    bool initialize(const QStringList &arguments, QString *errorString) final;
+    void extensionsInitialized() final {}
 
-    static ValgrindGlobalSettings *globalSettings();
 private:
-    QList<QObject *> createTestObjects() const override;
+    QVector<QObject *> createTestObjects() const override;
+
+    class ValgrindPluginPrivate *d = nullptr;
 };
 
 } // namespace Internal

@@ -213,12 +213,7 @@ bool QmlTimeline::hasActiveTimeline(AbstractView *view)
         if (!view->model()->hasImport(Import::createLibraryImport("QtQuick.Timeline", "1.0"), true, true))
             return false;
 
-        const ModelNode root = view->rootModelNode();
-        if (root.isValid())
-            for (const ModelNode &child : root.directSubModelNodes()) {
-                if (QmlTimeline::isValidQmlTimeline(child))
-                    return QmlTimeline(child).isEnabled();
-            }
+        return view->currentTimeline().isValid();
     }
 
     return false;
@@ -279,6 +274,19 @@ bool QmlTimeline::hasKeyframeGroup(const ModelNode &node, const PropertyName &pr
         if (frames.target().isValid()
                 && frames.target() == node
                 && frames.propertyName() == propertyName)
+            return true;
+    }
+
+    return false;
+}
+
+bool QmlTimeline::hasKeyframeGroupForTarget(const ModelNode &node) const
+{
+    if (!isValid())
+        return false;
+
+    for (const QmlTimelineKeyframeGroup &frames : allKeyframeGroups()) {
+        if (frames.target().isValid() && frames.target() == node)
             return true;
     }
 

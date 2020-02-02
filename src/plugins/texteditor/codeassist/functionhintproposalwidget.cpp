@@ -40,6 +40,7 @@
 #include <QDesktopWidget>
 #include <QKeyEvent>
 #include <QPointer>
+#include <QScreen>
 
 namespace TextEditor {
 
@@ -140,14 +141,14 @@ FunctionHintProposalWidget::FunctionHintProposalWidget()
     upArrow->setAutoRaise(true);
 
     auto pagerLayout = new QHBoxLayout(d->m_pager);
-    pagerLayout->setMargin(0);
+    pagerLayout->setContentsMargins(0, 0, 0, 0);
     pagerLayout->setSpacing(0);
     pagerLayout->addWidget(upArrow);
     pagerLayout->addWidget(d->m_numberLabel);
     pagerLayout->addWidget(downArrow);
 
     auto popupLayout = new QHBoxLayout(d->m_popupFrame);
-    popupLayout->setMargin(0);
+    popupLayout->setContentsMargins(0, 0, 0, 0);
     popupLayout->setSpacing(0);
     popupLayout->addWidget(d->m_pager);
     popupLayout->addWidget(d->m_hintLabel);
@@ -309,7 +310,7 @@ bool FunctionHintProposalWidget::eventFilter(QObject *obj, QEvent *e)
             if (d->m_popupFrame && !d->m_popupFrame->isAncestorOf(widget)) {
                 abort();
             } else if (e->type() == QEvent::Wheel) {
-                if (static_cast<QWheelEvent*>(e)->delta() > 0)
+                if (static_cast<QWheelEvent*>(e)->angleDelta().y() > 0)
                     previousPage();
                 else
                     nextPage();
@@ -366,9 +367,10 @@ void FunctionHintProposalWidget::updateContent()
 void FunctionHintProposalWidget::updatePosition()
 {
     const QDesktopWidget *desktop = QApplication::desktop();
+    const int screenNumber = desktop->screenNumber(d->m_underlyingWidget);
+    auto widgetScreen = QGuiApplication::screens().value(screenNumber, QGuiApplication::primaryScreen());
     const QRect &screen = Utils::HostOsInfo::isMacHost()
-            ? desktop->availableGeometry(desktop->screenNumber(d->m_underlyingWidget))
-            : desktop->screenGeometry(desktop->screenNumber(d->m_underlyingWidget));
+        ? widgetScreen->availableGeometry() : widgetScreen->geometry();
 
     d->m_pager->setFixedWidth(d->m_pager->minimumSizeHint().width());
 

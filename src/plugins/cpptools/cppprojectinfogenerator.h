@@ -37,22 +37,25 @@ class ProjectInfoGenerator
 {
 public:
     ProjectInfoGenerator(const QFutureInterface<void> &futureInterface,
-                         const ProjectUpdateInfo &projectUpdateInfo);
+                         const ProjectExplorer::ProjectUpdateInfo &projectUpdateInfo);
 
     ProjectInfo generate();
 
 private:
-    QVector<ProjectPart::Ptr> createProjectParts(const RawProjectPart &rawProjectPart);
-    ProjectPart::Ptr createProjectPart(const RawProjectPart &rawProjectPart,
+    QVector<ProjectPart::Ptr> createProjectParts(
+        const ProjectExplorer::RawProjectPart &rawProjectPart);
+    ProjectPart::Ptr createProjectPart(const ProjectExplorer::RawProjectPart &rawProjectPart,
                                        const ProjectPart::Ptr &templateProjectPart,
                                        const ProjectFiles &projectFiles,
                                        const QString &partName,
                                        Language language,
-                                       ProjectExplorer::LanguageExtensions languageExtensions);
+                                       Utils::LanguageExtensions languageExtensions);
 
 private:
     const QFutureInterface<void> m_futureInterface;
-    const ProjectUpdateInfo &m_projectUpdateInfo;
+    const ProjectExplorer::ProjectUpdateInfo &m_projectUpdateInfo;
+    bool m_cToolchainMissing = false;
+    bool m_cxxToolchainMissing = false;
 };
 } // namespace Internal
 } // namespace CppTools

@@ -36,6 +36,7 @@
 #include <QVector>
 
 namespace Core { class IDocument; }
+namespace Utils { class FilePath; }
 
 namespace Beautifier {
 namespace Internal {
@@ -46,7 +47,7 @@ class AbstractSettings : public QObject
 
 public:
     explicit AbstractSettings(const QString &name, const QString &ending);
-    virtual ~AbstractSettings();
+    ~AbstractSettings() override;
 
     void read();
     void save();
@@ -64,7 +65,7 @@ public:
     void replaceStyle(const QString &oldKey, const QString &newKey, const QString &value);
     virtual QString styleFileName(const QString &key) const;
 
-    QString command() const;
+    Utils::FilePath command() const;
     void setCommand(const QString &command);
     int version() const;
     virtual void updateVersion();

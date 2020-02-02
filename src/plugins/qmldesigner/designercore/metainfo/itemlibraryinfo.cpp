@@ -39,13 +39,14 @@ class ItemLibraryEntryData : public QSharedData
 public:
     ItemLibraryEntryData()
     {}
+
     QString name;
     TypeName typeName;
     QString category;
     int majorVersion{-1};
     int minorVersion{-1};
     QString libraryEntryIconPath;
-    QIcon typeIcon;
+    QIcon typeIcon = QIcon(":/ItemLibrary/images/item-default-icon.png");
     QList<PropertyContainer> properties;
     QString qml;
     QString qmlSource;
@@ -356,7 +357,10 @@ void ItemLibraryInfo::addBlacklistImports(const QStringList &list)
 
 void ItemLibraryInfo::addShowTagsForImports(const QStringList &list)
 {
-    m_showTagsForImports.append(list);
+    if (!list.isEmpty()) {
+        m_showTagsForImports.append(list);
+        emit importTagsChanged();
+    }
 }
 
 void ItemLibraryInfo::setBaseInfo(ItemLibraryInfo *baseInfo)

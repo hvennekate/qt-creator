@@ -50,10 +50,8 @@ using namespace Macros;
 using namespace Macros::Internal;
 
 
-MacroOptionsWidget::MacroOptionsWidget(QWidget *parent) :
-    QWidget(parent),
-    m_ui(new Ui::MacroOptionsWidget),
-    m_changingCurrent(false)
+MacroOptionsWidget::MacroOptionsWidget() :
+    m_ui(new Ui::MacroOptionsWidget)
 {
     m_ui->setupUi(this);
 
@@ -88,13 +86,10 @@ void MacroOptionsWidget::createTable()
 {
     QDir dir(MacroManager::macrosDirectory());
     const Core::Id base = Core::Id(Constants::PREFIX_MACRO);
-    QMapIterator<QString, Macro *> it(MacroManager::macros());
-    while (it.hasNext()) {
-        it.next();
-        Macro *macro = it.value();
+    for (Macro *macro : MacroManager::macros()) {
         QFileInfo fileInfo(macro->fileName());
         if (fileInfo.absoluteDir() == dir.absolutePath()) {
-            QTreeWidgetItem *macroItem = new QTreeWidgetItem(m_ui->treeWidget);
+            auto macroItem = new QTreeWidgetItem(m_ui->treeWidget);
             macroItem->setText(0, macro->displayName());
             macroItem->setText(1, macro->description());
             macroItem->setData(0, NAME_ROLE, macro->displayName());
@@ -140,11 +135,8 @@ void MacroOptionsWidget::apply()
     }
 
     // Change macro
-    QMapIterator<QString, QString> it(m_macroToChange);
-    while (it.hasNext()) {
-        it.next();
+    for (auto it = m_macroToChange.cbegin(), end = m_macroToChange.cend(); it != end; ++it)
         MacroManager::instance()->changeMacro(it.key(), it.value());
-    }
 
     // Reinitialize the page
     initialize();

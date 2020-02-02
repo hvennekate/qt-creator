@@ -58,14 +58,31 @@ public:
     { return check<QString>(error, languageKey) && check<QString>(error, valueKey); }
 };
 
-class MarkedString : public Utils::variant<MarkedLanguageString, QList<MarkedLanguageString>, MarkupContent>
+class LANGUAGESERVERPROTOCOL_EXPORT MarkedString
+    : public Utils::variant<QString, MarkedLanguageString>
 {
 public:
     MarkedString() = default;
-    explicit MarkedString(const MarkedLanguageString &other) : variant(other) {}
-    explicit MarkedString(const QList<MarkedLanguageString> &other) : variant(other) {}
-    explicit MarkedString(const MarkupContent &other) : variant(other) {}
+    explicit MarkedString(const MarkedLanguageString &other)
+        : variant(other)
+    {}
+    explicit MarkedString(const QString &other)
+        : variant(other)
+    {}
     explicit MarkedString(const QJsonValue &value);
+
+    operator QJsonValue() const;
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT HoverContent
+    : public Utils::variant<MarkedString, QList<MarkedString>, MarkupContent>
+{
+public:
+    HoverContent() = default;
+    explicit HoverContent(const MarkedString &other) : variant(other) {}
+    explicit HoverContent(const QList<MarkedString> &other) : variant(other) {}
+    explicit HoverContent(const MarkupContent &other) : variant(other) {}
+    explicit HoverContent(const QJsonValue &value);
     bool isValid(QStringList *errorHierarchy) const;
 };
 
@@ -74,19 +91,19 @@ class LANGUAGESERVERPROTOCOL_EXPORT Hover : public JsonObject
 public:
     using JsonObject::JsonObject;
 
-    MarkedString content() const;
-    void setContent(const MarkedString &content);
+    HoverContent content() const;
+    void setContent(const HoverContent &content);
 
     Utils::optional<Range> range() const { return optionalValue<Range>(rangeKey); }
     void setRange(const Range &range) { insert(rangeKey, range); }
     void clearRange() { remove(rangeKey); }
 
     bool isValid(QStringList *error) const override
-    { return check<MarkedString>(error, contentKey) && checkOptional<Range>(error, rangeKey); }
+    { return check<HoverContent>(error, contentsKey) && checkOptional<Range>(error, rangeKey); }
 };
 
-class LANGUAGESERVERPROTOCOL_EXPORT HoverRequest : public Request<
-        Hover, LanguageClientNull, TextDocumentPositionParams>
+class LANGUAGESERVERPROTOCOL_EXPORT HoverRequest
+    : public Request<Hover, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     HoverRequest(const TextDocumentPositionParams &params = TextDocumentPositionParams());
@@ -180,8 +197,8 @@ public:
     bool isValid(QStringList *error) const override;
 };
 
-class LANGUAGESERVERPROTOCOL_EXPORT SignatureHelpRequest : public Request<
-        LanguageClientValue<SignatureHelp>, LanguageClientNull, TextDocumentPositionParams>
+class LANGUAGESERVERPROTOCOL_EXPORT SignatureHelpRequest
+    : public Request<LanguageClientValue<SignatureHelp>, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     SignatureHelpRequest(const TextDocumentPositionParams &params = TextDocumentPositionParams());
@@ -198,8 +215,8 @@ public:
     using variant::variant;
 };
 
-class LANGUAGESERVERPROTOCOL_EXPORT GotoDefinitionRequest : public Request<
-        GotoResult, LanguageClientNull, TextDocumentPositionParams>
+class LANGUAGESERVERPROTOCOL_EXPORT GotoDefinitionRequest
+    : public Request<GotoResult, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     GotoDefinitionRequest(const TextDocumentPositionParams &params = TextDocumentPositionParams());
@@ -208,7 +225,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT GotoTypeDefinitionRequest : public Request<
-        GotoResult, LanguageClientNull, TextDocumentPositionParams>
+        GotoResult, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     GotoTypeDefinitionRequest(
@@ -218,7 +235,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT GotoImplementationRequest : public Request<
-        GotoResult, LanguageClientNull, TextDocumentPositionParams>
+        GotoResult, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     GotoImplementationRequest(
@@ -235,6 +252,9 @@ public:
     class ReferenceContext : public JsonObject
     {
     public:
+        explicit ReferenceContext(bool includeDeclaration)
+        { setIncludeDeclaration(includeDeclaration); }
+        ReferenceContext() = default;
         using JsonObject::JsonObject;
         bool includeDeclaration() const { return typedValue<bool>(includeDeclarationKey); }
         void setIncludeDeclaration(bool includeDeclaration)
@@ -254,7 +274,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT FindReferencesRequest : public Request<
-        LanguageClientArray<Location>, LanguageClientNull, ReferenceParams>
+        LanguageClientArray<Location>, std::nullptr_t, ReferenceParams>
 {
 public:
     FindReferencesRequest(const ReferenceParams &params = ReferenceParams());
@@ -295,7 +315,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentHighlightsRequest : public Request<
-        DocumentHighlightsResult, LanguageClientNull, TextDocumentPositionParams>
+        DocumentHighlightsResult, std::nullptr_t, TextDocumentPositionParams>
 {
 public:
     DocumentHighlightsRequest(
@@ -323,17 +343,31 @@ public:
 using DocumentSymbolParams = TextDocumentParams;
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentSymbolsResult
-        : public Utils::variant<QList<SymbolInformation>, std::nullptr_t>
+        : public Utils::variant<QList<SymbolInformation>, QList<DocumentSymbol>, std::nullptr_t>
 {
 public:
     using variant::variant;
     DocumentSymbolsResult() : variant(nullptr) {}
     DocumentSymbolsResult(const QJsonValue &value);
+    DocumentSymbolsResult(const DocumentSymbolsResult &other) : variant(other) {}
+    DocumentSymbolsResult(DocumentSymbolsResult &&other) : variant(std::move(other)) {}
+
     using variant::operator=;
+    DocumentSymbolsResult &operator =(DocumentSymbolsResult &&other)
+    {
+        variant::operator=(std::move(other));
+        return *this;
+    }
+    DocumentSymbolsResult &operator =(const DocumentSymbolsResult &other)
+    {
+        variant::operator=(other);
+        return *this;
+    }
 };
 
+
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentSymbolsRequest
-        : public Request<DocumentSymbolsResult, LanguageClientNull, DocumentSymbolParams>
+        : public Request<DocumentSymbolsResult, std::nullptr_t, DocumentSymbolParams>
 {
 public:
     DocumentSymbolsRequest(const DocumentSymbolParams &params = DocumentSymbolParams());
@@ -341,12 +375,37 @@ public:
     constexpr static const char methodName[] = "textDocument/documentSymbol";
 };
 
+/**
+ * The kind of a code action.
+ *
+ * Kinds are a hierarchical list of identifiers separated by `.`, e.g. `"refactor.extract.function"`.
+ *
+ * The set of kinds is open and client needs to announce the kinds it supports to the server during
+ * initialization.
+ */
+
+using CodeActionKind = QString;
+
+/**
+ * A set of predefined code action kinds
+ */
+
+namespace CodeActionKinds {
+constexpr char QuickFix[] = "quickfix";
+constexpr char Refactor[] = "refactor";
+constexpr char RefactorExtract[] = "refactor.extract";
+constexpr char RefactorInline[] = "refactor.inline";
+constexpr char RefactorRewrite[] = "refactor.rewrite";
+constexpr char Source[] = "source";
+constexpr char SourceOrganizeImports[] = "source.organizeImports";
+}
+
 class LANGUAGESERVERPROTOCOL_EXPORT CodeActionParams : public JsonObject
 {
 public:
     using JsonObject::JsonObject;
 
-    class CodeActionContext : public JsonObject
+    class LANGUAGESERVERPROTOCOL_EXPORT CodeActionContext : public JsonObject
     {
     public:
         using JsonObject::JsonObject;
@@ -354,6 +413,10 @@ public:
         QList<Diagnostic> diagnostics() const { return array<Diagnostic>(diagnosticsKey); }
         void setDiagnostics(const QList<Diagnostic> &diagnostics)
         { insertArray(diagnosticsKey, diagnostics); }
+
+        Utils::optional<QList<CodeActionKind>> only() const;
+        void setOnly(const QList<CodeActionKind> &only);
+        void clearOnly() { remove(onlyKey); }
 
         bool isValid(QStringList *error) const override;
     };
@@ -372,8 +435,45 @@ public:
     bool isValid(QStringList *error) const override;
 };
 
+class LANGUAGESERVERPROTOCOL_EXPORT CodeAction : public JsonObject
+{
+public:
+    using JsonObject::JsonObject;
+
+    QString title() const { return typedValue<QString>(titleKey); }
+    void setTitle(QString title) { insert(titleKey, title); }
+
+    Utils::optional<CodeActionKind> kind() const { return optionalValue<CodeActionKind>(kindKey); }
+    void setKind(const CodeActionKind &kind) { insert(kindKey, kind); }
+    void clearKind() { remove(kindKey); }
+
+    Utils::optional<QList<Diagnostic>> diagnostics() const
+    { return optionalArray<Diagnostic>(diagnosticsKey); }
+    void setDiagnostics(const QList<Diagnostic> &diagnostics)
+    { insertArray(diagnosticsKey, diagnostics); }
+    void clearDiagnostics() { remove(diagnosticsKey); }
+
+    Utils::optional<WorkspaceEdit> edit() const { return optionalValue<WorkspaceEdit>(editKey); }
+    void setEdit(const WorkspaceEdit &edit) { insert(editKey, edit); }
+    void clearEdit() { remove(editKey); }
+
+    Utils::optional<Command> command() const { return optionalValue<Command>(commandKey); }
+    void setCommand(const Command &command) { insert(commandKey, command); }
+    void clearCommand() { remove(commandKey); }
+
+    bool isValid(QStringList *) const override;
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT CodeActionResult
+    : public Utils::variant<QList<Utils::variant<Command, CodeAction>>, std::nullptr_t>
+{
+public:
+    using variant::variant;
+    explicit CodeActionResult(const QJsonValue &val);
+};
+
 class LANGUAGESERVERPROTOCOL_EXPORT CodeActionRequest : public Request<
-        LanguageClientArray<Command>, LanguageClientNull, CodeActionParams>
+        CodeActionResult, std::nullptr_t, CodeActionParams>
 {
 public:
     CodeActionRequest(const CodeActionParams &params = CodeActionParams());
@@ -404,7 +504,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT CodeLensRequest : public Request<
-        LanguageClientArray<CodeLens>, LanguageClientNull, CodeLensParams>
+        LanguageClientArray<CodeLens>, std::nullptr_t, CodeLensParams>
 {
 public:
     CodeLensRequest(const CodeLensParams &params = CodeLensParams());
@@ -413,7 +513,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT CodeLensResolveRequest : public Request<
-        CodeLens, LanguageClientNull, CodeLens>
+        CodeLens, std::nullptr_t, CodeLens>
 {
 public:
     CodeLensResolveRequest(const CodeLens &params = CodeLens());
@@ -444,7 +544,7 @@ public:
 using DocumentLinkParams = TextDocumentParams;
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentLinkRequest : public Request<
-        LanguageClientValue<DocumentLink>, LanguageClientNull, DocumentLinkParams>
+        LanguageClientValue<DocumentLink>, std::nullptr_t, DocumentLinkParams>
 {
 public:
     DocumentLinkRequest(const DocumentLinkParams &params = DocumentLinkParams());
@@ -453,7 +553,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentLinkResolveRequest : public Request<
-        DocumentLink, LanguageClientNull, DocumentLink>
+        DocumentLink, std::nullptr_t, DocumentLink>
 {
 public:
     DocumentLinkResolveRequest(const DocumentLink &params = DocumentLink());
@@ -499,7 +599,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentColorRequest : public Request<
-        QList<ColorInformation>, LanguageClientNull, DocumentColorParams>
+        QList<ColorInformation>, std::nullptr_t, DocumentColorParams>
 {
 public:
     DocumentColorRequest(const DocumentColorParams &params = DocumentColorParams());
@@ -553,7 +653,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT ColorPresentationRequest : public Request<
-        QList<ColorPresentation>, LanguageClientNull, ColorPresentationParams>
+        QList<ColorPresentation>, std::nullptr_t, ColorPresentationParams>
 {
 public:
     ColorPresentationRequest(const ColorPresentationParams &params = ColorPresentationParams());
@@ -610,7 +710,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentFormattingRequest : public Request<
-        LanguageClientArray<TextEdit>, LanguageClientNull, DocumentFormattingParams>
+        LanguageClientArray<TextEdit>, std::nullptr_t, DocumentFormattingParams>
 {
 public:
     DocumentFormattingRequest(const DocumentFormattingParams &params = DocumentFormattingParams());
@@ -638,10 +738,10 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentRangeFormattingRequest : public Request<
-        QList<TextEdit>, LanguageClientNull, DocumentFormattingParams>
+        LanguageClientArray<TextEdit>, std::nullptr_t, DocumentRangeFormattingParams>
 {
 public:
-    DocumentRangeFormattingRequest(const DocumentFormattingParams &params = DocumentFormattingParams());
+    DocumentRangeFormattingRequest(const DocumentRangeFormattingParams &params = DocumentRangeFormattingParams());
     using Request::Request;
     constexpr static const char methodName[] = "textDocument/rangeFormatting";
 };
@@ -669,7 +769,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT DocumentOnTypeFormattingRequest : public Request<
-        QList<TextEdit>, LanguageClientNull, DocumentFormattingParams>
+        QList<TextEdit>, std::nullptr_t, DocumentFormattingParams>
 {
 public:
     DocumentOnTypeFormattingRequest(
@@ -698,12 +798,68 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT RenameRequest : public Request<
-        WorkspaceEdit, LanguageClientNull, RenameParams>
+        WorkspaceEdit, std::nullptr_t, RenameParams>
 {
 public:
     RenameRequest(const RenameParams &params = RenameParams());
     using Request::Request;
     constexpr static const char methodName[] = "textDocument/rename";
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT SemanticHighlightToken
+{
+public:
+    // Just accepts token with 8 bytes
+    SemanticHighlightToken(const QByteArray &token);
+    SemanticHighlightToken() = default;
+
+    void appendToByteArray(QByteArray &byteArray) const;
+
+    quint32 character = 0;
+    quint16 length = 0;
+    quint16 scope = 0;
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT SemanticHighlightingInformation : public JsonObject
+{
+public:
+    using JsonObject::JsonObject;
+
+    int line() const { return typedValue<int>(lineKey); }
+    void setLine(int line) { insert(lineKey, line); }
+
+    Utils::optional<QList<SemanticHighlightToken>> tokens() const;
+    void setTokens(const QList<SemanticHighlightToken> &tokens);
+    void clearTokens() { remove(tokensKey); }
+
+    bool isValid(QStringList *error) const override
+    { return check<int>(error, lineKey) && checkOptional<QString>(error, tokensKey); }
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT SemanticHighlightingParams : public JsonObject
+{
+public:
+    using JsonObject::JsonObject;
+
+    VersionedTextDocumentIdentifier textDocument() const
+    { return typedValue<VersionedTextDocumentIdentifier>(textDocumentKey); }
+    void setTextDocument(const VersionedTextDocumentIdentifier &textDocument)
+    { insert(textDocumentKey, textDocument); }
+
+    QList<SemanticHighlightingInformation> lines() const
+    { return array<SemanticHighlightingInformation>(linesKey); }
+    void setLines(const QList<SemanticHighlightingInformation> &lines)
+    { insertArray(linesKey, lines); }
+
+    bool isValid(QStringList *error) const override;
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT SemanticHighlightNotification
+    : public Notification<SemanticHighlightingParams>
+{
+public:
+    using Notification::Notification;
+    constexpr static const char methodName[] = "textDocument/semanticHighlighting";
 };
 
 } // namespace LanguageClient

@@ -42,6 +42,7 @@ const char RENAMEFILE[]           = "ProjectExplorer.RenameFile";
 const char REMOVEFILE[]           = "ProjectExplorer.RemoveFile";
 
 // Context
+const char C_PROJECTEXPLORER[]    = "Project Explorer";
 const char C_PROJECT_TREE[]       = "ProjectExplorer.ProjectTreeContext";
 
 // Menus
@@ -106,7 +107,7 @@ const char KITS_SETTINGS_CATEGORY[]  = "A.Kits";
 
 // Kits pages
 const char KITS_SETTINGS_PAGE_ID[] = "D.ProjectExplorer.KitsOptions";
-const char DEVICE_SETTINGS_PAGE_ID[] = "E.ProjectExplorer.DeviceOptions";
+const char SSH_SETTINGS_PAGE_ID[] = "F.ProjectExplorer.SshOptions";
 const char TOOLCHAIN_SETTINGS_PAGE_ID[] = "M.ProjectExplorer.ToolChainOptions";
 const char DEBUGGER_SETTINGS_PAGE_ID[] = "N.ProjectExplorer.DebuggerOptions";
 
@@ -118,11 +119,13 @@ const char BUILD_AND_RUN_SETTINGS_PAGE_ID[] = "A.ProjectExplorer.BuildAndRunOpti
 
 // Device settings page
 const char DEVICE_SETTINGS_CATEGORY[] = "XW.Devices";
+const char DEVICE_SETTINGS_PAGE_ID[] = "AA.Device Settings";
 
 // Task categories
 const char TASK_CATEGORY_COMPILE[] = "Task.Category.Compile";
 const char TASK_CATEGORY_BUILDSYSTEM[] = "Task.Category.Buildsystem";
 const char TASK_CATEGORY_DEPLOYMENT[] = "Task.Category.Deploy";
+const char TASK_CATEGORY_AUTOTEST[] = "Task.Category.Autotest";
 
 // Wizard categories
 const char QT_PROJECT_WIZARD_CATEGORY[] = "H.Project";
@@ -142,6 +145,7 @@ const char PREFERRED_PROJECT_NODE[] = "ProjectExplorer.PreferredProjectNode";
 const char PREFERRED_PROJECT_NODE_PATH[] = "ProjectExplorer.PreferredProjectPath";
 const char PROJECT_POINTER[] = "ProjectExplorer.Project";
 const char PROJECT_KIT_IDS[] = "ProjectExplorer.Profile.Ids";
+const char QT_KEYWORDS_ENABLED[] = "ProjectExplorer.QtKeywordsEnabled";
 
 // Build step lists ids:
 const char BUILDSTEPS_CLEAN[] = "ProjectExplorer.BuildSteps.Clean";
@@ -184,6 +188,7 @@ const char VAR_CURRENTBUILD_NAME[] = "CurrentBuild:Name";
 const char VAR_CURRENTBUILD_TYPE[] = "CurrentBuild:Type";
 const char VAR_CURRENTBUILD_ENV[] = "CurrentBuild:Env";
 const char VAR_CURRENTRUN_NAME[] = "CurrentRun:Name";
+const char VAR_CURRENTRUN_WORKINGDIR[] = "CurrentRun:WorkingDir";
 
 // JsonWizard:
 const char PAGE_ID_PREFIX[] = "PE.Wizard.Page.";
@@ -192,10 +197,13 @@ const char GENERATOR_ID_PREFIX[] = "PE.Wizard.Generator.";
 // RunMode
 const char NO_RUN_MODE[]="RunConfiguration.NoRunMode";
 const char NORMAL_RUN_MODE[]="RunConfiguration.NormalRunMode";
-const char QML_PROFILER_RUN_MODE[]="RunConfiguration.QmlProfilerRunMode";
-const char PERFPROFILER_RUN_MODE[]="PerfProfiler.RunMode";
 const char DEBUG_RUN_MODE[]="RunConfiguration.DebugRunMode";
+const char QML_PROFILER_RUN_MODE[]="RunConfiguration.QmlProfilerRunMode";
+const char QML_PROFILER_RUNNER[]="RunConfiguration.QmlProfilerRunner";
 const char QML_PREVIEW_RUN_MODE[]="RunConfiguration.QmlPreviewRunMode";
+const char QML_PREVIEW_RUNNER[]="RunConfiguration.QmlPreviewRunner";
+const char PERFPROFILER_RUN_MODE[]="PerfProfiler.RunMode";
+const char PERFPROFILER_RUNNER[]="PerfProfiler.Runner";
 
 // Navigation Widget
 const char PROJECTTREE_ID[] = "Projects";
@@ -208,7 +216,14 @@ const char FILEOVERLAY_QRC[]=":/projectexplorer/images/fileoverlay_qrc.png";
 const char FILEOVERLAY_CPP[]=":/projectexplorer/images/fileoverlay_cpp.png";
 const char FILEOVERLAY_H[]=":/projectexplorer/images/fileoverlay_h.png";
 const char FILEOVERLAY_SCXML[]=":/projectexplorer/images/fileoverlay_scxml.png";
+const char FILEOVERLAY_PY[]=":/projectexplorer/images/fileoverlay_py.png";
 const char FILEOVERLAY_UNKNOWN[]=":/projectexplorer/images/fileoverlay_unknown.png";
+
+// Settings
+const char ADD_FILES_DIALOG_FILTER_HISTORY_KEY[] = "ProjectExplorer.AddFilesFilterKey";
+const char PROJECT_ROOT_PATH_KEY[] = "ProjectExplorer.Project.RootPath";
+const char STARTUPSESSION_KEY[] = "ProjectExplorer/SessionToRestore";
+const char LASTSESSION_KEY[] = "ProjectExplorer/StartupSession";
 
 } // namespace Constants
 } // namespace ProjectExplorer

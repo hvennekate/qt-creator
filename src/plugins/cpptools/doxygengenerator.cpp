@@ -42,12 +42,7 @@
 using namespace CppTools;
 using namespace CPlusPlus;
 
-DoxygenGenerator::DoxygenGenerator()
-    : m_addLeadingAsterisks(true)
-    , m_generateBrief(true)
-    , m_startComment(true)
-    , m_style(QtStyle)
-{}
+DoxygenGenerator::DoxygenGenerator() = default;
 
 void DoxygenGenerator::setStyle(DocumentationStyle style)
 {
@@ -81,7 +76,7 @@ static int lineBeforeCursor(const QTextCursor &cursor)
 
 QString DoxygenGenerator::generate(QTextCursor cursor,
                                    const CPlusPlus::Snapshot &snapshot,
-                                   const Utils::FileName &documentFilePath)
+                                   const Utils::FilePath &documentFilePath)
 {
     const QTextCursor initialCursor = cursor;
 
@@ -113,6 +108,10 @@ QString DoxygenGenerator::generate(QTextCursor cursor,
         return QString();
 
     QString declCandidate = cursor.selectedText();
+
+    if (declCandidate.startsWith(QLatin1String("Q_INVOKABLE")))
+        declCandidate = declCandidate.mid(11);
+
     declCandidate.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
 
     // Let's append a closing brace in the case we got content like 'class MyType {'
@@ -136,8 +135,8 @@ QString DoxygenGenerator::generate(QTextCursor cursor,
 
 QString DoxygenGenerator::generate(QTextCursor cursor, DeclarationAST *decl)
 {
-    SpecifierAST *spec = 0;
-    DeclaratorAST *decltr = 0;
+    SpecifierAST *spec = nullptr;
+    DeclaratorAST *decltr = nullptr;
     if (SimpleDeclarationAST *simpleDecl = decl->asSimpleDeclaration()) {
         if (simpleDecl->declarator_list
                 && simpleDecl->declarator_list->value) {

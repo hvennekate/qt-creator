@@ -28,6 +28,7 @@
 #include "projectexplorer_export.h"
 
 #include "buildinfo.h"
+#include "kit.h"
 #include "task.h"
 
 #include <QWidget>
@@ -48,7 +49,6 @@ class PathChooser;
 
 namespace ProjectExplorer {
 class BuildInfo;
-class Kit;
 
 namespace Internal {
 
@@ -57,8 +57,7 @@ class TargetSetupWidget : public QWidget
     Q_OBJECT
 
 public:
-    TargetSetupWidget(Kit *k,
-                      const QString &projectPath);
+    TargetSetupWidget(Kit *k, const Utils::FilePath &projectPath);
 
     Kit *kit() const;
     void clearKit();
@@ -66,31 +65,34 @@ public:
     bool isKitSelected() const;
     void setKitSelected(bool b);
 
-    void addBuildInfo(BuildInfo *info, bool isImport);
+    void addBuildInfo(const BuildInfo &info, bool isImport);
 
-    QList<const BuildInfo *> selectedBuildInfoList() const;
-    void setProjectPath(const QString &projectPath);
+    const QList<BuildInfo> selectedBuildInfoList() const;
+    void setProjectPath(const Utils::FilePath &projectPath);
     void expandWidget();
+    void update(const Kit::Predicate &predicate);
 
 signals:
     void selectedToggled() const;
 
 private:
-    static QList<BuildInfo *> buildInfoList(const Kit *k, const QString &projectPath);
+    static const QList<BuildInfo> buildInfoList(const Kit *k, const Utils::FilePath &projectPath);
 
-    void handleKitUpdate(ProjectExplorer::Kit *k);
+    bool hasSelectedBuildConfigurations() const;
 
+    void toggleEnabled(bool enabled);
     void checkBoxToggled(bool b);
     void pathChanged();
     void targetCheckBoxToggled(bool b);
     void manageKit();
 
     void reportIssues(int index);
-    QPair<Task::TaskType, QString> findIssues(const BuildInfo *info);
+    QPair<Task::TaskType, QString> findIssues(const BuildInfo &info);
     void clear();
+    void updateDefaultBuildDirectories();
 
     Kit *m_kit;
-    QString m_projectPath;
+    Utils::FilePath m_projectPath;
     bool m_haveImported = false;
     Utils::DetailsWidget *m_detailsWidget;
     QPushButton *m_manageButton;
@@ -104,18 +106,19 @@ private:
         BuildInfoStore &operator=(const BuildInfoStore &other) = delete;
         BuildInfoStore &operator=(BuildInfoStore &&other) = delete;
 
-        BuildInfo *buildInfo = nullptr;
+        BuildInfo buildInfo;
         QCheckBox *checkbox = nullptr;
         QLabel *label = nullptr;
         QLabel *issuesLabel = nullptr;
         Utils::PathChooser *pathChooser = nullptr;
         bool isEnabled = false;
         bool hasIssues = false;
+        bool customBuildDir = false;
     };
     std::vector<BuildInfoStore> m_infoStore;
 
     bool m_ignoreChange = false;
-    int m_selected = 0; // Number of selected "buildconfiguartions"
+    int m_selected = 0; // Number of selected "buildconfigurations"
 };
 
 } // namespace Internal

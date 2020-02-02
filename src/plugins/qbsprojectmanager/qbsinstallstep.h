@@ -26,48 +26,42 @@
 #pragma once
 
 #include "qbsbuildconfiguration.h"
+#include "qbssession.h"
 
 #include <projectexplorer/buildstep.h>
 #include <projectexplorer/task.h>
 
-#include <qbs.h>
-
 namespace QbsProjectManager {
 namespace Internal {
-
-class QbsInstallStepConfigWidget;
+class ErrorInfo;
+class QbsSession;
 
 class QbsInstallStep : public ProjectExplorer::BuildStep
 {
     Q_OBJECT
 
 public:
-    explicit QbsInstallStep(ProjectExplorer::BuildStepList *bsl);
+    QbsInstallStep(ProjectExplorer::BuildStepList *bsl, Core::Id id);
     ~QbsInstallStep() override;
 
-    bool init(QList<const BuildStep *> &earlierSteps) override;
-
-    void run(QFutureInterface<bool> &fi) override;
-
-    ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
-
-    void cancel() override;
-
-    bool fromMap(const QVariantMap &map) override;
-    QVariantMap toMap() const override;
-
-    qbs::InstallOptions installOptions() const;
     QString installRoot() const;
-    bool removeFirst() const;
-    bool dryRun() const;
-    bool keepGoing() const;
+    bool removeFirst() const { return m_cleanInstallRoot; }
+    bool dryRun() const { return m_dryRun; }
+    bool keepGoing() const { return m_keepGoing; }
 
 signals:
     void changed();
 
 private:
+    bool init() override;
+    void doRun() override;
+    void doCancel() override;
+    ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
+    bool fromMap(const QVariantMap &map) override;
+    QVariantMap toMap() const override;
+
     const QbsBuildConfiguration *buildConfig() const;
-    void installDone(bool success);
+    void installDone(const ErrorInfo &error);
     void handleTaskStarted(const QString &desciption, int max);
     void handleProgress(int value);
 
@@ -77,40 +71,17 @@ private:
     void setRemoveFirst(bool rf);
     void setDryRun(bool dr);
     void setKeepGoing(bool kg);
-    void handleBuildConfigChanged();
 
-    qbs::InstallOptions m_qbsInstallOptions;
+    bool m_cleanInstallRoot = false;
+    bool m_dryRun = false;
+    bool m_keepGoing = false;
 
-    QFutureInterface<bool> *m_fi = nullptr;
-    qbs::InstallJob *m_job = nullptr;
-    int m_progressBase;
-    bool m_showCompilerOutput = true;
+    QbsSession *m_session = nullptr;
+    QString m_description;
+    int m_maxProgress;
     ProjectExplorer::IOutputParser *m_parser = nullptr;
 
     friend class QbsInstallStepConfigWidget;
-};
-
-namespace Ui { class QbsInstallStepConfigWidget; }
-
-class QbsInstallStepConfigWidget : public ProjectExplorer::BuildStepConfigWidget
-{
-    Q_OBJECT
-public:
-    QbsInstallStepConfigWidget(QbsInstallStep *step);
-    ~QbsInstallStepConfigWidget() override;
-
-private:
-    void updateState();
-
-    void changeRemoveFirst(bool rf);
-    void changeDryRun(bool dr);
-    void changeKeepGoing(bool kg);
-
-private:
-    Ui::QbsInstallStepConfigWidget *m_ui;
-
-    QbsInstallStep *m_step;
-    bool m_ignoreChange;
 };
 
 class QbsInstallStepFactory : public ProjectExplorer::BuildStepFactory

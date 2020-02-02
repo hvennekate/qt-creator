@@ -83,12 +83,12 @@ QString GenericProjectWizardDialog::path() const
     return m_firstPage->path();
 }
 
-Utils::FileNameList GenericProjectWizardDialog::selectedPaths() const
+Utils::FilePaths GenericProjectWizardDialog::selectedPaths() const
 {
     return m_secondPage->selectedPaths();
 }
 
-Utils::FileNameList GenericProjectWizardDialog::selectedFiles() const
+Utils::FilePaths GenericProjectWizardDialog::selectedFiles() const
 {
     return m_secondPage->selectedFiles();
 }
@@ -149,7 +149,9 @@ Core::GeneratedFiles GenericProjectWizard::generateFiles(const QWizard *w,
     const QString filesFileName = QFileInfo(dir, projectName + QLatin1String(".files")).absoluteFilePath();
     const QString includesFileName = QFileInfo(dir, projectName + QLatin1String(".includes")).absoluteFilePath();
     const QString configFileName = QFileInfo(dir, projectName + QLatin1String(".config")).absoluteFilePath();
-    const QStringList paths = Utils::transform(wizard->selectedPaths(), &Utils::FileName::toString);
+    const QString cxxflagsFileName = QFileInfo(dir, projectName + QLatin1String(".cxxflags")).absoluteFilePath();
+    const QString cflagsFileName = QFileInfo(dir, projectName + QLatin1String(".cflags")).absoluteFilePath();
+    const QStringList paths = Utils::transform(wizard->selectedPaths(), &Utils::FilePath::toString);
 
     Utils::MimeType headerTy = Utils::mimeTypeForName(QLatin1String("text/x-chdr"));
 
@@ -173,7 +175,7 @@ Core::GeneratedFiles GenericProjectWizard::generateFiles(const QWizard *w,
     generatedCreatorFile.setContents(QLatin1String("[General]\n"));
     generatedCreatorFile.setAttributes(Core::GeneratedFile::OpenProjectAttribute);
 
-    QStringList sources = Utils::transform(wizard->selectedFiles(), &Utils::FileName::toString);
+    QStringList sources = Utils::transform(wizard->selectedFiles(), &Utils::FilePath::toString);
     for (int i = 0; i < sources.length(); ++i)
         sources[i] = dir.relativeFilePath(sources[i]);
     Utils::sort(sources);
@@ -188,11 +190,20 @@ Core::GeneratedFiles GenericProjectWizard::generateFiles(const QWizard *w,
     Core::GeneratedFile generatedConfigFile(configFileName);
     generatedConfigFile.setContents(QLatin1String(ConfigFileTemplate));
 
+    Core::GeneratedFile generatedCxxFlagsFile(cxxflagsFileName);
+    generatedCxxFlagsFile.setContents(
+        QLatin1String(Constants::GENERICPROJECT_CXXFLAGS_FILE_TEMPLATE));
+
+    Core::GeneratedFile generatedCFlagsFile(cflagsFileName);
+    generatedCFlagsFile.setContents(QLatin1String(Constants::GENERICPROJECT_CFLAGS_FILE_TEMPLATE));
+
     Core::GeneratedFiles files;
     files.append(generatedFilesFile);
     files.append(generatedIncludesFile);
     files.append(generatedConfigFile);
     files.append(generatedCreatorFile);
+    files.append(generatedCxxFlagsFile);
+    files.append(generatedCFlagsFile);
 
     return files;
 }
@@ -200,7 +211,7 @@ Core::GeneratedFiles GenericProjectWizard::generateFiles(const QWizard *w,
 bool GenericProjectWizard::postGenerateFiles(const QWizard *w, const Core::GeneratedFiles &l,
                                              QString *errorMessage) const
 {
-    Q_UNUSED(w);
+    Q_UNUSED(w)
     return ProjectExplorer::CustomProjectWizard::postGenerateOpen(l, errorMessage);
 }
 

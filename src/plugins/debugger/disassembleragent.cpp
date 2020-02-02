@@ -66,7 +66,7 @@ class DisassemblerBreakpointMarker : public TextMark
 {
 public:
     DisassemblerBreakpointMarker(const Breakpoint &bp, int lineNumber)
-        : TextMark(Utils::FileName(), lineNumber, Constants::TEXT_MARK_CATEGORY_BREAKPOINT), m_bp(bp)
+        : TextMark(Utils::FilePath(), lineNumber, Constants::TEXT_MARK_CATEGORY_BREAKPOINT), m_bp(bp)
     {
         setIcon(bp->icon());
         setPriority(TextMark::NormalPriority);
@@ -106,7 +106,7 @@ bool FrameKey::matches(const Location &loc) const
 {
     return loc.address() >= startAddress
             && loc.address() <= endAddress
-            && loc.fileName() == fileName
+            && loc.fileName().toString() == fileName
             && loc.functionName() == functionName;
 }
 
@@ -141,14 +141,14 @@ public:
 DisassemblerAgentPrivate::DisassemblerAgentPrivate(DebuggerEngine *engine)
   : document(nullptr),
     engine(engine),
-    locationMark(engine, Utils::FileName(), 0),
+    locationMark(engine, Utils::FilePath(), 0),
     mimeType("text/x-qtcreator-generic-asm"),
     resetLocationScheduled(false)
 {}
 
 DisassemblerAgentPrivate::~DisassemblerAgentPrivate()
 {
-    EditorManager::closeDocuments(QList<IDocument *>() << document);
+    EditorManager::closeDocuments({document});
     document = nullptr;
     qDeleteAll(breakpointMarks);
 }
@@ -248,7 +248,7 @@ void DisassemblerAgent::setLocation(const Location &loc)
             QString("Using cached disassembly for 0x%1 (0x%2-0x%3) in \"%4\"/ \"%5\"")
                 .arg(loc.address(), 0, 16)
                 .arg(key.startAddress, 0, 16).arg(key.endAddress, 0, 16)
-                .arg(loc.functionName(), QDir::toNativeSeparators(loc.fileName()));
+                .arg(loc.functionName(), loc.fileName().toUserOutput());
         d->engine->showMessage(msg);
         setContentsToDocument(d->cache.at(index).second);
         d->resetLocationScheduled = false; // In case reset from previous run still pending.
@@ -295,7 +295,7 @@ void DisassemblerAgent::setContents(const DisassemblerLines &contents)
         const quint64 endAddress = contents.endAddress();
         if (startAddress) {
             FrameKey key;
-            key.fileName = d->location.fileName();
+            key.fileName = d->location.fileName().toString();
             key.functionName = d->location.functionName();
             key.startAddress = startAddress;
             key.endAddress = endAddress;
@@ -325,7 +325,7 @@ void DisassemblerAgent::setContentsToDocument(const DisassemblerLines &contents)
         // Make that a proper TextDocument reimplementation.
         d->document->setProperty(Debugger::Constants::OPENED_BY_DEBUGGER, true);
         d->document->setProperty(Debugger::Constants::OPENED_WITH_DISASSEMBLY, true);
-        d->document->setProperty(Debugger::Constants::DISASSEMBLER_SOURCE_FILE, d->location.fileName());
+        d->document->setProperty(Debugger::Constants::DISASSEMBLER_SOURCE_FILE, d->location.fileName().toString());
         d->configureMimeType();
     } else {
         EditorManager::activateEditorForDocument(d->document);

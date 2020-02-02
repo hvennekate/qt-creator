@@ -44,7 +44,6 @@ namespace Internal {
 
     using InternalNodePointer = QSharedPointer<InternalNode>;
     using InternalPropertyPointer = QSharedPointer<InternalProperty>;
-    using InternalNodeWeakPointer = QWeakPointer<InternalNode>;
 }
 class NodeMetaInfo;
 class AbstractProperty;
@@ -108,6 +107,9 @@ public:
     bool hasParentProperty() const;
 
     const QList<ModelNode> directSubModelNodes() const;
+    const QList<ModelNode> directSubModelNodesOfType(const TypeName &typeName) const;
+    const QList<ModelNode> subModelNodesOfType(const TypeName &typeName) const;
+
     const QList<ModelNode> allSubModelNodes() const;
     const QList<ModelNode> allSubModelNodesAndThisNode() const;
     bool hasAnySubModelNodes() const;
@@ -132,6 +134,7 @@ public:
     QList<NodeProperty> nodeProperties() const;
     QList<NodeListProperty> nodeListProperties() const;
     QList<BindingProperty> bindingProperties() const;
+    QList<SignalHandlerProperty> signalProperties() const;
     PropertyNameList propertyNames() const;
 
     bool hasProperties() const;
@@ -174,7 +177,7 @@ public:
     static int variantUserType();
     QVariant toVariant() const;
 
-    QVariant auxiliaryData(const PropertyName &name) const;
+    const QVariant auxiliaryData(const PropertyName &name) const;
     void setAuxiliaryData(const PropertyName &name, const QVariant &data) const;
     void removeAuxiliaryData(const PropertyName &name) const;
     bool hasAuxiliaryData(const PropertyName &name) const;

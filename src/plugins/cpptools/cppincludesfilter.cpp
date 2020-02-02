@@ -37,9 +37,9 @@
 #include <QTimer>
 
 using namespace Core;
-using namespace CppTools;
-using namespace CppTools::Internal;
 using namespace ProjectExplorer;
+using namespace Utils;
+
 namespace CppTools {
 namespace Internal {
 
@@ -48,11 +48,10 @@ class CppIncludesIterator : public BaseFileFilter::Iterator
 public:
     CppIncludesIterator(CPlusPlus::Snapshot snapshot, const QSet<QString> &seedPaths);
 
-    void toFront();
-    bool hasNext() const;
-    QString next();
-    QString filePath() const;
-    QString fileName() const;
+    void toFront() override;
+    bool hasNext() const override;
+    Utils::FilePath next() override;
+    Utils::FilePath filePath() const override;
 
 private:
     void fetchMore();
@@ -62,12 +61,8 @@ private:
     QSet<QString> m_queuedPaths;
     QSet<QString> m_allResultPaths;
     QStringList m_resultQueue;
-    QString m_currentPath;
+    FilePath m_currentPath;
 };
-
-} // Internal
-} // CppTools
-
 
 CppIncludesIterator::CppIncludesIterator(CPlusPlus::Snapshot snapshot,
                                          const QSet<QString> &seedPaths)
@@ -90,24 +85,19 @@ bool CppIncludesIterator::hasNext() const
     return !m_resultQueue.isEmpty();
 }
 
-QString CppIncludesIterator::next()
+FilePath CppIncludesIterator::next()
 {
     if (m_resultQueue.isEmpty())
-        return QString();
-    m_currentPath = m_resultQueue.takeFirst();
+        return {};
+    m_currentPath = FilePath::fromString(m_resultQueue.takeFirst());
     if (m_resultQueue.isEmpty())
         fetchMore();
     return m_currentPath;
 }
 
-QString CppIncludesIterator::filePath() const
+FilePath CppIncludesIterator::filePath() const
 {
     return m_currentPath;
-}
-
-QString CppIncludesIterator::fileName() const
-{
-    return QFileInfo(m_currentPath).fileName();
 }
 
 void CppIncludesIterator::fetchMore()
@@ -160,8 +150,8 @@ void CppIncludesFilter::prepareSearch(const QString &entry)
         m_needsUpdate = false;
         QSet<QString> seedPaths;
         for (Project *project : SessionManager::projects()) {
-            const Utils::FileNameList allFiles = project->files(Project::AllFiles);
-            for (const Utils::FileName &filePath : allFiles )
+            const Utils::FilePaths allFiles = project->files(Project::SourceFiles);
+            for (const Utils::FilePath &filePath : allFiles )
                 seedPaths.insert(filePath.toString());
         }
         const QList<DocumentModel::Entry *> entries = DocumentModel::entries();
@@ -184,5 +174,9 @@ void CppIncludesFilter::refresh(QFutureInterface<void> &future)
 void CppIncludesFilter::markOutdated()
 {
     m_needsUpdate = true;
-    setFileIterator(0); // clean up
+    setFileIterator(nullptr); // clean up
 }
+
+} // Internal
+} // CppTools
+

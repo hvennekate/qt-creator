@@ -40,9 +40,7 @@ using namespace CppTools;
 using namespace TextEditor;
 using namespace CppTools::Internal;
 
-CodeFormatter::~CodeFormatter()
-{
-}
+CodeFormatter::~CodeFormatter() = default;
 
 void CodeFormatter::setTabSize(int tabSize)
 {
@@ -181,8 +179,8 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
             switch (kind) {
             case T_LBRACE:      enter(brace_list_open); break;
             case T_RBRACE:      leave(true); continue;
-            case T_SEMICOLON:   leave(); continue;
-            case T_RPAREN:      leave(); continue;
+            case T_SEMICOLON:
+            case T_RPAREN:
             case T_COMMA:       leave(); continue;
             default:            enter(assign_open); continue;
             } break;
@@ -207,8 +205,8 @@ void CodeFormatter::recalculateStateAfter(const QTextBlock &block)
         case assign_open:
             switch (kind) {
             case T_RBRACE:      leave(true); continue;
-            case T_SEMICOLON:   leave(); continue;
-            case T_RPAREN:      leave(); continue;
+            case T_SEMICOLON:
+            case T_RPAREN:
             case T_COMMA:       leave(); continue;
             default:            tryExpression(); break;
             } break;
@@ -668,7 +666,7 @@ CodeFormatter::State CodeFormatter::state(int belowTop) const
     if (belowTop < m_currentState.size())
         return m_currentState.at(m_currentState.size() - 1 - belowTop);
     else
-        return State();
+        return {};
 }
 
 int CodeFormatter::tokenIndex() const
@@ -1056,6 +1054,8 @@ int CodeFormatter::tokenizeBlock(const QTextBlock &block, bool *endedJoined)
     features.qtKeywordsEnabled = true;
     features.cxxEnabled = true;
     features.objCEnabled = true;
+    features.cxx11Enabled = true;
+    features.cxx14Enabled = true;
 
     SimpleLexer tokenize;
     tokenize.setLanguageFeatures(features);
@@ -1098,9 +1098,7 @@ namespace Internal {
 }
 }
 
-QtStyleCodeFormatter::QtStyleCodeFormatter()
-{
-}
+QtStyleCodeFormatter::QtStyleCodeFormatter() = default;
 
 QtStyleCodeFormatter::QtStyleCodeFormatter(const TabSettings &tabSettings,
                                            const CppCodeStyleSettings &settings)
@@ -1124,7 +1122,7 @@ void QtStyleCodeFormatter::setCodeStyleSettings(const CppCodeStyleSettings &sett
 void QtStyleCodeFormatter::saveBlockData(QTextBlock *block, const BlockData &data) const
 {
     TextBlockUserData *userData = TextDocumentLayout::userData(*block);
-    CppCodeFormatterData *cppData = static_cast<CppCodeFormatterData *>(userData->codeFormatterData());
+    auto cppData = static_cast<CppCodeFormatterData *>(userData->codeFormatterData());
     if (!cppData) {
         cppData = new CppCodeFormatterData;
         userData->setCodeFormatterData(cppData);
@@ -1134,10 +1132,10 @@ void QtStyleCodeFormatter::saveBlockData(QTextBlock *block, const BlockData &dat
 
 bool QtStyleCodeFormatter::loadBlockData(const QTextBlock &block, BlockData *data) const
 {
-    TextBlockUserData *userData = TextDocumentLayout::testUserData(block);
+    TextBlockUserData *userData = TextDocumentLayout::textUserData(block);
     if (!userData)
         return false;
-    CppCodeFormatterData *cppData = static_cast<CppCodeFormatterData *>(userData->codeFormatterData());
+    auto cppData = static_cast<const CppCodeFormatterData *>(userData->codeFormatterData());
     if (!cppData)
         return false;
 

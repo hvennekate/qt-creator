@@ -436,6 +436,11 @@ QString DebuggerResponse::toString() const
 
 // Tested in tests/auto/debugger/tst_gdb.cpp
 
+//! Extract the GDB version number from the output of 'gdb --version'.
+//! \param[out] gdbVersion GDB version "hash" with major*10000 + minor*100 + patch
+//!             e.g. version GDB 3.7.14 will set this to 30714
+//! \param[out] gdbBuildVersion distribution dependent value
+//! \note See the file tests/auto/debugger/tst_gdb.cpp for example conversions.
 void extractGdbVersion(const QString &msg,
     int *gdbVersion, int *gdbBuildVersion, bool *isMacGdb, bool *isQnxGdb)
 {
@@ -452,7 +457,13 @@ void extractGdbVersion(const QString &msg,
     QString build;
     bool inClean = true;
     bool inParenthesis = false;
-    for (QChar c : msg) {
+
+    int gdbMsgBegin = msg.indexOf("GNU gdb");
+    if (gdbMsgBegin == -1)
+      gdbMsgBegin = 0;
+
+    for (int i = gdbMsgBegin, gdbMsgSize = msg.size(); i < gdbMsgSize; ++i) {
+        QChar c = msg.at(i);
         if (inClean && !cleaned.isEmpty() && c != dot && (c.isPunct() || c.isSpace()))
             inClean = false;
         if (ignoreParenthesisContent) {
@@ -647,7 +658,7 @@ QString decodeData(const QString &ba, const QString &encoding)
         case DebuggerEncoding::JulianDateAndMillisecondsSinceMidnight: {
             const int p = ba.indexOf('/');
             const QDate date = dateFromData(ba.left(p).toInt());
-            const QTime time = timeFromData(ba.mid(p + 1 ).toInt());
+            const QTime time = timeFromData(ba.midRef(p + 1 ).toInt());
             const QDateTime dateTime = QDateTime(date, time);
             return dateTime.isValid() ? dateTime.toString(Qt::TextDate) : "(invalid)";
         }
@@ -688,15 +699,15 @@ QString decodeData(const QString &ba, const QString &encoding)
 
             qint64 msecs = ba.left(p0).toLongLong();
             ++p0;
-            Qt::TimeSpec spec = Qt::TimeSpec(ba.mid(p0, p1 - p0).toInt());
+            Qt::TimeSpec spec = Qt::TimeSpec(ba.midRef(p0, p1 - p0).toInt());
             ++p1;
-            qulonglong offset = ba.mid(p1, p2 - p1).toInt();
+            qulonglong offset = ba.midRef(p1, p2 - p1).toInt();
             ++p2;
             QByteArray timeZoneId = QByteArray::fromHex(ba.mid(p2, p3 - p2).toUtf8());
             ++p3;
-            int status = ba.mid(p3, p4 - p3).toInt();
+            int status = ba.midRef(p3, p4 - p3).toInt();
             ++p4;
-            int tiVersion = ba.mid(p4).toInt();
+            int tiVersion = ba.midRef(p4).toInt();
 
             QDate date;
             QTime time;
@@ -798,6 +809,11 @@ void DebuggerCommand::arg(const char *name, bool value)
 void DebuggerCommand::arg(const char *name, const QJsonValue &value)
 {
     args = addToJsonObject(args, name, value);
+}
+
+void DebuggerCommand::arg(const char *name, const Utils::FilePath &filePath)
+{
+    args = addToJsonObject(args, name, filePath.toString());
 }
 
 static QJsonValue translateJsonToPython(const QJsonValue &value)

@@ -25,18 +25,11 @@
 
 #include "nodeinstanceview.h"
 
-#include <QUrl>
-#include <QGraphicsView>
-#include <QGraphicsScene>
-#include <QMultiHash>
-#include <QTimerEvent>
-
 #include <model.h>
 #include <modelnode.h>
 #include <metainfo.h>
 #include <nodehints.h>
 #include <rewriterview.h>
-
 #include "abstractproperty.h"
 #include "variantproperty.h"
 #include "bindingproperty.h"
@@ -47,16 +40,21 @@
 #include "qmlstate.h"
 #include "qmltimeline.h"
 #include "qmltimelinekeyframegroup.h"
-
+#include "qmlvisualnode.h"
+#include "qmldesignerconstants.h"
 #include "createscenecommand.h"
 #include "createinstancescommand.h"
 #include "clearscenecommand.h"
 #include "changefileurlcommand.h"
 #include "reparentinstancescommand.h"
+#include "update3dviewstatecommand.h"
+#include "enable3dviewcommand.h"
 #include "changevaluescommand.h"
 #include "changeauxiliarycommand.h"
 #include "changebindingscommand.h"
 #include "changeidscommand.h"
+#include "changeselectioncommand.h"
+#include "drop3dlibraryitemcommand.h"
 #include "changenodesourcecommand.h"
 #include "removeinstancescommand.h"
 #include "removepropertiescommand.h"
@@ -71,8 +69,22 @@
 #include "tokencommand.h"
 #include "removesharedmemorycommand.h"
 #include "debugoutputcommand.h"
-
 #include "nodeinstanceserverproxy.h"
+#include "puppettocreatorcommand.h"
+
+#ifndef QMLDESIGNER_TEST
+#include <qmldesignerplugin.h>
+#include <coreplugin/actionmanager/actionmanager.h>
+#include <coreplugin/editormanager/editormanager.h>
+#include <coreplugin/documentmanager.h>
+#endif
+
+#include <utils/algorithm.h>
+#include <utils/qtcassert.h>
+
+#include <QUrl>
+#include <QMultiHash>
+#include <QTimerEvent>
 
 enum {
     debug = false
@@ -121,7 +133,7 @@ NodeInstanceView::~NodeInstanceView()
 {
     removeAllInstanceNodeRelationships();
     delete nodeInstanceServer();
-    m_currentKit = nullptr;
+    m_currentTarget = nullptr;
 }
 
 //\{
@@ -171,13 +183,15 @@ bool static parentTakesOverRendering(const ModelNode &modelNode)
 void NodeInstanceView::modelAttached(Model *model)
 {
     AbstractView::modelAttached(model);
-    auto server = new NodeInstanceServerProxy(this, m_runModus, m_currentKit, m_currentProject);
+    auto server = new NodeInstanceServerProxy(this, m_runModus, m_currentTarget);
     m_nodeInstanceServer = server;
     m_lastCrashTime.start();
     connect(server, &NodeInstanceServerProxy::processCrashed, this, &NodeInstanceView::handleCrash);
 
-    if (!isSkippedRootNode(rootModelNode()))
+    if (!isSkippedRootNode(rootModelNode())) {
         nodeInstanceServer()->createScene(createCreateSceneCommand());
+        nodeInstanceServer()->changeSelection(createChangeSelectionCommand(model->selectedNodes(this)));
+    }
 
     ModelNode stateNode = currentStateNode();
     if (stateNode.isValid() && stateNode.metaInfo().isSubclassOf("QtQuick.State", 1, 0)) {
@@ -204,8 +218,8 @@ void NodeInstanceView::modelAboutToBeDetached(Model * model)
 
 void NodeInstanceView::handleCrash()
 {
-    int elaspsedTimeSinceLastCrash = m_lastCrashTime.restart();
-    int forceRestartTime = 2000;
+    qint64 elaspsedTimeSinceLastCrash = m_lastCrashTime.restart();
+    qint64 forceRestartTime = 2000;
 #ifdef QT_DEBUG
     forceRestartTime = 4000;
 #endif
@@ -215,6 +229,30 @@ void NodeInstanceView::handleCrash()
         emitDocumentMessage(tr("Qt Quick emulation layer crashed."));
 
     emitCustomNotification(QStringLiteral("puppet crashed"));
+}
+
+void NodeInstanceView::startPuppetTransaction()
+{
+    /* We assume no transaction is active. */
+    QTC_ASSERT(!m_puppetTransaction.isValid(), return);
+    m_puppetTransaction = beginRewriterTransaction("NodeInstanceView::PuppetTransaction");
+}
+
+void NodeInstanceView::endPuppetTransaction()
+{
+    /* We assume a transaction is active. */
+    QTC_ASSERT(m_puppetTransaction.isValid(), return);
+
+    /* Committing a transaction should not throw, but if there is
+     * an issue with rewriting we should show an error message, instead
+     * of simply crashing.
+     */
+
+    try {
+        m_puppetTransaction.commit();
+    } catch (Exception &e) {
+        e.showException();
+    }
 }
 
 void NodeInstanceView::restartProcess()
@@ -230,12 +268,14 @@ void NodeInstanceView::restartProcess()
     if (model()) {
         delete nodeInstanceServer();
 
-        auto server = new NodeInstanceServerProxy(this, m_runModus, m_currentKit, m_currentProject);
+        auto server = new NodeInstanceServerProxy(this, m_runModus, m_currentTarget);
         m_nodeInstanceServer = server;
         connect(server, &NodeInstanceServerProxy::processCrashed, this, &NodeInstanceView::handleCrash);
 
-        if (!isSkippedRootNode(rootModelNode()))
+        if (!isSkippedRootNode(rootModelNode())) {
             nodeInstanceServer()->createScene(createCreateSceneCommand());
+            nodeInstanceServer()->changeSelection(createChangeSelectionCommand(model()->selectedNodes(this)));
+        }
 
         ModelNode stateNode = currentStateNode();
         if (stateNode.isValid() && stateNode.metaInfo().isSubclassOf("QtQuick.State", 1, 0)) {
@@ -472,13 +512,15 @@ void NodeInstanceView::importsChanged(const QList<Import> &/*addedImports*/, con
     restartProcess();
 }
 
-void NodeInstanceView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data)
+void NodeInstanceView::auxiliaryDataChanged(const ModelNode &node,
+                                            const PropertyName &name,
+                                            const QVariant &value)
 {
-    if ((node.isRootNode() && (name == "width" || name == "height")) || name.endsWith(PropertyName("@NodeInstance"))) {
+    if (((node.isRootNode() && (name == "width" || name == "height")) || name == "invisible")
+            || name.endsWith(PropertyName("@NodeInstance"))) {
         if (hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
-            QVariant value = data;
-            if (value.isValid()) {
+            if (value.isValid() || name == "invisible") {
                 PropertyValueContainer container(instance.instanceId(), name, value, TypeName());
                 ChangeAuxiliaryCommand changeAuxiliaryCommand({container});
                 nodeInstanceServer()->changeAuxiliaryValues(changeAuxiliaryCommand);
@@ -816,9 +858,10 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
         bindingPropertyList.append(node.bindingProperties());
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
-            QHashIterator<PropertyName, QVariant> auxiliaryIterator(node.auxiliaryData());
-            while (auxiliaryIterator.hasNext()) {
-                auxiliaryIterator.next();
+            const QHash<PropertyName, QVariant> aux = node.auxiliaryData();
+            for (auto auxiliaryIterator = aux.cbegin(), end = aux.cend();
+                      auxiliaryIterator != end;
+                      ++auxiliaryIterator) {
                 PropertyValueContainer container(instance.instanceId(), auxiliaryIterator.key(), auxiliaryIterator.value(), TypeName());
                 auxiliaryContainerVector.append(container);
             }
@@ -940,7 +983,8 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
                               auxiliaryContainerVector,
                               importVector,
                               mockupTypesVector,
-                              model()->fileUrl());
+                              model()->fileUrl(),
+                              m_edit3DToolStates);
 }
 
 ClearSceneCommand NodeInstanceView::createClearSceneCommand() const
@@ -1045,11 +1089,14 @@ ChangeValuesCommand NodeInstanceView::createChangeValueCommand(const QList<Varia
 {
     QVector<PropertyValueContainer> containerList;
 
+    const bool reflectionFlag = m_puppetTransaction.isValid();
+
     foreach (const VariantProperty &property, propertyList) {
         ModelNode node = property.parentModelNode();
         if (node.isValid() && hasInstanceForModelNode(node)) {
             NodeInstance instance = instanceForModelNode(node);
             PropertyValueContainer container(instance.instanceId(), property.name(), property.value(), property.dynamicTypeName());
+            container.setReflectionFlag(reflectionFlag);
             containerList.append(container);
         }
 
@@ -1104,6 +1151,21 @@ RemoveInstancesCommand NodeInstanceView::createRemoveInstancesCommand(const QLis
     }
 
     return RemoveInstancesCommand(idList);
+}
+
+ChangeSelectionCommand NodeInstanceView::createChangeSelectionCommand(const QList<ModelNode> &nodeList) const
+{
+    QVector<qint32> idList;
+    foreach (const ModelNode &node, nodeList) {
+        if (node.isValid() && hasInstanceForModelNode(node)) {
+            NodeInstance instance = instanceForModelNode(node);
+
+            if (instance.instanceId() >= 0)
+                idList.append(instance.instanceId());
+        }
+    }
+
+    return ChangeSelectionCommand(idList);
 }
 
 RemoveInstancesCommand NodeInstanceView::createRemoveInstancesCommand(const ModelNode &node) const
@@ -1171,6 +1233,30 @@ void NodeInstanceView::valuesChanged(const ValuesChangedCommand &command)
         emitInstancePropertyChange(valuePropertyChangeList);
 }
 
+void NodeInstanceView::valuesModified(const ValuesModifiedCommand &command)
+{
+    if (!model())
+        return;
+
+    if (command.transactionOption == ValuesModifiedCommand::TransactionOption::Start)
+        startPuppetTransaction();
+
+    for (const PropertyValueContainer &container : command.valueChanges()) {
+        if (hasInstanceForId(container.instanceId())) {
+            NodeInstance instance = instanceForId(container.instanceId());
+            if (instance.isValid()) {
+                ModelNode node = instance.modelNode();
+                VariantProperty property = instance.modelNode().variantProperty(container.name());
+                if (property.value() != container.value())
+                    property.setValue(container.value());
+            }
+        }
+    }
+
+    if (command.transactionOption == ValuesModifiedCommand::TransactionOption::End)
+        endPuppetTransaction();
+}
+
 void NodeInstanceView::pixmapChanged(const PixmapChangedCommand &command)
 {
     if (!model())
@@ -1191,7 +1277,7 @@ void NodeInstanceView::pixmapChanged(const PixmapChangedCommand &command)
     m_nodeInstanceServer->benchmark(Q_FUNC_INFO + QString::number(renderImageChangeSet.count()));
 
     if (!renderImageChangeSet.isEmpty())
-        emitInstancesRenderImageChanged(renderImageChangeSet.toList().toVector());
+        emitInstancesRenderImageChanged(Utils::toList(renderImageChangeSet).toVector());
 }
 
 QMultiHash<ModelNode, InformationName> NodeInstanceView::informationChanged(const QVector<InformationContainer> &containerVector)
@@ -1233,18 +1319,10 @@ QImage NodeInstanceView::statePreviewImage(const ModelNode &stateNode) const
     return m_statePreviewImage.value(stateNode);
 }
 
-void NodeInstanceView::setKit(ProjectExplorer::Kit *newKit)
+void NodeInstanceView::setTarget(ProjectExplorer::Target *newTarget)
 {
-    if (m_currentKit != newKit) {
-        m_currentKit = newKit;
-        restartProcess();
-    }
-}
-
-void NodeInstanceView::setProject(ProjectExplorer::Project *project)
-{
-    if (m_currentProject != project) {
-        m_currentProject = project;
+    if (m_currentTarget != newTarget) {
+        m_currentTarget = newTarget;
         restartProcess();
     }
 }
@@ -1295,7 +1373,6 @@ void NodeInstanceView::childrenChanged(const ChildrenChangedCommand &command)
 {
      if (!model())
         return;
-
 
     QVector<ModelNode> childNodeVector;
 
@@ -1359,6 +1436,97 @@ void NodeInstanceView::sendToken(const QString &token, int number, const QVector
         instanceIdVector.append(node.internalId());
 
     nodeInstanceServer()->token(TokenCommand(token, number, instanceIdVector));
+}
+
+void NodeInstanceView::selectionChanged(const ChangeSelectionCommand &command)
+{
+    clearSelectedModelNodes();
+    foreach (const qint32 &instanceId, command.instanceIds()) {
+        if (hasModelNodeForInternalId(instanceId))
+            selectModelNode(modelNodeForInternalId(instanceId));
+    }
+}
+void NodeInstanceView::library3DItemDropped(const Drop3DLibraryItemCommand &command)
+{
+    QDataStream stream(command.itemData());
+    ItemLibraryEntry itemLibraryEntry;
+    stream >> itemLibraryEntry;
+    QmlVisualNode::createQmlVisualNode(this, itemLibraryEntry, {});
+}
+
+void NodeInstanceView::handlePuppetToCreatorCommand(const PuppetToCreatorCommand &command)
+{
+    if (command.type() == PuppetToCreatorCommand::KeyPressed) {
+        QPair<int, int> data = qvariant_cast<QPair<int, int>>(command.data());
+        int key = data.first;
+        Qt::KeyboardModifiers modifiers = Qt::KeyboardModifiers(data.second);
+
+        handlePuppetKeyPress(key, modifiers);
+    } else if (command.type() == PuppetToCreatorCommand::Edit3DToolState) {
+        if (!m_nodeInstanceServer.isNull()) {
+            auto data = qvariant_cast<QPair<QString, QVariant>>(command.data());
+            m_edit3DToolStates[data.first] = data.second;
+        }
+    }
+}
+
+// puppet to creator command handlers
+void NodeInstanceView::handlePuppetKeyPress(int key, Qt::KeyboardModifiers modifiers)
+{
+    // TODO: optimal way to handle key events is to just pass them on. This is done
+    // using the code below but it is so far not working, if someone could get it to work then
+    // it should be utilized and the rest of the method deleted
+//    QCoreApplication::postEvent([receiver], new QKeyEvent(QEvent::KeyPress, key, modifiers));
+
+#ifndef QMLDESIGNER_TEST
+    // handle common keyboard actions coming from puppet
+    if (Core::ActionManager::command(Core::Constants::UNDO)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
+        QmlDesignerPlugin::instance()->currentDesignDocument()->undo();
+    else if (Core::ActionManager::command(Core::Constants::REDO)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
+        QmlDesignerPlugin::instance()->currentDesignDocument()->redo();
+    else if (Core::ActionManager::command(Core::Constants::SAVE)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
+        Core::EditorManager::saveDocument();
+    else if (Core::ActionManager::command(Core::Constants::SAVEAS)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
+        Core::EditorManager::saveDocumentAs();
+    else if (Core::ActionManager::command(Core::Constants::SAVEALL)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
+        Core::DocumentManager::saveAllModifiedDocuments();
+    else if (Core::ActionManager::command(QmlDesigner::Constants::C_DELETE)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
+        QmlDesignerPlugin::instance()->currentDesignDocument()->deleteSelected();
+#else
+    Q_UNUSED(key);
+    Q_UNUSED(modifiers);
+#endif
+}
+
+void NodeInstanceView::view3DClosed(const View3DClosedCommand &command)
+{
+    Q_UNUSED(command)
+
+    rootModelNode().removeAuxiliaryData("3d-view");
+}
+
+void NodeInstanceView::selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
+                                            const QList<ModelNode> & /*lastSelectedNodeList*/)
+{
+    nodeInstanceServer()->changeSelection(createChangeSelectionCommand(selectedNodeList));
+}
+
+void NodeInstanceView::mainWindowStateChanged(Qt::WindowStates previousStates, Qt::WindowStates currentStates)
+{
+    if (nodeInstanceServer())
+        nodeInstanceServer()->update3DViewState(Update3dViewStateCommand(previousStates, currentStates));
+}
+
+void NodeInstanceView::mainWindowActiveChanged(bool active, bool hasPopup)
+{
+    if (nodeInstanceServer())
+        nodeInstanceServer()->update3DViewState(Update3dViewStateCommand(active, hasPopup));
+}
+
+// enable / disable 3D edit View
+void NodeInstanceView::enable3DView(bool enable)
+{
+    nodeInstanceServer()->enable3DView(Enable3DViewCommand(enable));
 }
 
 void NodeInstanceView::timerEvent(QTimerEvent *event)

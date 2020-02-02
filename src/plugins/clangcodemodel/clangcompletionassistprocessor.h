@@ -85,15 +85,19 @@ private:
                                const QByteArray &customFileContent,
                                int functionNameStartPosition = -1);
 
+    CodeCompletions applyCompletionFixIt(const CodeCompletions &completions);
+
 private:
     struct Position { int line; int column; };
     Position extractLineColumn(int position);
 
     QScopedPointer<const ClangCompletionAssistInterface> m_interface;
     unsigned m_completionOperator;
-    enum CompletionRequestType { NormalCompletion, FunctionHintCompletion } m_sentRequestType;
+    enum CompletionRequestType { NormalCompletion, FunctionHintCompletion };
+    CompletionRequestType m_sentRequestType = NormalCompletion;
     bool m_requestSent = false;
     bool m_addSnippets = false; // For type == Type::NormalCompletion
+    bool m_fallbackToNormalCompletion = true;
 };
 
 } // namespace Internal

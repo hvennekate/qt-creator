@@ -28,8 +28,7 @@
 #include "qbsbuildconfiguration.h"
 #include "qbsproject.h"
 #include "qbsprojectmanagerconstants.h"
-
-#include "ui_qbscleanstepconfigwidget.h"
+#include "qbssession.h"
 
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/kit.h>
@@ -38,8 +37,10 @@
 #include <projectexplorer/target.h>
 #include <utils/qtcassert.h>
 
-static const char QBS_DRY_RUN[] = "Qbs.DryRun";
-static const char QBS_KEEP_GOING[] = "Qbs.DryKeepGoing";
+#include <QJsonArray>
+#include <QJsonObject>
+
+using namespace ProjectExplorer;
 
 namespace QbsProjectManager {
 namespace Internal {
@@ -48,224 +49,106 @@ namespace Internal {
 // QbsCleanStep:
 // --------------------------------------------------------------------
 
-QbsCleanStep::QbsCleanStep(ProjectExplorer::BuildStepList *bsl) :
-    ProjectExplorer::BuildStep(bsl, Constants::QBS_CLEANSTEP_ID)
+QbsCleanStep::QbsCleanStep(BuildStepList *bsl, Core::Id id)
+    : BuildStep(bsl, id)
 {
     setDisplayName(tr("Qbs Clean"));
-    setRunInGuiThread(true);
+
+    m_dryRunAspect = addAspect<BaseBoolAspect>();
+    m_dryRunAspect->setSettingsKey("Qbs.DryRun");
+    m_dryRunAspect->setLabel(tr("Dry run:"), BaseBoolAspect::LabelPlacement::InExtraLabel);
+
+    m_keepGoingAspect = addAspect<BaseBoolAspect>();
+    m_keepGoingAspect->setSettingsKey("Qbs.DryKeepGoing");
+    m_keepGoingAspect->setLabel(tr("Keep going:"), BaseBoolAspect::LabelPlacement::InExtraLabel);
+
+    auto effectiveCommandAspect = addAspect<BaseStringAspect>();
+    effectiveCommandAspect->setDisplayStyle(BaseStringAspect::TextEditDisplay);
+    effectiveCommandAspect->setLabelText(tr("Equivalent command line:"));
+
+    setSummaryUpdater([this, effectiveCommandAspect] {
+        QString command = static_cast<QbsBuildConfiguration *>(buildConfiguration())
+                 ->equivalentCommandLine(this);
+        effectiveCommandAspect->setValue(command);
+        return tr("<b>Qbs:</b> %1").arg(command);
+    });
 }
 
 QbsCleanStep::~QbsCleanStep()
 {
-    cancel();
-    if (m_job) {
-        m_job->deleteLater();
-        m_job = nullptr;
-    }
+    doCancel();
+    if (m_session)
+        m_session->disconnect(this);
 }
 
-bool QbsCleanStep::init(QList<const BuildStep *> &earlierSteps)
+bool QbsCleanStep::init()
 {
-    Q_UNUSED(earlierSteps);
-    if (project()->isParsing() || m_job)
+    if (buildSystem()->isParsing() || m_session)
         return false;
-
-    auto bc = static_cast<QbsBuildConfiguration *>(buildConfiguration());
-
+    const auto bc = static_cast<QbsBuildConfiguration *>(buildConfiguration());
     if (!bc)
         return false;
-
     m_products = bc->products();
     return true;
 }
 
-void QbsCleanStep::run(QFutureInterface<bool> &fi)
+void QbsCleanStep::doRun()
 {
-    m_fi = &fi;
-
-    auto pro = static_cast<QbsProject *>(project());
-    qbs::CleanOptions options(m_qbsCleanOptions);
-
-    QString error;
-    m_job = pro->clean(options, m_products, error);
-    if (!m_job) {
-        emit addOutput(error, OutputFormat::ErrorMessage);
-        reportRunResult(*m_fi, false);
+    m_session = static_cast<QbsBuildSystem*>(buildSystem())->session();
+    if (!m_session) {
+        emit addOutput(tr("No qbs session exists for this target."), OutputFormat::ErrorMessage);
+        emit finished(false);
         return;
     }
 
-    m_progressBase = 0;
-
-    connect(m_job, &qbs::AbstractJob::finished, this, &QbsCleanStep::cleaningDone);
-    connect(m_job, &qbs::AbstractJob::taskStarted,
-            this, &QbsCleanStep::handleTaskStarted);
-    connect(m_job, &qbs::AbstractJob::taskProgress,
-            this, &QbsCleanStep::handleProgress);
+    QJsonObject request;
+    request.insert("type", "clean-project");
+    if (!m_products.isEmpty())
+        request.insert("products", QJsonArray::fromStringList(m_products));
+    request.insert("dry-run", m_dryRunAspect->value());
+    request.insert("keep-going", m_keepGoingAspect->value());
+    m_session->sendRequest(request);
+    m_maxProgress = 0;
+    connect(m_session, &QbsSession::projectCleaned, this, &QbsCleanStep::cleaningDone);
+    connect(m_session, &QbsSession::taskStarted, this, &QbsCleanStep::handleTaskStarted);
+    connect(m_session, &QbsSession::taskProgress, this, &QbsCleanStep::handleProgress);
+    connect(m_session, &QbsSession::errorOccurred, this, [this] {
+        cleaningDone(ErrorInfo(tr("Cleaning canceled: Qbs session failed.")));
+    });
 }
 
-ProjectExplorer::BuildStepConfigWidget *QbsCleanStep::createConfigWidget()
+void QbsCleanStep::doCancel()
 {
-    return new QbsCleanStepConfigWidget(this);
+    if (m_session)
+        m_session->cancelCurrentJob();
 }
 
-void QbsCleanStep::cancel()
+void QbsCleanStep::cleaningDone(const ErrorInfo &error)
 {
-    if (m_job)
-        m_job->cancel();
-}
+    m_session->disconnect(this);
+    m_session = nullptr;
 
-bool QbsCleanStep::dryRun() const
-{
-    return m_qbsCleanOptions.dryRun();
-}
-
-bool QbsCleanStep::keepGoing() const
-{
-    return m_qbsCleanOptions.keepGoing();
-}
-
-int QbsCleanStep::maxJobs() const
-{
-    return 1;
-}
-
-
-bool QbsCleanStep::fromMap(const QVariantMap &map)
-{
-    if (!ProjectExplorer::BuildStep::fromMap(map))
-        return false;
-
-    m_qbsCleanOptions.setDryRun(map.value(QLatin1String(QBS_DRY_RUN)).toBool());
-    m_qbsCleanOptions.setKeepGoing(map.value(QLatin1String(QBS_KEEP_GOING)).toBool());
-
-    return true;
-}
-
-QVariantMap QbsCleanStep::toMap() const
-{
-    QVariantMap map = ProjectExplorer::BuildStep::toMap();
-    map.insert(QLatin1String(QBS_DRY_RUN), m_qbsCleanOptions.dryRun());
-    map.insert(QLatin1String(QBS_KEEP_GOING), m_qbsCleanOptions.keepGoing());
-
-    return map;
-}
-
-void QbsCleanStep::cleaningDone(bool success)
-{
-    // Report errors:
-    foreach (const qbs::ErrorItem &item, m_job->error().items()) {
-        createTaskAndOutput(ProjectExplorer::Task::Error, item.description(),
-                            item.codeLocation().filePath(), item.codeLocation().line());
-    }
-
-    QTC_ASSERT(m_fi, return);
-    reportRunResult(*m_fi, success);
-    m_fi = nullptr; // do not delete, it is not ours
-    m_job->deleteLater();
-    m_job = nullptr;
+    for (const ErrorInfoItem &item : error.items)
+        createTaskAndOutput(Task::Error, item.description, item.filePath.toString(), item.line);
+    emit finished(!error.hasError());
 }
 
 void QbsCleanStep::handleTaskStarted(const QString &desciption, int max)
 {
-    Q_UNUSED(desciption);
-    QTC_ASSERT(m_fi, return);
-    m_progressBase = m_fi->progressValue();
-    m_fi->setProgressRange(0, m_progressBase + max);
+    Q_UNUSED(desciption)
+    m_maxProgress = max;
 }
 
 void QbsCleanStep::handleProgress(int value)
 {
-    QTC_ASSERT(m_fi, return);
-    m_fi->setProgressValue(m_progressBase + value);
+    if (m_maxProgress > 0)
+        emit progress(value * 100 / m_maxProgress, m_description);
 }
 
 void QbsCleanStep::createTaskAndOutput(ProjectExplorer::Task::TaskType type, const QString &message, const QString &file, int line)
 {
-    ProjectExplorer::Task task = ProjectExplorer::Task(type, message,
-                                                       Utils::FileName::fromString(file), line,
-                                                       ProjectExplorer::Constants::TASK_CATEGORY_COMPILE);
-    emit addTask(task, 1);
+    emit addTask(CompileTask(type, message, Utils::FilePath::fromString(file), line), 1);
     emit addOutput(message, OutputFormat::Stdout);
-}
-
-void QbsCleanStep::setDryRun(bool dr)
-{
-    if (m_qbsCleanOptions.dryRun() == dr)
-        return;
-    m_qbsCleanOptions.setDryRun(dr);
-    emit changed();
-}
-
-void QbsCleanStep::setKeepGoing(bool kg)
-{
-    if (m_qbsCleanOptions.keepGoing() == kg)
-        return;
-    m_qbsCleanOptions.setKeepGoing(kg);
-    emit changed();
-}
-
-void QbsCleanStep::setMaxJobs(int jobcount)
-{
-    Q_UNUSED(jobcount); // TODO: Remove all job count-related stuff.
-    emit changed();
-}
-
-
-// --------------------------------------------------------------------
-// QbsCleanStepConfigWidget:
-// --------------------------------------------------------------------
-
-QbsCleanStepConfigWidget::QbsCleanStepConfigWidget(QbsCleanStep *step) :
-    BuildStepConfigWidget(step), m_step(step)
-{
-    connect(m_step, &ProjectExplorer::ProjectConfiguration::displayNameChanged,
-            this, &QbsCleanStepConfigWidget::updateState);
-    connect(m_step, &QbsCleanStep::changed,
-            this, &QbsCleanStepConfigWidget::updateState);
-
-    setContentsMargins(0, 0, 0, 0);
-
-    m_ui = new Ui::QbsCleanStepConfigWidget;
-    m_ui->setupUi(this);
-
-    connect(m_ui->dryRunCheckBox, &QAbstractButton::toggled,
-            this, &QbsCleanStepConfigWidget::changeDryRun);
-    connect(m_ui->keepGoingCheckBox, &QAbstractButton::toggled,
-            this, &QbsCleanStepConfigWidget::changeKeepGoing);
-
-    updateState();
-}
-
-QbsCleanStepConfigWidget::~QbsCleanStepConfigWidget()
-{
-    delete m_ui;
-}
-
-void QbsCleanStepConfigWidget::updateState()
-{
-    m_ui->dryRunCheckBox->setChecked(m_step->dryRun());
-    m_ui->keepGoingCheckBox->setChecked(m_step->keepGoing());
-
-    QString command = static_cast<QbsBuildConfiguration *>(m_step->buildConfiguration())
-            ->equivalentCommandLine(m_step);
-    m_ui->commandLineTextEdit->setPlainText(command);
-
-    setSummaryText(tr("<b>Qbs:</b> %1").arg(command));
-}
-
-void QbsCleanStepConfigWidget::changeDryRun(bool dr)
-{
-    m_step->setDryRun(dr);
-}
-
-void QbsCleanStepConfigWidget::changeKeepGoing(bool kg)
-{
-    m_step->setKeepGoing(kg);
-}
-
-void QbsCleanStepConfigWidget::changeJobCount(int count)
-{
-    m_step->setMaxJobs(count);
 }
 
 // --------------------------------------------------------------------

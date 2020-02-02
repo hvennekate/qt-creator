@@ -27,16 +27,23 @@
 
 #include "projectexplorer_export.h"
 
+#include <utils/osspecificaspects.h>
+
 #include <QList>
 #include <QHash>
 
-namespace Utils { class FileName; }
+#include <vector>
+
+namespace Utils { class FilePath; }
 
 namespace ProjectExplorer {
 
 // --------------------------------------------------------------------------
 // ABI (documentation inside)
 // --------------------------------------------------------------------------
+
+class Abi;
+using Abis = QVector<Abi>;
 
 class PROJECTEXPLORER_EXPORT Abi
 {
@@ -50,6 +57,11 @@ public:
         ShArchitecture,
         AvrArchitecture,
         XtensaArchitecture,
+        Mcs51Architecture,
+        AsmJsArchitecture,
+        Stm8Architecture,
+        Msp430Architecture,
+        Rl78Architecture,
         UnknownArchitecture
     };
 
@@ -85,6 +97,8 @@ public:
         WindowsMsvc2013Flavor,
         WindowsMsvc2015Flavor,
         WindowsMsvc2017Flavor,
+        WindowsMsvc2019Flavor,
+        WindowsLastMsvcFlavor = WindowsMsvc2019Flavor,
         WindowsMSysFlavor,
         WindowsCEFlavor,
 
@@ -103,14 +117,19 @@ public:
         MachOFormat,
         PEFormat,
         RuntimeQmlFormat,
+        UbrofFormat,
+        OmfFormat,
+        EmscriptenFormat,
         UnknownFormat
     };
 
     Abi(const Architecture &a = UnknownArchitecture, const OS &o = UnknownOS,
         const OSFlavor &so = UnknownFlavor, const BinaryFormat &f = UnknownFormat,
-        unsigned char w = 0);
+        unsigned char w = 0, const QString &p = {});
 
     static Abi abiFromTargetTriplet(const QString &machineTriple);
+
+    static Utils::OsType abiOsToOsType(const OS os);
 
     bool operator != (const Abi &other) const;
     bool operator == (const Abi &other) const;
@@ -126,6 +145,7 @@ public:
     unsigned char wordWidth() const { return m_wordWidth; }
 
     QString toString() const;
+    QString param() const;
 
     static QString toString(const Architecture &a);
     static QString toString(const OS &o);
@@ -147,7 +167,7 @@ public:
 
     static Abi fromString(const QString &abiString);
     static Abi hostAbi();
-    static QList<Abi> abisOfBinary(const Utils::FileName &path);
+    static Abis abisOfBinary(const Utils::FilePath &path);
 
 
 private:
@@ -156,6 +176,7 @@ private:
     OSFlavor m_osFlavor;
     BinaryFormat m_binaryFormat;
     unsigned char m_wordWidth;
+    QString m_param;
 };
 
 inline int qHash(const ProjectExplorer::Abi &abi)

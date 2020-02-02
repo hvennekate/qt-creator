@@ -28,84 +28,46 @@
 #include "qbsbuildconfiguration.h"
 
 #include <projectexplorer/buildstep.h>
+#include <projectexplorer/projectconfigurationaspects.h>
 #include <projectexplorer/task.h>
-
-#include <qbs.h>
 
 namespace QbsProjectManager {
 namespace Internal {
-
-class QbsCleanStepConfigWidget;
+class ErrorInfo;
+class QbsSession;
 
 class QbsCleanStep : public ProjectExplorer::BuildStep
 {
     Q_OBJECT
 
 public:
-    explicit QbsCleanStep(ProjectExplorer::BuildStepList *bsl);
+    QbsCleanStep(ProjectExplorer::BuildStepList *bsl, Core::Id id);
     ~QbsCleanStep() override;
 
-    bool init(QList<const BuildStep *> &earlierSteps) override;
-
-    void run(QFutureInterface<bool> &fi) override;
-
-    ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
-
-    void cancel() override;
-
-    bool fromMap(const QVariantMap &map) override;
-    QVariantMap toMap() const override;
-
-    bool dryRun() const;
-    bool keepGoing() const;
-    int maxJobs() const;
-
-signals:
-    void changed();
+    bool dryRun() const { return m_dryRunAspect->value(); }
+    bool keepGoing() const { return m_keepGoingAspect->value(); }
 
 private:
-    void cleaningDone(bool success);
+    bool init() override;
+    void doRun() override;
+    void doCancel() override;
+
+    void cleaningDone(const ErrorInfo &error);
     void handleTaskStarted(const QString &desciption, int max);
     void handleProgress(int value);
 
     void createTaskAndOutput(ProjectExplorer::Task::TaskType type,
                              const QString &message, const QString &file, int line);
 
-    void setDryRun(bool dr);
-    void setKeepGoing(bool kg);
-    void setMaxJobs(int jobcount);
+    ProjectExplorer::BaseBoolAspect *m_dryRunAspect = nullptr;
+    ProjectExplorer::BaseBoolAspect *m_keepGoingAspect = nullptr;
 
-    qbs::CleanOptions m_qbsCleanOptions;
     QStringList m_products;
-
-    QFutureInterface<bool> *m_fi = nullptr;
-    qbs::CleanJob *m_job = nullptr;
-    int m_progressBase;
+    QbsSession *m_session = nullptr;
+    QString m_description;
+    int m_maxProgress;
     bool m_showCompilerOutput = true;
     ProjectExplorer::IOutputParser *m_parser = nullptr;
-
-    friend class QbsCleanStepConfigWidget;
-};
-
-namespace Ui { class QbsCleanStepConfigWidget; }
-
-class QbsCleanStepConfigWidget : public ProjectExplorer::BuildStepConfigWidget
-{
-    Q_OBJECT
-public:
-    QbsCleanStepConfigWidget(QbsCleanStep *step);
-    ~QbsCleanStepConfigWidget() override;
-
-private:
-    void updateState();
-
-    void changeDryRun(bool dr);
-    void changeKeepGoing(bool kg);
-    void changeJobCount(int jobcount);
-
-    Ui::QbsCleanStepConfigWidget *m_ui;
-
-    QbsCleanStep *m_step;
 };
 
 class QbsCleanStepFactory : public ProjectExplorer::BuildStepFactory

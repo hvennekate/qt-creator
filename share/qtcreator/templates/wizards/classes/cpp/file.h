@@ -1,6 +1,10 @@
 %{Cpp:LicenseTemplate}\
+@if '%{Cpp:PragmaOnce}'
+#pragma once
+@else
 #ifndef %{GUARD}
 #define %{GUARD}
+@endif
 
 %{JS: QtSupport.qtIncludes([ ( '%{IncludeQObject}' )          ? 'QtCore/%{IncludeQObject}'                 : '',
                              ( '%{IncludeQWidget}' )          ? 'QtGui/%{IncludeQWidget}'                  : '',
@@ -24,7 +28,7 @@ class %{CN} : public %{Base}
 class %{CN}
 @endif
 {
-@if %{isQObject}
+@if '%{AddQObjectMacro}'
      Q_OBJECT
 @endif
 public:
@@ -42,9 +46,12 @@ public:
 @endif
 @if %{isQObject}
 
+@if %{QtKeywordsEnabled}
 signals:
+@else
+Q_SIGNALS:
+@endif
 
-public slots:
 @endif
 @if '%{IncludeQSharedData}'
 
@@ -53,4 +60,6 @@ private:
 @endif
 };
 %{JS: Cpp.closeNamespaces('%{Class}')}
-#endif // %{GUARD}\
+@if ! '%{Cpp:PragmaOnce}'
+#endif // %{GUARD}
+@endif

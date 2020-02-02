@@ -31,22 +31,20 @@
 #include <projectexplorer/abstractprocessstep.h>
 
 namespace Android {
-namespace Internal { class AndroidPackageInstallationFactory; }
 
 class ANDROID_EXPORT AndroidPackageInstallationStep : public ProjectExplorer::AbstractProcessStep
 {
     Q_OBJECT
-    friend class Internal::AndroidPackageInstallationFactory;
 
 public:
-    explicit AndroidPackageInstallationStep(ProjectExplorer::BuildStepList *bsl);
-    bool init(QList<const BuildStep *> &earlierSteps) override;
+    AndroidPackageInstallationStep(ProjectExplorer::BuildStepList *bsl, Core::Id id);
 
     ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
 
-    void run(QFutureInterface<bool> &fi) override;
-
 private:
+    bool init() override;
+    void doRun() override;
+
     QStringList m_androidDirsToClean;
 };
 

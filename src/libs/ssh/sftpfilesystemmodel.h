@@ -41,7 +41,7 @@ class QSSH_EXPORT SftpFileSystemModel : public QAbstractItemModel
 {
     Q_OBJECT
 public:
-    explicit SftpFileSystemModel(QObject *parent = 0);
+    explicit SftpFileSystemModel(QObject *parent = nullptr);
     ~SftpFileSystemModel();
 
     /*
@@ -80,7 +80,7 @@ private:
     void handleSshConnectionEstablished();
     void handleSshConnectionFailure();
     void handleSftpChannelInitialized();
-    void handleSftpChannelError(const QString &reason);
+    void handleSftpSessionClosed(const QString &reason);
     void handleFileInfo(QSsh::SftpJobId jobId, const QList<QSsh::SftpFileInfo> &fileInfoList);
     void handleSftpJobFinished(QSsh::SftpJobId jobId, const QString &errorMessage);
 

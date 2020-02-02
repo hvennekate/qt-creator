@@ -24,8 +24,10 @@
 ****************************************************************************/
 
 #include "formeditorview.h"
+#include "nodeinstanceview.h"
 #include "selectiontool.h"
 #include "movetool.h"
+#include "option3daction.h"
 #include "resizetool.h"
 #include "dragtool.h"
 #include "formeditorwidget.h"
@@ -34,6 +36,7 @@
 #include "formeditorscene.h"
 #include "abstractcustomtool.h"
 
+#include <bindingproperty.h>
 #include <designersettings.h>
 #include <designmodecontext.h>
 #include <modelnode.h>
@@ -45,6 +48,7 @@
 
 #include <coreplugin/icore.h>
 #include <utils/algorithm.h>
+#include <utils/qtcassert.h>
 
 #include <QDebug>
 #include <QPair>
@@ -83,26 +87,62 @@ void FormEditorView::modelAttached(Model *model)
         setupFormEditorItemTree(rootModelNode());
 
     m_formEditorWidget->updateActions();
+    m_formEditorWidget->option3DAction()->set3DEnabled(rootModelNode().hasAuxiliaryData("3d-view"));
+
+    // disable option3DAction if no View3D(s) exists in attached model
+    const QList<ModelNode> views3D = rootModelNode().subModelNodesOfType("QtQuick3D.View3D");
+    if (views3D.size() == 0)
+        m_formEditorWidget->option3DAction()->setEnabled(false);
 
     if (!rewriterView()->errors().isEmpty())
-        formEditorWidget()->showErrorMessageBox(rewriterView()->errors());
+        m_formEditorWidget->showErrorMessageBox(rewriterView()->errors());
     else
-        formEditorWidget()->hideErrorMessageBox();
+        m_formEditorWidget->hideErrorMessageBox();
 
     if (!rewriterView()->warnings().isEmpty())
-        formEditorWidget()->showWarningMessageBox(rewriterView()->warnings());
+        m_formEditorWidget->showWarningMessageBox(rewriterView()->warnings());
 }
 
 
 //This function does the setup of the initial FormEditorItem tree in the scene
 void FormEditorView::setupFormEditorItemTree(const QmlItemNode &qmlItemNode)
 {
-    m_scene->addFormEditorItem(qmlItemNode);
+    if (qmlItemNode.isFlowTransition()) {
+        m_scene->addFormEditorItem(qmlItemNode, FormEditorScene::FlowTransition);
+        if (qmlItemNode.hasNodeParent())
+            m_scene->reparentItem(qmlItemNode, qmlItemNode.modelParentItem());
+        m_scene->synchronizeTransformation(m_scene->itemForQmlItemNode(qmlItemNode));
+    } else if (qmlItemNode.isFlowActionArea()) {
+        m_scene->addFormEditorItem(qmlItemNode.toQmlItemNode(), FormEditorScene::FlowAction);
+        m_scene->synchronizeParent(qmlItemNode.toQmlItemNode());
+    } else if (qmlItemNode.isFlowItem() && !qmlItemNode.isRootNode()) {
+        m_scene->addFormEditorItem(qmlItemNode, FormEditorScene::Flow);
+        m_scene->synchronizeParent(qmlItemNode);
+        m_scene->synchronizeTransformation(m_scene->itemForQmlItemNode(qmlItemNode));
+        for (const QmlObjectNode &nextNode : qmlItemNode.allDirectSubNodes())
+            if (QmlItemNode::isValidQmlItemNode(nextNode) && nextNode.toQmlItemNode().isFlowActionArea()) {
+                setupFormEditorItemTree(nextNode.toQmlItemNode());
+            }
+    } else if (qmlItemNode.isFlowView() && qmlItemNode.isRootNode()) {
+        m_scene->addFormEditorItem(qmlItemNode, FormEditorScene::Flow);
+        for (const QmlObjectNode &nextNode : qmlItemNode.allDirectSubNodes()) {
+            if (QmlItemNode::isValidQmlItemNode(nextNode) && nextNode.toQmlItemNode().isFlowItem()) {
+                setupFormEditorItemTree(nextNode.toQmlItemNode());
+            }
+        }
 
-    foreach (const QmlObjectNode &nextNode, qmlItemNode.allDirectSubNodes()) //TODO instance children
-        //If the node has source for components/custom parsers we ignore it.
-        if (QmlItemNode::isValidQmlItemNode(nextNode) && nextNode.modelNode().nodeSourceType() == ModelNode::NodeWithoutSource)
-            setupFormEditorItemTree(nextNode.toQmlItemNode());
+        for (const QmlObjectNode &nextNode : qmlItemNode.allDirectSubNodes()) {
+            if (QmlVisualNode::isValidQmlVisualNode(nextNode) && nextNode.toQmlVisualNode().isFlowTransition()) {
+                setupFormEditorItemTree(nextNode.toQmlItemNode());
+            }
+        }
+    } else {
+        m_scene->addFormEditorItem(qmlItemNode, FormEditorScene::Default);
+        for (const QmlObjectNode &nextNode : qmlItemNode.allDirectSubNodes()) //TODO instance children
+            //If the node has source for components/custom parsers we ignore it.
+            if (QmlItemNode::isValidQmlItemNode(nextNode) && nextNode.modelNode().nodeSourceType() == ModelNode::NodeWithoutSource)
+                setupFormEditorItemTree(nextNode.toQmlItemNode());
+    }
 }
 
 static void deleteWithoutChildren(const QList<FormEditorItem*> &items)
@@ -131,6 +171,8 @@ void FormEditorView::removeNodeFromScene(const QmlItemNode &qmlItemNode)
         //We have to keep the children if they are not children in the model anymore.
         //Otherwise we delete the children explicitly anyway.
         deleteWithoutChildren(removedItemList);
+    } else if (qmlItemNode.isFlowTransition()) {
+        deleteWithoutChildren(scene()->itemsForQmlItemNodes({qmlItemNode}));
     }
 }
 
@@ -159,22 +201,24 @@ void FormEditorView::createFormEditorWidget()
     auto formEditorContext = new Internal::FormEditorContext(m_formEditorWidget.data());
     Core::ICore::addContextObject(formEditorContext);
 
-    connect(formEditorWidget()->zoomAction(), &ZoomAction::zoomLevelChanged, [this]() {
+    connect(m_formEditorWidget->zoomAction(), &ZoomAction::zoomLevelChanged, [this]() {
         m_currentTool->formEditorItemsChanged(scene()->allFormEditorItems());
     });
-    connect(formEditorWidget()->showBoundingRectAction(), &QAction::toggled,
-            scene(), &FormEditorScene::setShowBoundingRects);
+
+    connect(m_formEditorWidget->showBoundingRectAction(), &QAction::toggled, scene(), &FormEditorScene::setShowBoundingRects);
+    connect(m_formEditorWidget->option3DAction(), &Option3DAction::enabledChanged, this, &FormEditorView::toggle3DViewEnabled);
+    connect(m_formEditorWidget->resetAction(), &QAction::triggered, this, &FormEditorView::resetNodeInstanceView);
 }
 
 void FormEditorView::temporaryBlockView()
 {
-    formEditorWidget()->graphicsView()->setUpdatesEnabled(false);
+    m_formEditorWidget->graphicsView()->setUpdatesEnabled(false);
     static auto timer = new QTimer(qApp);
     timer->setSingleShot(true);
     timer->start(1000);
 
     connect(timer, &QTimer::timeout, this, [this]() {
-        formEditorWidget()->graphicsView()->setUpdatesEnabled(true);
+        m_formEditorWidget->graphicsView()->setUpdatesEnabled(true);
     });
 }
 
@@ -183,6 +227,11 @@ void FormEditorView::nodeCreated(const ModelNode &node)
     //If the node has source for components/custom parsers we ignore it.
     if (QmlItemNode::isValidQmlItemNode(node) && node.nodeSourceType() == ModelNode::NodeWithoutSource) //only setup QmlItems
         setupFormEditorItemTree(QmlItemNode(node));
+    else if (QmlVisualNode::isFlowTransition(node))
+        setupFormEditorItemTree(QmlItemNode(node));
+
+    if (node.isSubclassOf("QtQuick3D.Node"))
+        m_formEditorWidget->option3DAction()->setEnabled(true);
 }
 
 void FormEditorView::modelAboutToBeDetached(Model *model)
@@ -214,6 +263,13 @@ void FormEditorView::nodeAboutToBeRemoved(const ModelNode &removedNode)
     const QmlItemNode qmlItemNode(removedNode);
 
     removeNodeFromScene(qmlItemNode);
+
+    const QList<ModelNode> nodes3D = rootModelNode().subModelNodesOfType("QtQuick3D.Node");
+
+    // if no more 3D Nodes exist after the node removal, disable option3DAction
+    bool hasView3D = nodes3D.size() > 1 || (nodes3D.size() == 1 && nodes3D[0] != removedNode);
+    if (!hasView3D)
+        m_formEditorWidget->option3DAction()->setEnabled(false);
 }
 
 void FormEditorView::rootNodeTypeChanged(const QString &/*type*/, int /*majorVersion*/, int /*minorVersion*/)
@@ -306,28 +362,53 @@ void FormEditorView::nodeIdChanged(const ModelNode& node, const QString &/*newId
 void FormEditorView::selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
                                           const QList<ModelNode> &/*lastSelectedNodeList*/)
 {
-    m_currentTool->setItems(scene()->itemsForQmlItemNodes(toQmlItemNodeList(selectedNodeList)));
+    m_currentTool->setItems(scene()->itemsForQmlItemNodes(toQmlItemNodeListKeppInvalid(selectedNodeList)));
 
     m_scene->update();
+}
+
+void FormEditorView::bindingPropertiesChanged(const QList<BindingProperty> &propertyList, AbstractView::PropertyChangeFlags propertyChange)
+{
+    for (const BindingProperty &property : propertyList) {
+        QmlVisualNode node(property.parentModelNode());
+        if (node.isFlowTransition()) {
+            FormEditorItem *item = m_scene->itemForQmlItemNode(node.toQmlItemNode());
+            if (item) {
+                m_scene->reparentItem(node.toQmlItemNode(), node.toQmlItemNode().modelParentItem());
+                m_scene->synchronizeTransformation(item);
+                item->update();
+            }
+        } else if (QmlFlowActionAreaNode::isValidQmlFlowActionAreaNode(property.parentModelNode())) {
+            const QmlVisualNode target = property.resolveToModelNode();
+            if (target.modelNode().isValid() && target.isFlowTransition()) {
+                FormEditorItem *item = m_scene->itemForQmlItemNode(target.toQmlItemNode());
+                if (item) {
+                    m_scene->reparentItem(node.toQmlItemNode(), node.toQmlItemNode().modelParentItem());
+                    m_scene->synchronizeTransformation(item);
+                    item->update();
+                }
+            }
+        }
+    }
 }
 
 void FormEditorView::documentMessagesChanged(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &)
 {
     if (!errors.isEmpty())
-        formEditorWidget()->showErrorMessageBox(errors);
+        m_formEditorWidget->showErrorMessageBox(errors);
     else
-        formEditorWidget()->hideErrorMessageBox();
+        m_formEditorWidget->hideErrorMessageBox();
 }
 
 void FormEditorView::customNotification(const AbstractView * /*view*/, const QString &identifier, const QList<ModelNode> &/*nodeList*/, const QList<QVariant> &/*data*/)
 {
-    if (identifier == QStringLiteral("puppet crashed"))
+    if (identifier == QLatin1String("puppet crashed"))
         m_dragTool->clearMoveDelay();
-    if (identifier == QStringLiteral("reset QmlPuppet"))
+    if (identifier == QLatin1String("reset QmlPuppet"))
         temporaryBlockView();
 }
 
-AbstractFormEditorTool* FormEditorView::currentTool() const
+AbstractFormEditorTool *FormEditorView::currentTool() const
 {
     return m_currentTool;
 }
@@ -431,6 +512,7 @@ void FormEditorView::registerTool(AbstractCustomTool *tool)
 
 void FormEditorView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &data)
 {
+    QmlItemNode item(node);
     AbstractView::auxiliaryDataChanged(node, name, data);
     if (name == "invisible") {
         if (FormEditorItem *item = scene()->itemForQmlItemNode(QmlItemNode(node))) {
@@ -441,6 +523,13 @@ void FormEditorView::auxiliaryDataChanged(const ModelNode &node, const PropertyN
             if (isInvisible)
                 newNode.deselectNode();
         }
+    } else if (name == "3d-view") {
+        DesignerSettings::setValue(DesignerSettingsKey::VIEW_3D_ACTIVE, data);
+        m_formEditorWidget->option3DAction()->set3DEnabled(data.toBool());
+    } else if (item.isFlowTransition() || item.isFlowItem() || item.isFlowActionArea()) {
+        FormEditorItem *editorItem = m_scene->itemForQmlItemNode(item);
+        if (editorItem)
+            editorItem->update();
     }
 }
 
@@ -567,6 +656,22 @@ void FormEditorView::exportAsImage()
     m_formEditorWidget->exportAsImage(m_scene->rootFormEditorItem()->boundingRect());
 }
 
+void FormEditorView::toggle3DViewEnabled(bool enabled)
+{
+    QTC_ASSERT(model(), return);
+    QTC_ASSERT(rootModelNode().isValid(), return);
+
+    if (enabled)
+        rootModelNode().setAuxiliaryData("3d-view", true);
+    else
+        rootModelNode().removeAuxiliaryData("3d-view");
+
+    resetNodeInstanceView();
+
+    // TODO: the line below is not in use. It should replace the resetNodeInstanceView(); to have a clean API
+//    nodeInstanceView()->enable3DView(enabled);
+}
+
 QmlItemNode findRecursiveQmlItemNode(const QmlObjectNode &firstQmlObjectNode)
 {
     QmlObjectNode qmlObjectNode = firstQmlObjectNode;
@@ -613,6 +718,12 @@ bool FormEditorView::isMoveToolAvailable() const
     }
 
     return true;
+}
+
+void FormEditorView::resetNodeInstanceView()
+{
+    setCurrentStateNode(rootModelNode());
+    resetPuppet();
 }
 
 void FormEditorView::reset()

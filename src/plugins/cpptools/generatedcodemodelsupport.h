@@ -48,18 +48,19 @@ class CPPTOOLS_EXPORT GeneratedCodeModelSupport : public AbstractEditorSupport
 public:
     GeneratedCodeModelSupport(CppModelManager *modelmanager,
                               ProjectExplorer::ExtraCompiler *generator,
-                              const Utils::FileName &generatedFile);
+                              const Utils::FilePath &generatedFile);
     ~GeneratedCodeModelSupport() override;
 
     /// \returns the contents encoded in UTF-8.
     QByteArray contents() const override;
     QString fileName() const override; // The generated file
+    QString sourceFileName() const override;
 
     static void update(const QList<ProjectExplorer::ExtraCompiler *> &generators);
 
 private:
-    void onContentsChanged(const Utils::FileName &file);
-    Utils::FileName m_generatedFileName;
+    void onContentsChanged(const Utils::FilePath &file);
+    Utils::FilePath m_generatedFileName;
     ProjectExplorer::ExtraCompiler *m_generator;
 };
 

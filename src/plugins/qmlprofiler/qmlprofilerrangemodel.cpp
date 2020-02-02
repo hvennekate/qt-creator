@@ -65,7 +65,7 @@ bool QmlProfilerRangeModel::supportsBindingLoops() const
 
 void QmlProfilerRangeModel::loadEvent(const QmlEvent &event, const QmlEventType &type)
 {
-    Q_UNUSED(type);
+    Q_UNUSED(type)
     // store starttime-based instance
     if (event.rangeStage() == RangeStart) {
         int index = insertStart(event.timestamp(), event.typeIndex());
@@ -155,7 +155,7 @@ void QmlProfilerRangeModel::computeExpandedLevels()
 
 void QmlProfilerRangeModel::findBindingLoops()
 {
-    typedef QPair<int, int> CallStackEntry;
+    using CallStackEntry = QPair<int, int>;
     QStack<CallStackEntry> callStack;
 
     for (int i = 0; i < count(); ++i) {

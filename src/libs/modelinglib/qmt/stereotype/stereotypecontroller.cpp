@@ -32,7 +32,7 @@
 
 #include "qmt/infrastructure/qmtassert.h"
 #include "qmt/style/style.h"
-#include "utils/algorithm.h"
+#include <utils/algorithm.h>
 
 #include <QHash>
 #include <QPainter>
@@ -130,7 +130,7 @@ QList<QString> StereotypeController::knownStereotypes(StereotypeIcon::Element st
         if (icon.elements().isEmpty() || icon.elements().contains(stereotypeElement))
             stereotypes += icon.stereotypes();
     }
-    QList<QString> list = stereotypes.toList();
+    QList<QString> list = Utils::toList(stereotypes);
     std::sort(list.begin(), list.end());
     return list;
 }

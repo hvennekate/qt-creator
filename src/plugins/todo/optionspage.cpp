@@ -34,14 +34,13 @@
 #include <QIcon>
 #include <QMessageBox>
 
-Todo::Internal::OptionsDialog *some = 0;
+Todo::Internal::OptionsDialog *some = nullptr;
 
 namespace Todo {
 namespace Internal {
 
 OptionsPage::OptionsPage(const Settings &settings, QObject *parent) :
-    IOptionsPage(parent),
-    m_widget(0)
+    IOptionsPage(parent)
 {
     setSettings(settings);
 
@@ -49,8 +48,7 @@ OptionsPage::OptionsPage(const Settings &settings, QObject *parent) :
     setDisplayName(tr("To-Do"));
     setCategory("To-Do");
     setDisplayCategory(tr("To-Do"));
-    setCategoryIcon(Utils::Icon({{":/todoplugin/images/settingscategory_todo.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/todoplugin/images/settingscategory_todo.png");
 }
 
 void OptionsPage::setSettings(const Settings &settings)

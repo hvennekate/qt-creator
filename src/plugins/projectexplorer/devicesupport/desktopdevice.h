@@ -30,6 +30,8 @@
 #include "idevice.h"
 #include "idevicefactory.h"
 
+#include <QApplication>
+
 namespace ProjectExplorer {
 class ProjectExplorerPlugin;
 
@@ -37,14 +39,12 @@ namespace Internal { class DesktopDeviceFactory; }
 
 class PROJECTEXPLORER_EXPORT DesktopDevice : public IDevice
 {
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::DesktopDevice)
+
 public:
     IDevice::DeviceInfo deviceInformation() const override;
 
-    QString displayType() const override;
     IDeviceWidget *createWidget() override;
-    QList<Core::Id> actionIds() const override;
-    QString displayNameForActionId(Core::Id actionId) const override;
-    void executeAction(Core::Id actionId, QWidget *parent = 0) override;
     bool canAutoDetectPorts() const override;
     bool canCreateProcessModel() const override;
     DeviceProcessList *createProcessListModel(QObject *parent) const override;
@@ -54,13 +54,9 @@ public:
     DeviceProcessSignalOperation::Ptr signalOperation() const override;
     DeviceEnvironmentFetcher::Ptr environmentFetcher() const override;
     QUrl toolControlChannel(const ControlChannelHint &) const override;
-    Utils::OsType osType() const override;
-
-    IDevice::Ptr clone() const override;
 
 protected:
     DesktopDevice();
-    DesktopDevice(const DesktopDevice &other);
 
     friend class ProjectExplorerPlugin;
     friend class Internal::DesktopDeviceFactory;

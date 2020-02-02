@@ -24,11 +24,10 @@
 ****************************************************************************/
 
 #include "baremetalcustomrunconfiguration.h"
-
 #include "baremetalconstants.h"
 
-#include <projectexplorer/target.h>
 #include <projectexplorer/runconfigurationaspects.h>
+#include <projectexplorer/target.h>
 
 #include <qtsupport/qtoutputformatter.h>
 
@@ -38,10 +37,12 @@ using namespace ProjectExplorer;
 namespace BareMetal {
 namespace Internal {
 
+// BareMetalCustomRunConfiguration
+
 BareMetalCustomRunConfiguration::BareMetalCustomRunConfiguration(Target *target, Core::Id id)
     : RunConfiguration(target, id)
 {
-    auto exeAspect = addAspect<ExecutableAspect>();
+    const auto exeAspect = addAspect<ExecutableAspect>();
     exeAspect->setSettingsKey("BareMetal.CustomRunConfig.Executable");
     exeAspect->setPlaceHolderText(tr("Unknown"));
     exeAspect->setDisplayStyle(BaseStringAspect::PathChooserDisplay);
@@ -49,29 +50,19 @@ BareMetalCustomRunConfiguration::BareMetalCustomRunConfiguration(Target *target,
     exeAspect->setExpectedKind(PathChooser::Any);
 
     addAspect<ArgumentsAspect>();
-    addAspect<WorkingDirectoryAspect>(nullptr);
+    addAspect<WorkingDirectoryAspect>();
 
     setDefaultDisplayName(RunConfigurationFactory::decoratedTargetName(tr("Custom Executable"), target));
 }
 
-const char *BareMetalCustomRunConfiguration::Id = "BareMetal";
-
-bool BareMetalCustomRunConfiguration::isConfigured() const
+Tasks BareMetalCustomRunConfiguration::checkForIssues() const
 {
-    return !aspect<ExecutableAspect>()->executable().isEmpty();
-}
-
-RunConfiguration::ConfigurationState
-BareMetalCustomRunConfiguration::ensureConfigured(QString *errorMessage)
-{
-    if (!isConfigured()) {
-        if (errorMessage) {
-            *errorMessage = tr("The remote executable must be set "
-                               "in order to run a custom remote run configuration.");
-        }
-        return UnConfigured;
+    Tasks tasks;
+    if (aspect<ExecutableAspect>()->executable().isEmpty()) {
+        tasks << createConfigurationIssue(tr("The remote executable must be set in order to run "
+                                             "a custom remote run configuration."));
     }
-    return Configured;
+    return tasks;
 }
 
 // BareMetalCustomRunConfigurationFactory
@@ -79,7 +70,7 @@ BareMetalCustomRunConfiguration::ensureConfigured(QString *errorMessage)
 BareMetalCustomRunConfigurationFactory::BareMetalCustomRunConfigurationFactory()
     : FixedRunConfigurationFactory(BareMetalCustomRunConfiguration::tr("Custom Executable"), true)
 {
-    registerRunConfiguration<BareMetalCustomRunConfiguration>(BareMetalCustomRunConfiguration::Id);
+    registerRunConfiguration<BareMetalCustomRunConfiguration>("BareMetal");
     addSupportedTargetDeviceType(BareMetal::Constants::BareMetalOsType);
 }
 

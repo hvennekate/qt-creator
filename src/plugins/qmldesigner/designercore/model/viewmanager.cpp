@@ -47,6 +47,7 @@
 
 #include <utils/algorithm.h>
 
+#include <QElapsedTimer>
 #include <QLoggingCategory>
 #include <QTabWidget>
 
@@ -102,14 +103,13 @@ DesignDocument *ViewManager::currentDesignDocument() const
 
 void ViewManager::attachNodeInstanceView()
 {
-
-    QTime time;
+    QElapsedTimer time;
     if (viewBenchmark().isInfoEnabled())
         time.start();
 
     qCInfo(viewBenchmark) << Q_FUNC_INFO;
 
-    setNodeInstanceViewKit(currentDesignDocument()->currentKit());
+    setNodeInstanceViewTarget(currentDesignDocument()->currentTarget());
     currentModel()->setNodeInstanceView(&d->nodeInstanceView);
 
      qCInfo(viewBenchmark) << "NodeInstanceView:" << time.elapsed();
@@ -117,7 +117,7 @@ void ViewManager::attachNodeInstanceView()
 
 void ViewManager::attachRewriterView()
 {
-    QTime time;
+    QElapsedTimer time;
     if (viewBenchmark().isInfoEnabled())
         time.start();
 
@@ -253,7 +253,7 @@ void ViewManager::attachViewsExceptRewriterAndComponetView()
 
     attachNodeInstanceView();
 
-    QTime time;
+    QElapsedTimer time;
     if (viewBenchmark().isInfoEnabled())
         time.start();
 
@@ -328,14 +328,9 @@ void ViewManager::setComponentViewToMaster()
     d->componentView.setComponentToMaster();
 }
 
-void ViewManager::setNodeInstanceViewKit(ProjectExplorer::Kit *kit)
+void ViewManager::setNodeInstanceViewTarget(ProjectExplorer::Target *target)
 {
-    d->nodeInstanceView.setKit(kit);
-}
-
-void QmlDesigner::ViewManager::setNodeInstanceViewProject(ProjectExplorer::Project *project)
-{
-    d->nodeInstanceView.setProject(project);
+    d->nodeInstanceView.setTarget(target);
 }
 
 QList<WidgetInfo> ViewManager::widgetInfos() const
@@ -384,7 +379,7 @@ void ViewManager::enableWidgets()
         view->enableWidget();
 }
 
-void ViewManager::pushFileOnCrumbleBar(const Utils::FileName &fileName)
+void ViewManager::pushFileOnCrumbleBar(const Utils::FilePath &fileName)
 {
     crumbleBar()->pushFile(fileName);
 }
@@ -424,9 +419,9 @@ void ViewManager::toggleStatesViewExpanded()
     d->statesEditorView.toggleStatesViewExpanded();
 }
 
-void ViewManager::qmlJSEditorHelpId(const Core::IContext::HelpIdCallback &callback) const
+void ViewManager::qmlJSEditorContextHelp(const Core::IContext::HelpCallback &callback) const
 {
-    d->textEditorView.qmlJSEditorHelpId(callback);
+    d->textEditorView.qmlJSEditorContextHelp(callback);
 }
 
 Model *ViewManager::currentModel() const

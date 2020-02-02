@@ -52,20 +52,12 @@
 #include <QToolButton>
 #include <QHBoxLayout>
 #include <QApplication>
-#include <QDesktopWidget>
 #include <QDebug>
 
 using namespace TextEditor;
 
 namespace GlslEditor {
 namespace Internal {
-
-Document::Document()
-    : _engine(0)
-    , _ast(0)
-    , _globalScope(0)
-{
-}
 
 Document::~Document()
 {
@@ -211,7 +203,7 @@ bool GlslCompletionAssistProvider::isActivationCharSequence(const QString &seque
 
 struct FunctionItem
 {
-    FunctionItem() {}
+    FunctionItem() = default;
     explicit FunctionItem(const GLSL::Function *function);
     QString prettyPrint(int currentArgument) const;
     QString returnValue;
@@ -279,7 +271,7 @@ int GlslFunctionHintProposalModel::activeArgument(const QString &prefix) const
     const QByteArray &str = prefix.toLatin1();
     int argnr = 0;
     int parcount = 0;
-    GLSL::Lexer lexer(0, str.constData(), str.length());
+    GLSL::Lexer lexer(nullptr, str.constData(), str.length());
     GLSL::Token tk;
     QList<GLSL::Token> tokens;
     do {
@@ -308,16 +300,11 @@ int GlslFunctionHintProposalModel::activeArgument(const QString &prefix) const
 // -----------------------------
 // GLSLCompletionAssistProcessor
 // -----------------------------
-GlslCompletionAssistProcessor::GlslCompletionAssistProcessor()
-    : m_startPosition(0)
-{}
-
-GlslCompletionAssistProcessor::~GlslCompletionAssistProcessor()
-{}
+GlslCompletionAssistProcessor::~GlslCompletionAssistProcessor() = default;
 
 static AssistProposalItem *createCompletionItem(const QString &text, const QIcon &icon, int order = 0)
 {
-    AssistProposalItem *item = new AssistProposalItem;
+    auto item = new AssistProposalItem;
     item->setText(text);
     item->setIcon(icon);
     item->setOrder(order);
@@ -329,7 +316,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
     m_interface.reset(static_cast<const GlslCompletionAssistInterface *>(interface));
 
     if (interface->reason() == IdleEditor && !acceptsIdleEditor())
-        return 0;
+        return nullptr;
 
     int pos = m_interface->position() - 1;
     QChar ch = m_interface->characterAt(pos);
@@ -351,7 +338,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
         tc.setPosition(pos);
         const int start = expressionUnderCursor.startOfFunctionCall(tc);
         if (start == -1)
-            return 0;
+            return nullptr;
 
         if (m_interface->characterAt(start) == QLatin1Char('(')) {
             pos = start;
@@ -448,7 +435,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
                     "qt_MultiTexCoord0",
                     "qt_MultiTexCoord1",
                     "qt_MultiTexCoord2",
-                    0
+                    nullptr
                 };
                 static const char * const uniformNames[] = {
                     "qt_ModelViewProjectionMatrix",
@@ -460,7 +447,7 @@ IAssistProposal *GlslCompletionAssistProcessor::perform(const AssistInterface *i
                     "qt_Texture2",
                     "qt_Color",
                     "qt_Opacity",
-                    0
+                    nullptr
                 };
                 for (int index = 0; attributeNames[index]; ++index)
                     m_completions << createCompletionItem(QString::fromLatin1(attributeNames[index]), glslIcon(IconTypeAttribute));
@@ -542,8 +529,8 @@ bool GlslCompletionAssistProcessor::acceptsIdleEditor() const
 
         const QString word = m_interface->textAt(pos, cursorPosition - pos);
         if (word.length() > 2 && checkStartOfIdentifier(word)) {
-            for (int i = 0; i < word.length(); ++i) {
-                if (! isIdentifierChar(word.at(i)))
+            for (auto character : word) {
+                if (!isIdentifierChar(character))
                     return false;
             }
             return true;

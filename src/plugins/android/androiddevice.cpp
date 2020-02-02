@@ -33,66 +33,33 @@
 
 #include <utils/url.h>
 
-#include <QCoreApplication>
 #include <QLoggingCategory>
 
 using namespace ProjectExplorer;
-
-namespace {
-Q_LOGGING_CATEGORY(androidDeviceLog, "qtc.android.build.androiddevice", QtWarningMsg)
-}
 
 namespace Android {
 namespace Internal {
 
 AndroidDevice::AndroidDevice()
-    : IDevice(Core::Id(Constants::ANDROID_DEVICE_TYPE),
-                             IDevice::AutoDetected,
-                             IDevice::Hardware,
-                             Core::Id(Constants::ANDROID_DEVICE_ID))
 {
-    setDisplayName(QCoreApplication::translate("Android::Internal::AndroidDevice", "Run on Android"));
-    setDeviceState(DeviceReadyToUse);
-    QString activityPath;
-    const AndroidConfig &config = AndroidConfigurations::currentConfig();
-    AndroidManager::apkInfo(config.qtLiveApkPath(), nullptr, nullptr, &activityPath);
-    qCDebug(androidDeviceLog) << "Using Qt live apk from: " << config.qtLiveApkPath()
-                              << "Activity Path:" << activityPath;
-    setQmlsceneCommand(activityPath);
-}
+    setupId(IDevice::AutoDetected, Constants::ANDROID_DEVICE_ID);
+    setType(Constants::ANDROID_DEVICE_TYPE);
+    setDefaultDisplayName(tr("Run on Android"));
+    setDisplayType(tr("Android"));
+    setMachineType(IDevice::Hardware);
+    setOsType(Utils::OsTypeOtherUnix);
 
-AndroidDevice::AndroidDevice(const AndroidDevice &other) = default;
+    setDeviceState(DeviceReadyToUse);
+}
 
 IDevice::DeviceInfo AndroidDevice::deviceInformation() const
 {
     return IDevice::DeviceInfo();
 }
 
-QString AndroidDevice::displayType() const
-{
-    return QCoreApplication::translate("Android::Internal::AndroidDevice", "Android");
-}
-
 IDeviceWidget *AndroidDevice::createWidget()
 {
     return nullptr;
-}
-
-QList<Core::Id> AndroidDevice::actionIds() const
-{
-    return QList<Core::Id>();
-}
-
-QString AndroidDevice::displayNameForActionId(Core::Id actionId) const
-{
-    Q_UNUSED(actionId)
-    return QString();
-}
-
-void AndroidDevice::executeAction(Core::Id actionId, QWidget *parent)
-{
-    Q_UNUSED(actionId)
-    Q_UNUSED(parent)
 }
 
 bool AndroidDevice::canAutoDetectPorts() const
@@ -105,22 +72,24 @@ DeviceProcessSignalOperation::Ptr AndroidDevice::signalOperation() const
     return DeviceProcessSignalOperation::Ptr(new AndroidSignalOperation());
 }
 
-Utils::OsType AndroidDevice::osType() const
-{
-    return Utils::OsTypeOtherUnix;
-}
-
-IDevice::Ptr AndroidDevice::clone() const
-{
-    return IDevice::Ptr(new AndroidDevice(*this));
-}
-
 QUrl AndroidDevice::toolControlChannel(const ControlChannelHint &) const
 {
     QUrl url;
     url.setScheme(Utils::urlTcpScheme());
     url.setHost("localhost");
     return url;
+}
+
+
+// Factory
+
+AndroidDeviceFactory::AndroidDeviceFactory()
+    : ProjectExplorer::IDeviceFactory(Constants::ANDROID_DEVICE_TYPE)
+{
+    setDisplayName(AndroidDevice::tr("Android Device"));
+    setCombinedIcon(":/android/images/androiddevicesmall.png",
+                    ":/android/images/androiddevice.png");
+    setConstructionFunction(&AndroidDevice::create);
 }
 
 } // namespace Internal

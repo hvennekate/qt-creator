@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "extraencodingsettings.h"
+#include "behaviorsettingswidget.h"
 
 #include <utils/settingsutils.h>
 
@@ -39,8 +40,7 @@ using namespace TextEditor;
 ExtraEncodingSettings::ExtraEncodingSettings() : m_utf8BomSetting(OnlyKeep)
 {}
 
-ExtraEncodingSettings::~ExtraEncodingSettings()
-{}
+ExtraEncodingSettings::~ExtraEncodingSettings() = default;
 
 void ExtraEncodingSettings::toSettings(const QString &category, QSettings *s) const
 {
@@ -71,4 +71,10 @@ void ExtraEncodingSettings::fromMap(const QString &prefix, const QVariantMap &ma
 bool ExtraEncodingSettings::equals(const ExtraEncodingSettings &s) const
 {
     return m_utf8BomSetting == s.m_utf8BomSetting;
+}
+
+QStringList ExtraEncodingSettings::lineTerminationModeNames()
+{
+    return {BehaviorSettingsWidget::tr("Unix (LF)"),
+                BehaviorSettingsWidget::tr("Windows (CRLF)")};
 }

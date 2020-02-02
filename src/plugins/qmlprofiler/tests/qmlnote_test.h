@@ -30,12 +30,11 @@
 namespace QmlProfiler {
 namespace Internal {
 
-
 class QmlNoteTest : public QObject
 {
     Q_OBJECT
 public:
-    explicit QmlNoteTest(QObject *parent = 0);
+    explicit QmlNoteTest(QObject *parent = nullptr);
 
 private slots:
     void testAccessors();

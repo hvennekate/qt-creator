@@ -1,7 +1,7 @@
 var Environment = require("qbs.Environment")
 var File = require("qbs.File")
 var FileInfo = require("qbs.FileInfo")
-var MinimumLLVMVersion = "6.0.0" // CLANG-UPGRADE-CHECK: Adapt minimum version numbers.
+var MinimumLLVMVersion = "8.0.0" // CLANG-UPGRADE-CHECK: Adapt minimum version numbers.
 var Process = require("qbs.Process")
 
 function readOutput(executable, args)
@@ -36,7 +36,7 @@ function llvmConfig(hostOS, qtcFunctions)
 {
     var llvmInstallDirFromEnv = Environment.getEnv("LLVM_INSTALL_DIR")
     var llvmConfigVariants = [
-        "llvm-config", "llvm-config-6.0", "llvm-config-7.0", "llvm-config-8.0", "llvm-config-9.0"
+        "llvm-config", "llvm-config-7", "llvm-config-8", "llvm-config-9"
     ];
 
     // Prefer llvm-config* from LLVM_INSTALL_DIR
@@ -103,10 +103,14 @@ function extraLibraries(llvmConfig, targetOS)
 
 function formattingLibs(llvmConfig, qtcFunctions, targetOS)
 {
+    var llvmIncludeDir = includeDir(llvmConfig);
+    if (!File.exists(llvmIncludeDir.concat("/clang/Format/Format.h")))
+        return [];
+
     var clangVersion = version(llvmConfig)
     var libs = []
     if (qtcFunctions.versionIsAtLeast(clangVersion, MinimumLLVMVersion)) {
-        if (qtcFunctions.versionIsAtLeast(clangVersion, "7.0.0")) {
+        if (qtcFunctions.versionIsAtLeast(clangVersion, "8.0.0")) {
             libs.push(
                 "clangFormat",
                 "clangToolingInclusions",
@@ -161,6 +165,20 @@ function toolingParameters(llvmConfig)
         cxxFlags: [],
     };
     var allCxxFlags = readListOutput(llvmConfig, ["--cxxflags"]);
+    var badFlags = [
+        "-fno-exceptions",
+        "/W4",
+        "-Wcovered-switch-default",
+        "-Wnon-virtual-dtor",
+        "-Woverloaded-virtual",
+        "-Wmissing-field-initializers",
+        "-Wno-unknown-warning",
+        "-Wno-unused-command-line-argument",
+        "-fPIC",
+        "-pedantic",
+        "-Wstring-conversion",
+        "-gsplit-dwarf"
+    ]
     for (var i = 0; i < allCxxFlags.length; ++i) {
         var flag = allCxxFlags[i];
         if (flag.startsWith("-D") || flag.startsWith("/D")) {
@@ -173,10 +191,9 @@ function toolingParameters(llvmConfig)
         }
         if (!flag.startsWith("-std") && !flag.startsWith("-O") && !flag.startsWith("/O")
                 && !flag.startsWith("-march")
-                && !flag.startsWith("/EH") && flag !== "-fno-exceptions"
-                && flag !== "/W4" && flag !== "-Werror=date-time"
-                && flag !== "-Wcovered-switch-default" && flag !== "-fPIC" && flag !== "-pedantic"
-                && flag !== "-Wstring-conversion" && flag !== "-gsplit-dwarf") {
+                && !flag.startsWith("-Werror=")
+                && !flag.startsWith("/EH")
+                && !badFlags.contains(flag)) {
             params.cxxFlags.push(flag);
         }
     }

@@ -27,8 +27,9 @@
 
 #include "clang/Tooling/CompilationDatabase.h"
 
-namespace ClangBackEnd {
+#include <nativefilepath.h>
 
+namespace ClangBackEnd {
 
 class RefactoringCompilationDatabase : public clang::tooling::CompilationDatabase
 {
@@ -39,9 +40,7 @@ public:
     std::vector<std::string> getAllFiles() const override;
     std::vector<clang::tooling::CompileCommand> getAllCompileCommands() const override;
 
-    void addFile(const std::string &directory,
-                 const std::string &fileName,
-                 const std::vector<std::string> &commandLine);
+    void addFile(NativeFilePathView filePath, Utils::SmallStringVector &&commandLine);
 
 private:
     std::vector<clang::tooling::CompileCommand> m_compileCommands;

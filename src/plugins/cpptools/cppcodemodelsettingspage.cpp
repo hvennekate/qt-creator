@@ -24,25 +24,51 @@
 ****************************************************************************/
 
 #include "cppcodemodelsettingspage.h"
+#include "ui_cppcodemodelsettingspage.h"
 
 #include "clangdiagnosticconfigswidget.h"
 #include "cppmodelmanager.h"
 #include "cpptoolsconstants.h"
-#include "ui_cppcodemodelsettingspage.h"
+#include "cpptoolsreuse.h"
 
 #include <coreplugin/icore.h>
 #include <utils/algorithm.h>
 
 #include <QTextStream>
 
-using namespace CppTools;
-using namespace CppTools::Internal;
+namespace CppTools {
+namespace Internal {
 
-CppCodeModelSettingsWidget::CppCodeModelSettingsWidget(QWidget *parent)
-    : QWidget(parent)
-    , m_ui(new Ui::CppCodeModelSettingsPage)
+class CppCodeModelSettingsWidget final : public Core::IOptionsPageWidget
+{
+    Q_DECLARE_TR_FUNCTIONS(CppTools::Internal::CppCodeModelSettingsWidget)
+
+public:
+    CppCodeModelSettingsWidget(const QSharedPointer<CppCodeModelSettings> &s);
+    ~CppCodeModelSettingsWidget() override;
+
+private:
+    void apply() final;
+
+    void setupGeneralWidgets();
+    void setupClangCodeModelWidgets();
+
+    bool applyGeneralWidgetsToSettings() const;
+    bool applyClangCodeModelWidgetsToSettings() const;
+
+    Ui::CppCodeModelSettingsPage *m_ui = nullptr;
+    QSharedPointer<CppCodeModelSettings> m_settings;
+};
+
+CppCodeModelSettingsWidget::CppCodeModelSettingsWidget(const QSharedPointer<CppCodeModelSettings> &s)
+    : m_ui(new Ui::CppCodeModelSettingsPage)
 {
     m_ui->setupUi(this);
+
+    m_settings = s;
+
+    setupGeneralWidgets();
+    setupClangCodeModelWidgets();
 }
 
 CppCodeModelSettingsWidget::~CppCodeModelSettingsWidget()
@@ -50,15 +76,7 @@ CppCodeModelSettingsWidget::~CppCodeModelSettingsWidget()
     delete m_ui;
 }
 
-void CppCodeModelSettingsWidget::setSettings(const QSharedPointer<CppCodeModelSettings> &s)
-{
-    m_settings = s;
-
-    setupGeneralWidgets();
-    setupClangCodeModelWidgets();
-}
-
-void CppCodeModelSettingsWidget::applyToSettings() const
+void CppCodeModelSettingsWidget::apply()
 {
     bool changed = false;
 
@@ -71,8 +89,15 @@ void CppCodeModelSettingsWidget::applyToSettings() const
 
 void CppCodeModelSettingsWidget::setupClangCodeModelWidgets()
 {
-    const bool isClangActive = CppModelManager::instance()->isClangCodeModelActive();
+    m_ui->clangDiagnosticConfigsSelectionWidget
+        ->refresh(diagnosticConfigsModel(),
+                  m_settings->clangDiagnosticConfigId(),
+                  [](const CppTools::ClangDiagnosticConfigs &configs,
+                     const Core::Id &configToSelect) {
+                      return new CppTools::ClangDiagnosticConfigsWidget(configs, configToSelect);
+                  });
 
+    const bool isClangActive = CppModelManager::instance()->isClangCodeModelActive();
     m_ui->clangCodeModelIsDisabledHint->setVisible(!isClangActive);
     m_ui->clangCodeModelIsEnabledHint->setVisible(isClangActive);
     for (int i = 0; i < m_ui->clangDiagnosticConfigsSelectionWidget->layout()->count(); ++i) {
@@ -80,14 +105,6 @@ void CppCodeModelSettingsWidget::setupClangCodeModelWidgets()
         if (widget)
             widget->setEnabled(isClangActive);
     }
-
-    connect(m_settings.data(), &CppCodeModelSettings::changed,
-            this, [this]() {
-        m_ui->clangDiagnosticConfigsSelectionWidget->refresh(
-                    m_ui->clangDiagnosticConfigsSelectionWidget->currentConfigId());
-        if (applyClangCodeModelWidgetsToSettings())
-            m_settings->toSettings(Core::ICore::settings());
-    });
 }
 
 void CppCodeModelSettingsWidget::setupGeneralWidgets()
@@ -104,14 +121,24 @@ void CppCodeModelSettingsWidget::setupGeneralWidgets()
 
 bool CppCodeModelSettingsWidget::applyClangCodeModelWidgetsToSettings() const
 {
+    bool changed = false;
+
     const Core::Id oldConfigId = m_settings->clangDiagnosticConfigId();
     const Core::Id currentConfigId = m_ui->clangDiagnosticConfigsSelectionWidget->currentConfigId();
     if (oldConfigId != currentConfigId) {
         m_settings->setClangDiagnosticConfigId(currentConfigId);
-        return true;
+        changed = true;
     }
 
-    return false;
+    const ClangDiagnosticConfigs oldConfigs = m_settings->clangCustomDiagnosticConfigs();
+    const ClangDiagnosticConfigs currentConfigs = m_ui->clangDiagnosticConfigsSelectionWidget
+                                                      ->customConfigs();
+    if (oldConfigs != currentConfigs) {
+        m_settings->setClangCustomDiagnosticConfigs(currentConfigs);
+        changed = true;
+    }
+
+    return changed;
 }
 
 bool CppCodeModelSettingsWidget::applyGeneralWidgetsToSettings() const
@@ -150,35 +177,15 @@ bool CppCodeModelSettingsWidget::applyGeneralWidgetsToSettings() const
     return settingsChanged;
 }
 
-CppCodeModelSettingsPage::CppCodeModelSettingsPage(QSharedPointer<CppCodeModelSettings> &settings,
-                                                   QObject *parent)
-    : Core::IOptionsPage(parent)
-    , m_settings(settings)
+CppCodeModelSettingsPage::CppCodeModelSettingsPage(QSharedPointer<CppCodeModelSettings> &settings)
 {
     setId(Constants::CPP_CODE_MODEL_SETTINGS_ID);
-    setDisplayName(QCoreApplication::translate("CppTools",Constants::CPP_CODE_MODEL_SETTINGS_NAME));
+    setDisplayName(CppCodeModelSettingsWidget::tr("Code Model"));
     setCategory(Constants::CPP_SETTINGS_CATEGORY);
     setDisplayCategory(QCoreApplication::translate("CppTools", "C++"));
-    setCategoryIcon(Utils::Icon({{":/cpptools/images/settingscategory_cpp.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/projectexplorer/images/settingscategory_cpp.png");
+    setWidgetCreator([settings] { return new CppCodeModelSettingsWidget(settings); });
 }
 
-QWidget *CppCodeModelSettingsPage::widget()
-{
-    if (!m_widget) {
-        m_widget = new CppCodeModelSettingsWidget;
-        m_widget->setSettings(m_settings);
-    }
-    return m_widget;
-}
-
-void CppCodeModelSettingsPage::apply()
-{
-    if (m_widget)
-        m_widget->applyToSettings();
-}
-
-void CppCodeModelSettingsPage::finish()
-{
-    delete m_widget;
-}
+} // Internal
+} // CppTools

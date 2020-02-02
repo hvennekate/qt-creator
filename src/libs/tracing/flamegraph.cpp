@@ -177,7 +177,6 @@ int FlameGraph::buildNode(const QModelIndex &parentIndex, QObject *parentObject,
 void FlameGraph::rebuild()
 {
     qDeleteAll(childItems());
-    childItems().clear();
     m_depth = 0;
 
     if (!m_model) {
@@ -199,18 +198,18 @@ void FlameGraph::rebuild()
 
 void FlameGraph::mousePressEvent(QMouseEvent *event)
 {
-    Q_UNUSED(event);
+    Q_UNUSED(event)
 }
 
 void FlameGraph::mouseReleaseEvent(QMouseEvent *event)
 {
-    Q_UNUSED(event);
+    Q_UNUSED(event)
     setSelectedTypeId(-1);
 }
 
 void FlameGraph::mouseDoubleClickEvent(QMouseEvent *event)
 {
-    Q_UNUSED(event);
+    Q_UNUSED(event)
     setSelectedTypeId(-1);
     resetRoot();
 }

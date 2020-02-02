@@ -88,10 +88,7 @@ bool isPreviousLineCppStyleComment(const QTextCursor &cursor)
         return false;
 
     const QString text = actual.text().trimmed();
-    if (text.startsWith(QLatin1String("///")) || text.startsWith(QLatin1String("//!")))
-        return true;
-
-    return false;
+    return text.startsWith(QLatin1String("///")) || text.startsWith(QLatin1String("//!"));
 }
 
 /// Check if next line is a CppStyle Doxygen Comment
@@ -106,10 +103,7 @@ bool isNextLineCppStyleComment(const QTextCursor &cursor)
         return false;
 
     const QString text = actual.text().trimmed();
-    if (text.startsWith(QLatin1String("///")) || text.startsWith(QLatin1String("//!")))
-        return true;
-
-    return false;
+    return text.startsWith(QLatin1String("///")) || text.startsWith(QLatin1String("//!"));
 }
 
 bool isCppStyleContinuation(const QTextCursor& cursor)
@@ -173,7 +167,7 @@ bool handleDoxygenCppStyleContinuation(QTextCursor &cursor)
         return false;
 
     QString newLine(QLatin1Char('\n'));
-    newLine.append(text.left(offset)); // indent correctly
+    newLine.append(text.leftRef(offset)); // indent correctly
     newLine.append(commentMarker);
     newLine.append(QLatin1Char(' '));
 

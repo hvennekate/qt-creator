@@ -36,7 +36,7 @@ class SymbolItem : public Utils::TreeItem
 {
 public:
     SymbolItem() = default;
-    SymbolItem(CPlusPlus::Symbol *symbol) : symbol(symbol) {}
+    explicit SymbolItem(CPlusPlus::Symbol *symbol) : symbol(symbol) {}
 
     QVariant data(int column, int role) const override;
 
@@ -59,8 +59,8 @@ public:
 private:
     CPlusPlus::Symbol *symbolFromIndex(const QModelIndex &index) const;
     bool hasDocument() const;
-    unsigned globalSymbolCount() const;
-    CPlusPlus::Symbol *globalSymbolAt(unsigned index) const;
+    int globalSymbolCount() const;
+    CPlusPlus::Symbol *globalSymbolAt(int index) const;
     void buildTree(SymbolItem *root, bool isRoot);
 
 private:

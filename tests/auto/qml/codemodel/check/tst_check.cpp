@@ -114,7 +114,7 @@ void tst_Check::test()
     Document::MutablePtr doc = Document::create(path, Dialect::Qml);
     QFile file(doc->fileName());
     file.open(QFile::ReadOnly | QFile::Text);
-    doc->setSource(file.readAll());
+    doc->setSource(QString::fromUtf8(file.readAll()));
     file.close();
     doc->parse();
     snapshot.insert(doc);
@@ -148,7 +148,7 @@ void tst_Check::test()
                     columnEnd - columnStart,
                     comment.startLine,
                     columnStart),
-        message.type = static_cast<Type>(type);
+        message.type = static_cast<QmlJS::StaticAnalysis::Type>(type);
         expectedMessages += message;
     }
 

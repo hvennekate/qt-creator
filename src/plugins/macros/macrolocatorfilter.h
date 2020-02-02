@@ -37,8 +37,8 @@ class MacroLocatorFilter : public Core::ILocatorFilter
     Q_OBJECT
 
 public:
-    explicit MacroLocatorFilter(QObject *parent);
-    ~MacroLocatorFilter();
+    MacroLocatorFilter();
+    ~MacroLocatorFilter() override;
 
     QList<Core::LocatorFilterEntry> matchesFor(QFutureInterface<Core::LocatorFilterEntry> &future,
                                                const QString &entry) override;

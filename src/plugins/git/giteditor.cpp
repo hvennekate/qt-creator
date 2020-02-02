@@ -26,6 +26,7 @@
 #include "giteditor.h"
 
 #include "annotationhighlighter.h"
+#include "branchadddialog.h"
 #include "gitplugin.h"
 #include "gitclient.h"
 #include "gitsettings.h"
@@ -125,7 +126,7 @@ static QString sanitizeBlameOutput(const QString &b)
     if (b.isEmpty())
         return b;
 
-    const bool omitDate = GitPlugin::client()->settings().boolValue(
+    const bool omitDate = GitPluginPrivate::client()->settings().boolValue(
                 GitSettings::omitAnnotationDateKey);
     const QChar space(' ');
     const int parenPos = b.indexOf(')');
@@ -159,8 +160,8 @@ static QString sanitizeBlameOutput(const QString &b)
     forever {
         QTC_CHECK(prevPos < pos);
         int afterParen = prevPos + parenPos;
-        result.append(b.mid(prevPos, stripPos));
-        result.append(b.mid(afterParen, pos - afterParen));
+        result.append(b.midRef(prevPos, stripPos));
+        result.append(b.midRef(afterParen, pos - afterParen));
         prevPos = pos;
         QTC_CHECK(prevPos != 0);
         if (pos == b.size())
@@ -189,31 +190,10 @@ void GitEditorWidget::setPlainText(const QString &text)
     textDocument()->setPlainText(modText);
 }
 
-void GitEditorWidget::checkoutChange()
-{
-    GitPlugin::client()->checkout(sourceWorkingDirectory(), m_currentChange);
-}
-
 void GitEditorWidget::resetChange(const QByteArray &resetType)
 {
-    GitPlugin::client()->reset(
+    GitPluginPrivate::client()->reset(
                 sourceWorkingDirectory(), QLatin1String("--" + resetType), m_currentChange);
-}
-
-void GitEditorWidget::cherryPickChange()
-{
-    GitPlugin::client()->synchronousCherryPick(sourceWorkingDirectory(), m_currentChange);
-}
-
-void GitEditorWidget::revertChange()
-{
-    GitPlugin::client()->synchronousRevert(sourceWorkingDirectory(), m_currentChange);
-}
-
-void GitEditorWidget::logChange()
-{
-    GitPlugin::client()->log(
-                sourceWorkingDirectory(), QString(), false, {m_currentChange});
 }
 
 void GitEditorWidget::applyDiffChunk(const DiffChunk& chunk, bool revert)
@@ -231,7 +211,7 @@ void GitEditorWidget::applyDiffChunk(const DiffChunk& chunk, bool revert)
     if (revert)
         args << "--reverse";
     QString errorMessage;
-    if (GitPlugin::client()->synchronousApplyPatch(baseDir, patchFile.fileName(), &errorMessage, args)) {
+    if (GitPluginPrivate::client()->synchronousApplyPatch(baseDir, patchFile.fileName(), &errorMessage, args)) {
         if (errorMessage.isEmpty())
             VcsOutputWindow::append(tr("Chunk successfully staged"));
         else
@@ -280,14 +260,14 @@ void GitEditorWidget::aboutToOpen(const QString &fileName, const QString &realFi
         const QString gitPath = fi.absolutePath();
         setSource(gitPath);
         textDocument()->setCodec(
-                    GitPlugin::client()->encoding(gitPath, "i18n.commitEncoding"));
+                    GitPluginPrivate::client()->encoding(gitPath, "i18n.commitEncoding"));
     }
 }
 
 QString GitEditorWidget::decorateVersion(const QString &revision) const
 {
     // Format verbose, SHA1 being first token
-    return GitPlugin::client()->synchronousShortDescription(sourceWorkingDirectory(), revision);
+    return GitPluginPrivate::client()->synchronousShortDescription(sourceWorkingDirectory(), revision);
 }
 
 QStringList GitEditorWidget::annotationPreviousVersions(const QString &revision) const
@@ -295,7 +275,7 @@ QStringList GitEditorWidget::annotationPreviousVersions(const QString &revision)
     QStringList revisions;
     QString errorMessage;
     // Get the SHA1's of the file.
-    if (!GitPlugin::client()->synchronousParentRevisions(sourceWorkingDirectory(),
+    if (!GitPluginPrivate::client()->synchronousParentRevisions(sourceWorkingDirectory(),
                                                          revision, &revisions, &errorMessage)) {
         VcsOutputWindow::appendSilently(errorMessage);
         return QStringList();
@@ -305,31 +285,56 @@ QStringList GitEditorWidget::annotationPreviousVersions(const QString &revision)
 
 bool GitEditorWidget::isValidRevision(const QString &revision) const
 {
-    return GitPlugin::client()->isValidRevision(revision);
+    return GitPluginPrivate::client()->isValidRevision(revision);
 }
 
 void GitEditorWidget::addChangeActions(QMenu *menu, const QString &change)
 {
     m_currentChange = change;
-    if (contentType() != OtherContent) {
-        connect(menu->addAction(tr("Cherr&y-Pick Change %1").arg(change)), &QAction::triggered,
-                this, &GitEditorWidget::cherryPickChange);
-        connect(menu->addAction(tr("Re&vert Change %1").arg(change)), &QAction::triggered,
-                this, &GitEditorWidget::revertChange);
-        connect(menu->addAction(tr("C&heckout Change %1").arg(change)), &QAction::triggered,
-                this, &GitEditorWidget::checkoutChange);
-        connect(menu->addAction(tr("&Log for Change %1").arg(change)), &QAction::triggered,
-                this, &GitEditorWidget::logChange);
+    if (contentType() == OtherContent)
+        return;
 
-        QMenu *resetMenu = new QMenu(tr("&Reset to Change %1").arg(change), menu);
-        connect(resetMenu->addAction(tr("&Hard")), &QAction::triggered,
-                this, [this]() { resetChange("hard"); });
-        connect(resetMenu->addAction(tr("&Mixed")), &QAction::triggered,
-                this, [this]() { resetChange("mixed"); });
-        connect(resetMenu->addAction(tr("&Soft")), &QAction::triggered,
-                this, [this]() { resetChange("soft"); });
-        menu->addMenu(resetMenu);
-    }
+    menu->addAction(tr("Cherr&y-Pick Change %1").arg(change), this, [this] {
+        GitPluginPrivate::client()->synchronousCherryPick(sourceWorkingDirectory(), m_currentChange);
+    });
+    menu->addAction(tr("Re&vert Change %1").arg(change), this, [this] {
+        GitPluginPrivate::client()->synchronousRevert(sourceWorkingDirectory(), m_currentChange);
+    });
+    menu->addAction(tr("C&heckout Change %1").arg(change), this, [this] {
+        GitPluginPrivate::client()->checkout(sourceWorkingDirectory(), m_currentChange);
+    });
+    connect(menu->addAction(tr("&Interactive Rebase from Change %1...").arg(change)),
+            &QAction::triggered, this, [this] {
+        GitPluginPrivate::instance()->startRebaseFromCommit(sourceWorkingDirectory(), m_currentChange);
+    });
+    menu->addAction(tr("&Log for Change %1").arg(change), this, [this] {
+        GitPluginPrivate::client()->log(sourceWorkingDirectory(), QString(), false, {m_currentChange});
+    });
+    menu->addAction(tr("Add &Tag for Change %1...").arg(change), this, [this] {
+        QString output;
+        QString errorMessage;
+        GitPluginPrivate::client()->synchronousTagCmd(sourceWorkingDirectory(), QStringList(),
+                                               &output, &errorMessage);
+
+        const QStringList tags = output.split('\n');
+        BranchAddDialog dialog(tags, BranchAddDialog::Type::AddTag, Core::ICore::dialogParent());
+
+        if (dialog.exec() == QDialog::Rejected)
+            return;
+
+        GitPluginPrivate::client()->synchronousTagCmd(sourceWorkingDirectory(),
+                                               {dialog.branchName(), m_currentChange},
+                                               &output, &errorMessage);
+        VcsOutputWindow::append(output);
+        if (!errorMessage.isEmpty())
+            VcsOutputWindow::append(errorMessage, VcsOutputWindow::MessageStyle::Error);
+    });
+
+    auto resetMenu = new QMenu(tr("&Reset to Change %1").arg(change), menu);
+    resetMenu->addAction(tr("&Hard"), this, [this] { resetChange("hard"); });
+    resetMenu->addAction(tr("&Mixed"), this, [this] { resetChange("mixed"); });
+    resetMenu->addAction(tr("&Soft"), this, [this] { resetChange("soft"); });
+    menu->addMenu(resetMenu);
 }
 
 QString GitEditorWidget::revisionSubject(const QTextBlock &inBlock) const
@@ -367,8 +372,8 @@ QString GitEditorWidget::fileNameForLine(int line) const
 
 QString GitEditorWidget::sourceWorkingDirectory() const
 {
-    Utils::FileName path = Utils::FileName::fromString(source());
-    if (!path.isEmpty() && !path.toFileInfo().isDir())
+    Utils::FilePath path = Utils::FilePath::fromString(source());
+    if (!path.isEmpty() && !path.isDir())
         path = path.parentDir();
     while (!path.isEmpty() && !path.exists())
         path = path.parentDir();

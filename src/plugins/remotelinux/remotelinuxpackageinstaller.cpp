@@ -37,12 +37,10 @@ namespace Internal {
 class AbstractRemoteLinuxPackageInstallerPrivate
 {
 public:
-    AbstractRemoteLinuxPackageInstallerPrivate() : isRunning(false), installer(0), killProcess(0) {}
-
-    bool isRunning;
+    bool isRunning = false;
     IDevice::ConstPtr deviceConfig;
-    SshRemoteProcessRunner *installer;
-    SshRemoteProcessRunner *killProcess;
+    SshRemoteProcessRunner *installer = nullptr;
+    SshRemoteProcessRunner *killProcess = nullptr;
 };
 
 } // namespace Internal
@@ -78,7 +76,7 @@ void AbstractRemoteLinuxPackageInstaller::installPackage(const IDevice::ConstPtr
     QString cmdLine = installCommandLine(packageFilePath);
     if (removePackageFile)
         cmdLine += QLatin1String(" && (rm ") + packageFilePath + QLatin1String(" || :)");
-    d->installer->run(cmdLine.toUtf8(), deviceConfig->sshParameters());
+    d->installer->run(cmdLine, deviceConfig->sshParameters());
     d->isRunning = true;
 }
 
@@ -88,7 +86,7 @@ void AbstractRemoteLinuxPackageInstaller::cancelInstallation()
 
     if (!d->killProcess)
         d->killProcess = new SshRemoteProcessRunner(this);
-    d->killProcess->run(cancelInstallationCommandLine().toUtf8(), d->deviceConfig->sshParameters());
+    d->killProcess->run(cancelInstallationCommandLine(), d->deviceConfig->sshParameters());
     setFinished();
 }
 
@@ -100,12 +98,12 @@ void AbstractRemoteLinuxPackageInstaller::handleConnectionError()
     setFinished();
 }
 
-void AbstractRemoteLinuxPackageInstaller::handleInstallationFinished(int exitStatus)
+void AbstractRemoteLinuxPackageInstaller::handleInstallationFinished(const QString &error)
 {
     if (!d->isRunning)
         return;
 
-    if (exitStatus != SshRemoteProcess::NormalExit || d->installer->processExitCode() != 0)
+    if (!error.isEmpty() || d->installer->processExitCode() != 0)
         emit finished(tr("Installing package failed."));
     else if (!errorString().isEmpty())
         emit finished(errorString());
@@ -127,7 +125,7 @@ void AbstractRemoteLinuxPackageInstaller::handleInstallerErrorOutput()
 
 void AbstractRemoteLinuxPackageInstaller::setFinished()
 {
-    disconnect(d->installer, 0, this, 0);
+    disconnect(d->installer, nullptr, this, nullptr);
     d->isRunning = false;
 }
 

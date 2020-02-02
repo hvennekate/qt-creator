@@ -43,6 +43,7 @@
 #include <coreplugin/messagemanager.h>
 #include <cppeditor/cppeditorconstants.h>
 #include <projectexplorer/project.h>
+#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/projecttree.h>
 #include <texteditor/formattexteditor.h>
 #include <texteditor/textdocument.h>
@@ -50,13 +51,13 @@
 #include <texteditor/texteditor.h>
 #include <texteditor/texteditorconstants.h>
 #include <utils/algorithm.h>
-#include <utils/textutils.h>
 #include <utils/fileutils.h>
 #include <utils/mimetypes/mimedatabase.h>
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
 #include <utils/synchronousprocess.h>
 #include <utils/temporarydirectory.h>
+#include <utils/textutils.h>
 
 #include <QDir>
 #include <QFileInfo>
@@ -96,7 +97,7 @@ public:
 
     void autoFormatOnSave(Core::IDocument *document);
 
-    QSharedPointer<GeneralSettings> m_generalSettings;
+    GeneralSettings generalSettings;
 
     ArtisticStyle::ArtisticStyle artisticStyleBeautifier;
     ClangFormat::ClangFormat clangFormatBeautifier;
@@ -129,13 +130,10 @@ BeautifierPluginPrivate::BeautifierPluginPrivate()
 {
     QStringList toolIds;
     toolIds.reserve(m_tools.count());
-    for (BeautifierAbstractTool *tool : m_tools) {
+    for (BeautifierAbstractTool *tool : m_tools)
         toolIds << tool->id();
-        tool->initialize();
-    }
 
-    m_generalSettings.reset(new GeneralSettings);
-    new GeneralOptionsPage(m_generalSettings, toolIds, this);
+    new GeneralOptionsPage(toolIds, this);
 
     updateActions();
 
@@ -154,22 +152,27 @@ void BeautifierPluginPrivate::updateActions(Core::IEditor *editor)
 
 void BeautifierPluginPrivate::autoFormatOnSave(Core::IDocument *document)
 {
-    if (!m_generalSettings->autoFormatOnSave())
+    if (!generalSettings.autoFormatOnSave())
         return;
 
-    if (!isAutoFormatApplicable(document, m_generalSettings->autoFormatMime()))
+    if (!isAutoFormatApplicable(document, generalSettings.autoFormatMime()))
         return;
 
     // Check if file is contained in the current project (if wished)
-    if (m_generalSettings->autoFormatOnlyCurrentProject()) {
+    if (generalSettings.autoFormatOnlyCurrentProject()) {
         const ProjectExplorer::Project *pro = ProjectExplorer::ProjectTree::currentProject();
-        if (!pro || !pro->files(ProjectExplorer::Project::SourceFiles).contains(document->filePath())) {
+        if (!pro
+            || pro->files([document](const ProjectExplorer::Node *n) {
+                      return ProjectExplorer::Project::SourceFiles(n)
+                             && n->filePath() == document->filePath();
+                  })
+                   .isEmpty()) {
             return;
         }
     }
 
     // Find tool to use by id and format file!
-    const QString id = m_generalSettings->autoFormatTool();
+    const QString id = generalSettings.autoFormatTool();
     auto tool = std::find_if(m_tools.constBegin(), m_tools.constEnd(),
                              [&id](const BeautifierAbstractTool *t){return t->id() == id;});
     if (tool != m_tools.constEnd()) {
@@ -181,7 +184,7 @@ void BeautifierPluginPrivate::autoFormatOnSave(Core::IDocument *document)
         const QList<Core::IEditor *> editors = Core::DocumentModel::editorsForDocument(document);
         if (editors.isEmpty())
             return;
-        if (TextEditorWidget* widget = qobject_cast<TextEditorWidget *>(editors.first()->widget()))
+        if (auto widget = qobject_cast<TextEditorWidget *>(editors.first()->widget()))
             TextEditor::formatEditor(widget, command);
     }
 }

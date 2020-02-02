@@ -121,8 +121,7 @@ struct Baz
 {};
 
 } // namespace N
-namespace N2 {
-}
+namespace N2 {}
 
 // -------------------------------------------------------------------------------------------------
 // Forward declarations
@@ -394,7 +393,8 @@ void penaltyTests(bool isThatTrue)
 
     const QString path;
     const bool someLongerNameNNNNNNNNNN = functionToCallSt(path,
-                                                           QStringList(QLatin1String("-print-env")));
+                                                           QStringList(
+                                                               QLatin1String("-print-env")));
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -489,8 +489,7 @@ void MyClass::nonInlineMultipleStatements()
 
 template<class T>
 class TemplateClass
-{
-};
+{};
 
 // -------------------------------------------------------------------------------------------------
 // Enums
@@ -656,7 +655,11 @@ void extremeFunction(
     ++uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuunbelievableLongValue;
 
     extremeFunction(
-        "some super duper super duper super duper super duper super duper super duper super duper long");
+        "some super duper super duper super duper super duper super duper super duper long");
+
+    // BreakStringLiterals splits the string.
+    extremeFunction("some super duper super duper super duper super duper super duper super duper "
+                    "super duper long");
 }
 
 void extremeFunction2(int parameter1,

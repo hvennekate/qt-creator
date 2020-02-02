@@ -25,6 +25,7 @@
 
 #include "clangdiagnostictooltipwidget.h"
 #include "clangfixitoperation.h"
+#include "clangutils.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 
@@ -35,23 +36,18 @@
 
 #include <QApplication>
 #include <QDesktopServices>
-#include <QDesktopWidget>
 #include <QFileInfo>
 #include <QHash>
 #include <QLabel>
+#include <QScreen>
+#include <QTextDocument>
 #include <QUrl>
 
 using namespace ClangCodeModel;
 using Internal::ClangDiagnosticWidget;
+using Internal::ClangFixItOperation;
 
 namespace {
-
-// CLANG-UPGRADE-CHECK: Checks/update URLs.
-//
-// Once it gets dedicated documentation pages for released versions,
-// use them instead of pointing to master, as checks might vanish.
-const char CLAZY_DOCUMENTATION_URL_TEMPLATE[]
-    = "https://github.com/KDE/clazy/blob/master/docs/checks/README-%1.md";
 
 const char LINK_ACTION_GOTO_LOCATION[] = "#gotoLocation";
 const char LINK_ACTION_APPLY_FIX[] = "#applyFix";
@@ -84,7 +80,7 @@ void openEditorAt(const ClangBackEnd::DiagnosticContainer &diagnostic)
 
 void applyFixit(const ClangBackEnd::DiagnosticContainer &diagnostic)
 {
-    ClangCodeModel::ClangFixItOperation operation(Utf8String(), diagnostic.fixIts);
+    ClangFixItOperation operation(Utf8String(), diagnostic.fixIts);
 
     operation.perform();
 }
@@ -100,16 +96,6 @@ public:
         bool hideTooltipAfterLinkActivation;
         bool allowTextSelection;
     };
-
-    static QWidget *create(const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics,
-                           const DisplayHints &displayHints)
-    {
-        WidgetFromDiagnostics converter(displayHints);
-        return converter.createWidget(diagnostics);
-    }
-
-private:
-    enum class IndentMode { Indent, DoNotIndent };
 
     WidgetFromDiagnostics(const DisplayHints &displayHints)
         : m_displayHints(displayHints)
@@ -158,7 +144,7 @@ private:
                 QTC_CHECK(!"Link target cannot be handled.");
 
             if (hideToolTipAfterLinkActivation)
-                Utils::ToolTip::hideImmediately();
+                ::Utils::ToolTip::hideImmediately();
         });
 
         return label;
@@ -177,49 +163,8 @@ private:
         return text;
     }
 
-    static bool isClazyOption(const QString &option) { return option.startsWith("-Wclazy"); }
-
-    class DiagnosticTextInfo
-    {
-    public:
-        DiagnosticTextInfo(const QString &text)
-            : m_text(text)
-            , m_squareBracketStartIndex(text.lastIndexOf('['))
-        {}
-
-        QString textWithoutOption() const
-        {
-            if (m_squareBracketStartIndex == -1)
-                return m_text;
-
-            return m_text.mid(0, m_squareBracketStartIndex - 1);
-        }
-
-        QString option() const
-        {
-            if (m_squareBracketStartIndex == -1)
-                return QString();
-
-            const int index = m_squareBracketStartIndex + 1;
-            return m_text.mid(index, m_text.count() - index - 1);
-        }
-
-        QString category() const
-        {
-            if (m_squareBracketStartIndex == -1)
-                return QString();
-
-            const int index = m_squareBracketStartIndex + 1;
-            if (isClazyOption(m_text.mid(index)))
-                return QCoreApplication::translate("ClangDiagnosticWidget", "Clazy Issue");
-            else
-                return QCoreApplication::translate("ClangDiagnosticWidget", "Clang-Tidy Issue");
-        }
-
-    private:
-        const QString m_text;
-        const int m_squareBracketStartIndex;
-    };
+private:
+    enum class IndentMode { Indent, DoNotIndent };
 
     // Diagnostics from clazy/tidy do not have any category or option set but
     // we will conclude them from the diagnostic message.
@@ -239,6 +184,7 @@ private:
 
         ClangBackEnd::DiagnosticContainer supplementedDiagnostic = diagnostic;
 
+        using namespace ClangCodeModel::Utils;
         DiagnosticTextInfo info(diagnostic.text);
         supplementedDiagnostic.enableOption = info.option();
         supplementedDiagnostic.category = info.category();
@@ -275,9 +221,10 @@ private:
         QString option = optionAsUtf8String.toString();
 
         // Clazy
-        if (isClazyOption(option)) {
+        if (ClangCodeModel::Utils::DiagnosticTextInfo::isClazyOption(option)) {
             option = optionAsUtf8String.mid(8); // Remove "-Wclazy-" prefix.
-            return QString::fromUtf8(CLAZY_DOCUMENTATION_URL_TEMPLATE).arg(option);
+            return QString::fromUtf8(CppTools::Constants::CLAZY_DOCUMENTATION_URL_TEMPLATE)
+                .arg(option);
         }
 
         // Clang itself
@@ -433,7 +380,10 @@ private:
 
     static int widthLimit()
     {
-        return QApplication::desktop()->availableGeometry(QCursor::pos()).width() / 2;
+        auto screen = QGuiApplication::screenAt(QCursor::pos());
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+        return screen->availableGeometry().width() / 2;
     }
 
 private:
@@ -446,18 +396,11 @@ private:
     QString m_mainFilePath;
 };
 
-} // anonymous namespace
-
-namespace ClangCodeModel {
-namespace Internal {
-
-QWidget *ClangDiagnosticWidget::create(
-        const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics,
-        const Destination &destination)
+WidgetFromDiagnostics::DisplayHints toHints(const ClangDiagnosticWidget::Destination &destination)
 {
     WidgetFromDiagnostics::DisplayHints hints;
 
-    if (destination == ToolTip) {
+    if (destination == ClangDiagnosticWidget::ToolTip) {
         hints.showCategoryAndEnableOption = true;
         hints.showFileNameInMainDiagnostic = false;
         hints.enableClickableFixits = true;
@@ -474,7 +417,36 @@ QWidget *ClangDiagnosticWidget::create(
         hints.allowTextSelection = true;
     }
 
-    return WidgetFromDiagnostics::create(diagnostics, hints);
+    return hints;
+}
+
+} // anonymous namespace
+
+namespace ClangCodeModel {
+namespace Internal {
+
+QString ClangDiagnosticWidget::createText(
+    const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics,
+    const ClangDiagnosticWidget::Destination &destination)
+{
+    const QString htmlText = WidgetFromDiagnostics(toHints(destination)).htmlText(diagnostics);
+
+    QTextDocument document;
+    document.setHtml(htmlText);
+    QString text = document.toPlainText();
+
+    if (text.startsWith('\n'))
+        text = text.mid(1);
+    if (text.endsWith('\n'))
+        text.chop(1);
+
+    return text;
+}
+
+QWidget *ClangDiagnosticWidget::createWidget(
+    const QVector<ClangBackEnd::DiagnosticContainer> &diagnostics, const Destination &destination)
+{
+    return WidgetFromDiagnostics(toHints(destination)).createWidget(diagnostics);
 }
 
 } // namespace Internal

@@ -4,20 +4,20 @@ import qbs.FileInfo
 import "qtc.js" as HelperFunctions
 
 Module {
-    property string qtcreator_display_version: '4.8.0-beta2'
+    property string qtcreator_display_version: '4.12.0-rc1'
     property string ide_version_major: '4'
-    property string ide_version_minor: '7'
-    property string ide_version_release: '83'
+    property string ide_version_minor: '11'
+    property string ide_version_release: '82'
     property string qtcreator_version: ide_version_major + '.' + ide_version_minor + '.'
                                        + ide_version_release
 
     property string ide_compat_version_major: '4'
-    property string ide_compat_version_minor: '7'
-    property string ide_compat_version_release: '83'
+    property string ide_compat_version_minor: '11'
+    property string ide_compat_version_release: '82'
     property string qtcreator_compat_version: ide_compat_version_major + '.'
             + ide_compat_version_minor + '.' + ide_compat_version_release
 
-    property string qtcreator_copyright_year: '2018'
+    property string qtcreator_copyright_year: '2019'
     property string qtcreator_copyright_string: "(C) " + qtcreator_copyright_year + " The Qt Company Ltd"
 
     property string ide_display_name: 'Qt Creator'
@@ -48,7 +48,7 @@ Module {
             ? ide_app_target + ".app/Contents/Resources"
             : "share/qtcreator"
     property string ide_libexec_path: qbs.targetOS.contains("macos")
-            ? ide_data_path : qbs.targetOS.contains("windows")
+            ? ide_data_path + "/libexec" : qbs.targetOS.contains("windows")
             ? ide_app_path
             : "libexec/qtcreator"
     property string ide_bin_path: qbs.targetOS.contains("macos")
@@ -63,13 +63,14 @@ Module {
     property string ide_qbs_imports_path: ide_qbs_resources_path + "/imports"
     property string ide_shared_sources_path: "src/shared"
 
+    property string litehtmlInstallDir: Environment.getEnv("LITEHTML_INSTALL_DIR")
+
     property bool make_dev_package: false
 
     // Will be replaced when creating modules from products
     property string export_data_base: project.ide_source_tree + "/share/qtcreator"
 
     property bool testsEnabled: Environment.getEnv("TEST") || qbs.buildVariant === "debug"
-    property bool useSystemBotan: Environment.getEnv("USE_SYSTEM_BOTAN") === "1"
     property stringList generalDefines: [
         "QT_CREATOR",
         'IDE_LIBRARY_BASENAME="' + libDirName + '"',
@@ -82,7 +83,7 @@ Module {
         'RELATIVE_DOC_PATH="' + FileInfo.relativePath('/' + ide_bin_path, '/' + ide_doc_path) + '"',
         "QT_NO_CAST_TO_ASCII",
         "QT_RESTRICTED_CAST_FROM_ASCII",
-        "QT_DISABLE_DEPRECATED_BEFORE=0x050600",
+        "QT_DISABLE_DEPRECATED_BEFORE=0x050900",
         "QT_USE_FAST_OPERATOR_PLUS",
         "QT_USE_FAST_CONCATENATION",
     ].concat(testsEnabled ? ["WITH_TESTS"] : [])

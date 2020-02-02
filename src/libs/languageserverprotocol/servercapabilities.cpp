@@ -98,6 +98,57 @@ void ServerCapabilities::setImplementationProvider(
         insert(implementationProviderKey, Utils::get<RegistrationOptions>(implementationProvider));
 }
 
+Utils::optional<Utils::variant<bool, CodeActionOptions>> ServerCapabilities::codeActionProvider() const
+{
+    QJsonValue provider = value(codeActionProviderKey);
+    if (provider.isBool())
+        return Utils::make_optional(Utils::variant<bool, CodeActionOptions>(provider.toBool()));
+    if (provider.isObject()) {
+        CodeActionOptions options(provider);
+        if (options.isValid(nullptr))
+            return Utils::make_optional(Utils::variant<bool, CodeActionOptions>(options));
+    }
+    return Utils::nullopt;
+}
+
+Utils::optional<Utils::variant<ServerCapabilities::RenameOptions, bool>> ServerCapabilities::renameProvider() const
+{
+    using RetType = Utils::variant<ServerCapabilities::RenameOptions, bool>;
+    const QJsonValue &localValue = value(renameProviderKey);
+    if (localValue.isBool())
+        return RetType(localValue.toBool());
+    if (localValue.isObject())
+        return RetType(RenameOptions(localValue.toObject()));
+    return Utils::nullopt;
+}
+
+void ServerCapabilities::setRenameProvider(Utils::variant<ServerCapabilities::RenameOptions, bool> renameProvider)
+{
+    if (Utils::holds_alternative<bool>(renameProvider))
+        insert(renameProviderKey, Utils::get<bool>(renameProvider));
+    else if (Utils::holds_alternative<RenameOptions>(renameProvider))
+        insert(renameProviderKey, Utils::get<RenameOptions>(renameProvider));
+}
+
+Utils::optional<Utils::variant<bool, JsonObject>> ServerCapabilities::colorProvider() const
+{
+    using RetType = Utils::variant<bool, JsonObject>;
+    const QJsonValue &localValue = value(colorProviderKey);
+    if (localValue.isBool())
+        return RetType(localValue.toBool());
+    if (localValue.isObject())
+        return RetType(JsonObject(localValue.toObject()));
+    return Utils::nullopt;
+}
+
+void ServerCapabilities::setColorProvider(Utils::variant<bool, JsonObject> colorProvider)
+{
+    if (Utils::holds_alternative<bool>(colorProvider))
+        insert(renameProviderKey, Utils::get<bool>(colorProvider));
+    else if (Utils::holds_alternative<JsonObject>(colorProvider))
+        insert(renameProviderKey, Utils::get<JsonObject>(colorProvider));
+}
+
 bool ServerCapabilities::isValid(QStringList *error) const
 {
     return checkOptional<TextDocumentSyncOptions, int>(error, textDocumentSyncKey)
@@ -107,7 +158,7 @@ bool ServerCapabilities::isValid(QStringList *error) const
             && checkOptional<bool>(error, definitionProviderKey)
             && checkOptional<bool, RegistrationOptions>(error, typeDefinitionProviderKey)
             && checkOptional<bool, RegistrationOptions>(error, implementationProviderKey)
-            && checkOptional<bool>(error, referenceProviderKey)
+            && checkOptional<bool>(error, referencesProviderKey)
             && checkOptional<bool>(error, documentHighlightProviderKey)
             && checkOptional<bool>(error, documentSymbolProviderKey)
             && checkOptional<bool>(error, workspaceSymbolProviderKey)
@@ -115,11 +166,12 @@ bool ServerCapabilities::isValid(QStringList *error) const
             && checkOptional<CodeLensOptions>(error, codeLensProviderKey)
             && checkOptional<bool>(error, documentFormattingProviderKey)
             && checkOptional<bool>(error, documentRangeFormattingProviderKey)
-            && checkOptional<bool>(error, renameProviderKey)
+            && checkOptional<bool, RenameOptions>(error, renameProviderKey)
             && checkOptional<DocumentLinkOptions>(error, documentLinkProviderKey)
-            && checkOptional<TextDocumentRegistrationOptions>(error, colorProviderKey)
+            && checkOptional<bool, JsonObject>(error, colorProviderKey)
             && checkOptional<ExecuteCommandOptions>(error, executeCommandProviderKey)
-            && checkOptional<WorkspaceServerCapabilities>(error, workspaceKey);
+            && checkOptional<WorkspaceServerCapabilities>(error, workspaceKey)
+            && checkOptional<SemanticHighlightingServerCapabilities>(error, semanticHighlightingKey);
 }
 
 Utils::optional<Utils::variant<QString, bool> >
@@ -148,7 +200,7 @@ bool ServerCapabilities::WorkspaceServerCapabilities::WorkspaceFoldersCapabiliti
             && checkOptional<QString, bool>(error, changeNotificationsKey);
 }
 
-bool TextDocumentRegistrationOptions::filterApplies(const Utils::FileName &fileName,
+bool TextDocumentRegistrationOptions::filterApplies(const Utils::FilePath &fileName,
                                                     const Utils::MimeType &mimeType) const
 {
     const LanguageClientArray<DocumentFilter> &selector = documentSelector();
@@ -166,6 +218,46 @@ bool TextDocumentSyncOptions::isValid(QStringList *error) const
             && checkOptional<bool>(error, willSaveKey)
             && checkOptional<bool>(error, willSaveWaitUntilKey)
             && checkOptional<SaveOptions>(error, saveKey);
+}
+
+Utils::optional<QList<QList<QString>>> ServerCapabilities::SemanticHighlightingServerCapabilities::scopes() const
+{
+    QList<QList<QString>> scopes;
+    if (!contains(scopesKey))
+        return Utils::nullopt;
+    for (const QJsonValue jsonScopeValue : value(scopesKey).toArray()) {
+        if (!jsonScopeValue.isArray())
+            return {};
+        QList<QString> scope;
+        for (const QJsonValue value : jsonScopeValue.toArray()) {
+            if (!value.isString())
+                return {};
+            scope.append(value.toString());
+        }
+        scopes.append(scope);
+    }
+    return Utils::make_optional(scopes);
+}
+
+void ServerCapabilities::SemanticHighlightingServerCapabilities::setScopes(
+    const QList<QList<QString>> &scopes)
+{
+    QJsonArray jsonScopes;
+    for (const QList<QString> &scope : scopes) {
+        QJsonArray jsonScope;
+        for (const QString &value : scope)
+            jsonScope.append(value);
+        jsonScopes.append(jsonScope);
+    }
+    insert(scopesKey, jsonScopes);
+}
+
+bool ServerCapabilities::SemanticHighlightingServerCapabilities::isValid(QStringList *) const
+{
+    return contains(scopesKey) && value(scopesKey).isArray()
+           && Utils::allOf(value(scopesKey).toArray(), [](const QJsonValue &array) {
+                  return array.isArray() && Utils::allOf(array.toArray(), &QJsonValue::isString);
+              });
 }
 
 } // namespace LanguageServerProtocol

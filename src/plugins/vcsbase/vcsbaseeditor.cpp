@@ -157,7 +157,8 @@ VcsBaseEditor::VcsBaseEditor()
 
 void VcsBaseEditor::finalizeInitialization()
 {
-    QTC_CHECK(qobject_cast<VcsBaseEditorWidget *>(editorWidget()));
+    QTC_ASSERT(qobject_cast<VcsBaseEditorWidget *>(editorWidget()), return);
+    editorWidget()->setReadOnly(true);
 }
 
 // ----------- VcsBaseEditorPrivate
@@ -459,7 +460,7 @@ void UrlTextCursorHandler::handleCurrentContents()
 
 void UrlTextCursorHandler::fillContextMenu(QMenu *menu, EditorContentType type) const
 {
-    Q_UNUSED(type);
+    Q_UNUSED(type)
     menu->addSeparator();
     menu->addAction(createOpenUrlAction(tr("Open URL in Browser...")));
     menu->addAction(createCopyUrlAction(tr("Copy URL Location")));
@@ -526,7 +527,7 @@ EmailTextCursorHandler::EmailTextCursorHandler(VcsBaseEditorWidget *editorWidget
 
 void EmailTextCursorHandler::fillContextMenu(QMenu *menu, EditorContentType type) const
 {
-    Q_UNUSED(type);
+    Q_UNUSED(type)
     menu->addSeparator();
     menu->addAction(createOpenUrlAction(tr("Send Email To...")));
     menu->addAction(createCopyUrlAction(tr("Copy Email Address")));
@@ -672,7 +673,7 @@ bool VcsBaseEditorWidget::supportChangeLinks() const
 
 QString VcsBaseEditorWidget::fileNameForLine(int line) const
 {
-    Q_UNUSED(line);
+    Q_UNUSED(line)
     return source();
 }
 
@@ -724,7 +725,7 @@ void VcsBaseEditorWidget::init()
     case OtherContent:
         break;
     case LogOutput:
-        connect(d->entriesComboBox(), static_cast<void (QComboBox::*)(int)>(&QComboBox::activated),
+        connect(d->entriesComboBox(), QOverload<int>::of(&QComboBox::activated),
                 this, &VcsBaseEditorWidget::slotJumpToEntry);
         connect(this, &QPlainTextEdit::textChanged,
                 this, &VcsBaseEditorWidget::slotPopulateLogBrowser);
@@ -737,7 +738,7 @@ void VcsBaseEditorWidget::init()
         break;
     case DiffOutput:
         // Diff: set up diff file browsing
-        connect(d->entriesComboBox(), static_cast<void (QComboBox::*)(int)>(&QComboBox::activated),
+        connect(d->entriesComboBox(), QOverload<int>::of(&QComboBox::activated),
                 this, &VcsBaseEditorWidget::slotJumpToEntry);
         connect(this, &QPlainTextEdit::textChanged,
                 this, &VcsBaseEditorWidget::slotPopulateDiffBrowser);
@@ -768,12 +769,12 @@ void VcsBaseEditorWidget::setForceReadOnly(bool b)
 
 QString VcsBaseEditorWidget::source() const
 {
-    return VcsBasePlugin::source(textDocument());
+    return VcsBase::source(textDocument());
 }
 
 void VcsBaseEditorWidget::setSource(const  QString &source)
 {
-    VcsBasePlugin::setSource(textDocument(), source);
+    VcsBase::setSource(textDocument(), source);
 }
 
 QString VcsBaseEditorWidget::annotateRevisionTextFormat() const
@@ -868,7 +869,7 @@ void VcsBaseEditorWidget::slotPopulateDiffBrowser()
                 lastFileName = file;
                 // ignore any headers
                 d->m_entrySections.push_back(d->m_entrySections.empty() ? 0 : lineNumber);
-                entriesComboBox->addItem(FileName::fromString(file).fileName());
+                entriesComboBox->addItem(FilePath::fromString(file).fileName());
             }
         }
     }
@@ -979,11 +980,11 @@ void VcsBaseEditorWidget::contextMenuEvent(QContextMenuEvent *e)
         // the user has "Open With" and choose the right diff editor so that
         // fileNameFromDiffSpecification() works.
         QAction *applyAction = menu->addAction(tr("Apply Chunk..."));
-        applyAction->setData(qVariantFromValue(Internal::DiffChunkAction(chunk, false)));
+        applyAction->setData(QVariant::fromValue(Internal::DiffChunkAction(chunk, false)));
         connect(applyAction, &QAction::triggered, this, &VcsBaseEditorWidget::slotApplyDiffChunk);
         // Revert a chunk from a VCS diff, which might be linked to reloading the diff.
         QAction *revertAction = menu->addAction(tr("Revert Chunk..."));
-        revertAction->setData(qVariantFromValue(Internal::DiffChunkAction(chunk, true)));
+        revertAction->setData(QVariant::fromValue(Internal::DiffChunkAction(chunk, true)));
         connect(revertAction, &QAction::triggered, this, &VcsBaseEditorWidget::slotApplyDiffChunk);
         // Custom diff actions
         addDiffActions(menu, chunk);
@@ -1211,7 +1212,7 @@ DiffChunk VcsBaseEditorWidget::diffChunk(QTextCursor cursor) const
 
 void VcsBaseEditorWidget::reportCommandFinished(bool ok, int exitCode, const QVariant &data)
 {
-    Q_UNUSED(exitCode);
+    Q_UNUSED(exitCode)
 
     hideProgressIndicator();
     if (!ok) {
@@ -1245,19 +1246,13 @@ static QTextCodec *findFileCodec(const QString &source)
 // Find the codec by checking the projects (root dir of project file)
 static QTextCodec *findProjectCodec(const QString &dir)
 {
+    const FilePath dirPath = FilePath::fromString(dir);
     typedef  QList<ProjectExplorer::Project*> ProjectList;
     // Try to find a project under which file tree the file is.
     const ProjectList projects = ProjectExplorer::SessionManager::projects();
-    if (!projects.empty()) {
-        const ProjectList::const_iterator pcend = projects.constEnd();
-        for (ProjectList::const_iterator it = projects.constBegin(); it != pcend; ++it)
-            if (const Core::IDocument *document = (*it)->document())
-                if (document->filePath().toString().startsWith(dir)) {
-                    QTextCodec *codec = (*it)->editorConfiguration()->textCodec();
-                    return codec;
-                }
-    }
-    return nullptr;
+    const ProjectExplorer::Project *p
+        = findOrDefault(projects, equal(&ProjectExplorer::Project::projectDirectory, dirPath));
+    return p ? p->editorConfiguration()->textCodec() : nullptr;
 }
 
 QTextCodec *VcsBaseEditor::getCodec(const QString &source)
@@ -1548,13 +1543,13 @@ QString VcsBaseEditorWidget::decorateVersion(const QString &revision) const
 
 bool VcsBaseEditorWidget::isValidRevision(const QString &revision) const
 {
-    Q_UNUSED(revision);
+    Q_UNUSED(revision)
     return true;
 }
 
 QString VcsBaseEditorWidget::revisionSubject(const QTextBlock &inBlock) const
 {
-    Q_UNUSED(inBlock);
+    Q_UNUSED(inBlock)
     return QString();
 }
 
@@ -1621,7 +1616,7 @@ Core::IEditor *VcsBaseEditor::locateEditorByTag(const QString &tag)
     foreach (Core::IDocument *document, Core::DocumentModel::openedDocuments()) {
         const QVariant tagPropertyValue = document->property(tagPropertyC);
         if (tagPropertyValue.type() == QVariant::String && tagPropertyValue.toString() == tag)
-            return Core::DocumentModel::editorsForDocument(document).first();
+            return Core::DocumentModel::editorsForDocument(document).constFirst();
     }
     return nullptr;
 }

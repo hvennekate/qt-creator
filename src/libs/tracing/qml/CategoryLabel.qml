@@ -24,8 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.1
-import QtQuick.Controls 1.2
-import QtQuick.Controls.Styles 1.2
+import QtQuick.Controls 2.2
 
 import TimelineTheme 1.0
 
@@ -62,6 +61,12 @@ Item {
         drag.minimumY: dragging ? 0 : -dragOffset // Account for parent change below
         drag.maximumY: draggerParent.height - (dragging ? 0 : dragOffset)
         drag.axis: Drag.YAxis
+        hoverEnabled: true
+        ToolTip {
+            text: model.tooltip || labelContainer.text
+            visible: enabled && parent.containsMouse
+            delay: 1000
+        }
     }
 
     DropArea {
@@ -96,7 +101,7 @@ Item {
     }
 
     Column {
-        id: column
+        id: labelsArea
         property QtObject parentModel: model
         anchors.top: txt.bottom
         visible: expanded
@@ -111,11 +116,13 @@ Item {
                                                             : draggerParent.contentHeight
                 active: contentBottom > offset
                 width: labelContainer.width
-                height: column.parentModel ? column.parentModel.rowHeight(index + 1) : 0
+                height: labelsArea.parentModel ? labelsArea.parentModel.rowHeight(index + 1) : 0
 
                 sourceComponent: RowLabel {
                     label: labels[index];
                     onSelectBySelectionId: {
+                        if (labelContainer.model.hasMixedTypesInExpandedState)
+                            return;
                         if (labelContainer.reverseSelect) {
                             labelContainer.selectPrevBySelectionId(label.id);
                         } else {
@@ -123,8 +130,8 @@ Item {
                         }
                     }
                     onSetRowHeight: {
-                        column.parentModel.setExpandedRowHeight(index + 1, newHeight);
-                        loader.height = column.parentModel.rowHeight(index + 1);
+                        labelsArea.parentModel.setExpandedRowHeight(index + 1, newHeight);
+                        loader.height = labelsArea.parentModel.rowHeight(index + 1);
                     }
                 }
             }
@@ -161,7 +168,7 @@ Item {
 
         visible: eventIds.length > 0
         imageSource: "image://icons/note"
-        tooltip: texts.join("\n");
+        ToolTip.text: texts.join("\n");
         onClicked: {
             if (++currentNote >= eventIds.length)
                 currentNote = 0;
@@ -176,7 +183,7 @@ Item {
         implicitHeight: txt.height - 1
         enabled: expanded || (model && !model.empty)
         imageSource: expanded ? "image://icons/close_split" : "image://icons/split"
-        tooltip: expanded ? qsTr("Collapse category") : qsTr("Expand category")
+        ToolTip.text: expanded ? qsTr("Collapse category") : qsTr("Expand category")
         onClicked: model.expanded = !expanded
     }
 

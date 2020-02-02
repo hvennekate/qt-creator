@@ -59,6 +59,7 @@ BaseTextDocument::BaseTextDocument(QObject *parent) :
     IDocument(parent), d(new Internal::TextDocumentPrivate)
 {
     setCodec(Core::EditorManager::defaultTextCodec());
+    setLineTerminationMode(Core::EditorManager::defaultLineEnding());
 }
 
 BaseTextDocument::~BaseTextDocument()
@@ -99,6 +100,11 @@ bool BaseTextDocument::write(const QString &fileName, const Utils::TextFileForma
 void BaseTextDocument::setSupportsUtf8Bom(bool value)
 {
     d->m_supportsUtf8Bom = value;
+}
+
+void BaseTextDocument::setLineTerminationMode(Utils::TextFileFormat::LineTerminationMode mode)
+{
+    d->m_format.lineTerminationMode = mode;
 }
 
 /*!
@@ -147,6 +153,11 @@ void BaseTextDocument::switchUtf8Bom()
 bool BaseTextDocument::supportsUtf8Bom() const
 {
     return d->m_supportsUtf8Bom;
+}
+
+Utils::TextFileFormat::LineTerminationMode BaseTextDocument::lineTerminationMode() const
+{
+    return d->m_format.lineTerminationMode;
 }
 
 /*!

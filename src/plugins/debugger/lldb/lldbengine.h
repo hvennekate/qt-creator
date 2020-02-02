@@ -117,9 +117,10 @@ private:
     void readLldbStandardOutput();
     void readLldbStandardError();
 
-    void handleStateNotification(const GdbMi &state);
+    void handleStateNotification(const GdbMi &item);
     void handleLocationNotification(const GdbMi &location);
     void handleOutputNotification(const GdbMi &output);
+    void handleInterpreterBreakpointModified(const GdbMi &item);
 
     void handleResponse(const QString &data);
     void updateAll() override;

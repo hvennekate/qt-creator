@@ -44,13 +44,13 @@ public:
     explicit ClangProjectSettingsWidget(ProjectExplorer::Project *project);
 
 private:
-    void onCurrentWarningConfigChanged(const Core::Id &currentConfigId);
     void onDelayedTemplateParseClicked(bool);
-    void onClangSettingsChanged(int index);
+    void onGlobalCustomChanged(int index);
     void onAboutToSaveProjectSettings();
-    void syncOtherWidgetsToComboBox();
 
-    void refreshDiagnosticConfigsWidgetFromSettings();
+    void syncWidgets();
+    void syncGlobalCustomComboBox();
+    void syncOtherWidgetsToComboBox();
 
 private:
     Ui::ClangProjectSettingsWidget m_ui;

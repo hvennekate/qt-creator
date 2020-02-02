@@ -36,6 +36,7 @@
 #include <clangsupport/sourcerangecontainer.h>
 #include <utils/qtcassert.h>
 #include <utils/textfileformat.h>
+#include <utils/qtcassert.h>
 
 #include <utf8string.h>
 
@@ -86,7 +87,6 @@ Utf8String displayName(const Cursor &cursor)
 
 Utf8String textForFunctionLike(const Cursor &cursor)
 {
-#ifdef IS_PRETTY_DECL_SUPPORTED
     CXPrintingPolicy policy = clang_getCursorPrintingPolicy(cursor.cx());
     clang_PrintingPolicy_setProperty(policy, CXPrintingPolicy_FullyQualifiedName, 1);
     clang_PrintingPolicy_setProperty(policy, CXPrintingPolicy_TerseOutput, 1);
@@ -97,17 +97,6 @@ Utf8String textForFunctionLike(const Cursor &cursor)
         clang_getCursorPrettyPrinted(cursor.cx(), policy));
     clang_PrintingPolicy_dispose(policy);
     return prettyPrinted;
-#else
-    // Printing function declarations with displayName() is quite limited:
-    //   * result type is not included
-    //   * parameter names are not included
-    //   * templates in the result type are not included
-    //   * no full qualification of the function name
-    return Utf8String(cursor.resultType().spelling())
-         + Utf8StringLiteral(" ")
-         + qualificationPrefix(cursor)
-         + Utf8String(cursor.displayName());
-#endif
 }
 
 Utf8String textForEnumConstantDecl(const Cursor &cursor)
@@ -280,7 +269,7 @@ Utf8String ToolTipInfoCollector::textForNamespaceAlias(const Cursor &cursor) con
 
     Utf8String aliasedName;
     // Start at 3 in order to skip these tokens: namespace X =
-    for (uint i = 3; i < tokens.size(); ++i)
+    for (int i = 3; i < tokens.size(); ++i)
         aliasedName += tokens[i].spelling();
 
     return aliasedName;
@@ -392,7 +381,7 @@ static bool isBuiltinOrPointerToBuiltin(const Type &type)
 
     // TODO: Simplify
     // TODO: Test with **
-    while (theType.pointeeType().isValid()) {
+    while (theType.pointeeType().isValid() && theType != theType.pointeeType()) {
         theType = theType.pointeeType();
         if (theType.isBuiltinType())
             return true;
@@ -425,14 +414,24 @@ ToolTipInfo ToolTipInfoCollector::qDocInfo(const Cursor &cursor) const
         return result;
     }
 
-    if (cursor.kind() == CXCursor_VarDecl || cursor.kind() == CXCursor_FieldDecl) {
-        result.qdocMark = typeName(cursor.type());
+    if (cursor.kind() == CXCursor_VarDecl || cursor.kind() == CXCursor_ParmDecl
+        || cursor.kind() == CXCursor_FieldDecl) {
         // maybe template instantiation
         if (cursor.type().kind() == CXType_Unexposed && cursor.type().canonical().kind() == CXType_Record) {
             result.qdocIdCandidates = qDocIdCandidates(cursor.type().canonical().declaration());
+            result.qdocMark = typeName(cursor.type());
             result.qdocCategory = ToolTipInfo::ClassOrNamespace;
             return result;
         }
+
+        Type type = cursor.type();
+        while (type.pointeeType().isValid() && type != type.pointeeType())
+            type = type.pointeeType();
+
+        const Cursor typeCursor = type.declaration();
+        result.qdocIdCandidates = qDocIdCandidates(typeCursor);
+        result.qdocCategory = qdocCategory(typeCursor);
+        result.qdocMark = typeName(type);
     }
 
     // TODO: Handle also RValueReference()

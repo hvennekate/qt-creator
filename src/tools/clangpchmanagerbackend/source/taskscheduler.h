@@ -30,6 +30,7 @@
 #include "queueinterface.h"
 #include "progresscounter.h"
 
+#include <executeinloop.h>
 #include <processormanagerinterface.h>
 #include <symbolindexertaskqueueinterface.h>
 #include <symbolscollectorinterface.h>
@@ -56,6 +57,8 @@ class ProcessorManagerInterface;
 class QueueInterface;
 class SymbolStorageInterface;
 
+enum class CallDoInMainThreadAfterFinished : char { Yes, No };
+
 template <typename ProcessorManager,
           typename Task>
 class TaskScheduler : public TaskSchedulerInterface<Task>
@@ -68,23 +71,27 @@ public:
                   QueueInterface &queue,
                   ProgressCounter &progressCounter,
                   uint hardwareConcurrency,
+                  CallDoInMainThreadAfterFinished callDoInMainThreadAfterFinished,
                   std::launch launchPolicy = std::launch::async)
-        : m_processorManager(processorManager),
-          m_queue(queue),
-          m_progressCounter(progressCounter),
-          m_hardwareConcurrency(hardwareConcurrency),
-          m_launchPolicy(launchPolicy)
+        : m_processorManager(processorManager)
+        , m_queue(queue)
+        , m_progressCounter(progressCounter)
+        , m_hardwareConcurrency(hardwareConcurrency)
+        , m_launchPolicy(launchPolicy)
+        , m_callDoInMainThreadAfterFinished(callDoInMainThreadAfterFinished)
     {}
+
+    ~TaskScheduler()
+    {
+        syncTasks();
+    }
 
     void addTasks(std::vector<Task> &&tasks)
     {
         for (auto &task : tasks) {
-            auto callWrapper = [&, task=std::move(task)] (auto processor)
-                    -> ProcessorInterface& {
+            auto callWrapper = [&, task = std::move(task)](auto processor) -> ProcessorInterface & {
                 task(processor.get());
-                executeInLoop([&] {
-                    m_queue.processEntries();
-                });
+                executeInLoop([&] { m_queue.processEntries(); });
 
                 return processor;
             };
@@ -99,14 +106,15 @@ public:
         return m_futures;
     }
 
-    uint freeSlots()
+    SlotUsage slotUsage()
     {
         removeFinishedFutures();
 
         if (m_isDisabled)
-            return 0;
+            return {};
 
-        return uint(std::max(int(m_hardwareConcurrency) - int(m_futures.size()), 0));
+        return {uint(std::max(int(m_hardwareConcurrency) - int(m_futures.size()), 0)),
+                uint(m_futures.size())};
     }
 
     void syncTasks()
@@ -129,9 +137,10 @@ private:
 
         auto split = std::partition(m_futures.begin(), m_futures.end(), notReady);
 
-        std::for_each(split, m_futures.end(), [] (Future &future) {
+        std::for_each(split, m_futures.end(), [&] (Future &future) {
             ProcessorInterface &processor = future.get();
-            processor.doInMainThreadAfterFinished();
+            if (m_callDoInMainThreadAfterFinished == CallDoInMainThreadAfterFinished::Yes)
+                processor.doInMainThreadAfterFinished();
             processor.setIsUsed(false);
             processor.clear();
         });
@@ -141,47 +150,6 @@ private:
         m_futures.erase(split, m_futures.end());
     }
 
-    #if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
-    template <typename CallableType>
-    class CallableEvent : public QEvent {
-    public:
-       using Callable = std::decay_t<CallableType>;
-       CallableEvent(Callable &&callable)
-           : QEvent(QEvent::None),
-             callable(std::move(callable))
-       {}
-       CallableEvent(const Callable &callable)
-           : QEvent(QEvent::None),
-             callable(callable)
-       {}
-
-       ~CallableEvent()
-       {
-           callable();
-       }
-    public:
-       Callable callable;
-    };
-
-    template <typename Callable>
-    void executeInLoop(Callable &&callable, QObject *object = QCoreApplication::instance()) {
-       if (QThread *thread = qobject_cast<QThread*>(object))
-           object = QAbstractEventDispatcher::instance(thread);
-
-       QCoreApplication::postEvent(object,
-                                   new CallableEvent<Callable>(std::forward<Callable>(callable)),
-                                   Qt::HighEventPriority);
-    }
-    #else
-    template <typename Callable>
-    void executeInLoop(Callable &&callable, QObject *object = QCoreApplication::instance()) {
-       if (QThread *thread = qobject_cast<QThread*>(object))
-           object = QAbstractEventDispatcher::instance(thread);
-
-       QMetaObject::invokeMethod(object, std::forward<Callable>(callable));
-    }
-    #endif
-
 private:
     std::vector<Future> m_futures;
     ProcessorManager &m_processorManager;
@@ -190,6 +158,7 @@ private:
     uint m_hardwareConcurrency;
     std::launch m_launchPolicy;
     bool m_isDisabled = false;
+    CallDoInMainThreadAfterFinished m_callDoInMainThreadAfterFinished;
 };
 
 } // namespace ClangBackEnd

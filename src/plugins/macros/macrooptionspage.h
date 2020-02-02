@@ -27,27 +27,13 @@
 
 #include <coreplugin/dialogs/ioptionspage.h>
 
-#include <QPointer>
-
 namespace Macros {
 namespace Internal {
 
-class MacroOptionsWidget;
-
-class MacroOptionsPage : public Core::IOptionsPage
+class MacroOptionsPage final : public Core::IOptionsPage
 {
-    Q_OBJECT
-
 public:
-    MacroOptionsPage(QObject *parent = 0);
-
-    // IOptionsPage implementation
-    QWidget *widget();
-    void apply();
-    void finish();
-
-private:
-    QPointer<MacroOptionsWidget> m_widget;
+    MacroOptionsPage();
 };
 
 } // namespace Internal

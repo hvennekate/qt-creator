@@ -28,10 +28,15 @@
 #include "projectconfiguration.h"
 #include "projectexplorer_export.h"
 
+#include <utils/optional.h>
 #include <utils/qtcassert.h>
 
 #include <QFutureInterface>
 #include <QWidget>
+
+#include <atomic>
+#include <functional>
+#include <memory>
 
 namespace ProjectExplorer {
 
@@ -39,6 +44,7 @@ class BuildConfiguration;
 class BuildStepConfigWidget;
 class BuildStepFactory;
 class BuildStepList;
+class BuildSystem;
 class DeployConfiguration;
 class Target;
 class Task;
@@ -53,11 +59,10 @@ protected:
     explicit BuildStep(BuildStepList *bsl, Core::Id id);
 
 public:
-    virtual bool init(QList<const BuildStep *> &earlierSteps) = 0;
-    virtual void run(QFutureInterface<bool> &fi) = 0;
+    virtual bool init() = 0;
+    void run();
+    void cancel();
     virtual BuildStepConfigWidget *createConfigWidget();
-
-    virtual void cancel();
 
     bool fromMap(const QVariantMap &map) override;
     QVariantMap toMap() const override;
@@ -65,11 +70,13 @@ public:
     bool enabled() const;
     void setEnabled(bool b);
 
+    BuildStepList *stepList() const;
+
     BuildConfiguration *buildConfiguration() const;
     DeployConfiguration *deployConfiguration() const;
     ProjectConfiguration *projectConfiguration() const;
-    Target *target() const;
-    Project *project() const override;
+
+    BuildSystem *buildSystem() const;
 
     enum class OutputFormat {
         Stdout, Stderr, // These are for forwarded output from external tools
@@ -85,11 +92,17 @@ public:
     bool widgetExpandedByDefault() const;
     void setWidgetExpandedByDefault(bool widgetExpandedByDefault);
 
+    bool hasUserExpansionState() const { return m_wasExpanded.has_value(); }
+    bool wasUserExpanded() const { return m_wasExpanded.value_or(false); }
+    void setUserExpanded(bool expanded) { m_wasExpanded = expanded; }
+
     bool isImmutable() const { return m_immutable; }
     void setImmutable(bool immutable) { m_immutable = immutable; }
 
-    bool runInGuiThread() const;
-    void setRunInGuiThread(bool runInGuiThread);
+    virtual QVariant data(Core::Id id) const;
+    void setSummaryUpdater(const std::function<QString ()> &summaryUpdater);
+
+    void addMacroExpander();
 
 signals:
     /// Adds a \p task to the Issues pane.
@@ -104,11 +117,29 @@ signals:
 
     void enabledChanged();
 
+    void progress(int percentage, const QString &message);
+    void finished(bool result);
+
+protected:
+    void runInThread(const std::function<bool()> &syncImpl);
+
+    std::function<bool()> cancelChecker() const;
+    bool isCanceled() const;
+
 private:
+    using ProjectConfiguration::parent;
+
+    virtual void doRun() = 0;
+    virtual void doCancel();
+
+    std::atomic_bool m_cancelFlag;
     bool m_enabled = true;
     bool m_immutable = false;
     bool m_widgetExpandedByDefault = true;
-    bool m_runInGuiThread = false;
+    bool m_runInGuiThread = true;
+    bool m_addMacroExpander = false;
+    Utils::optional<bool> m_wasExpanded;
+    std::function<QString()> m_summaryUpdater;
 };
 
 class PROJECTEXPLORER_EXPORT BuildStepInfo
@@ -132,6 +163,8 @@ class PROJECTEXPLORER_EXPORT BuildStepFactory
 {
 public:
     BuildStepFactory();
+    BuildStepFactory(const BuildStepFactory &) = delete;
+    BuildStepFactory &operator=(const BuildStepFactory &) = delete;
     virtual ~BuildStepFactory();
 
     static const QList<BuildStepFactory *> allBuildStepFactories();
@@ -144,9 +177,6 @@ public:
     bool canHandle(BuildStepList *bsl) const;
 
 protected:
-    BuildStepFactory(const BuildStepFactory &) = delete;
-    BuildStepFactory &operator=(const BuildStepFactory &) = delete;
-
     using BuildStepCreator = std::function<BuildStep *(BuildStepList *)>;
 
     template <class BuildStepType>
@@ -154,7 +184,7 @@ protected:
     {
         QTC_CHECK(!m_info.creator);
         m_info.id = id;
-        m_info.creator = [](BuildStepList *bsl) { return new BuildStepType(bsl); };
+        m_info.creator = [id](BuildStepList *bsl) { return new BuildStepType(bsl, id); };
     }
 
     void setSupportedStepList(Core::Id id);
@@ -190,6 +220,9 @@ public:
     void setDisplayName(const QString &displayName);
     void setSummaryText(const QString &summaryText);
 
+    void setSummaryUpdater(const std::function<QString()> &summaryUpdater);
+    void recreateSummary();
+
 signals:
     void updateSummary();
 
@@ -197,6 +230,7 @@ private:
     BuildStep *m_step = nullptr;
     QString m_displayName;
     QString m_summaryText;
+    std::function<QString()> m_summaryUpdater;
 };
 
 } // namespace ProjectExplorer

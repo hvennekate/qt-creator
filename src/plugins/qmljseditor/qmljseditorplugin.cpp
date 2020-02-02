@@ -81,7 +81,6 @@ public:
     Command *addToolAction(QAction *a, Context &context, Id id,
                            ActionContainer *c1, const QString &keySequence);
 
-    void findUsages();
     void renameUsages();
     void reformatFile();
     void showContextPane();
@@ -117,8 +116,8 @@ QmlJSEditorPlugin::~QmlJSEditorPlugin()
 
 bool QmlJSEditorPlugin::initialize(const QStringList &arguments, QString *errorMessage)
 {
-    Q_UNUSED(arguments);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorMessage)
 
     d = new QmlJSEditorPluginPrivate;
 
@@ -142,10 +141,12 @@ QmlJSEditorPluginPrivate::QmlJSEditorPluginPrivate()
     // recompute messages when project data changes (files added or removed)
     connect(modelManager, &QmlJS::ModelManagerInterface::projectInfoUpdated,
             &m_qmlTaskManager, &QmlTaskManager::updateMessages);
-    connect(modelManager, &QmlJS::ModelManagerInterface::aboutToRemoveFiles,
-            &m_qmlTaskManager, &QmlTaskManager::documentsRemoved);
+    connect(modelManager,
+            &QmlJS::ModelManagerInterface::aboutToRemoveFiles,
+            &m_qmlTaskManager,
+            &QmlTaskManager::documentsRemoved);
 
-    Context context(Constants::C_QMLJSEDITOR_ID);
+    Context context(Constants::C_QMLJSEDITOR_ID, Constants::C_QTQUICKDESIGNEREDITOR_ID);
 
     ActionContainer *contextMenu = ActionManager::createMenu(Constants::M_CONTEXT);
     ActionContainer *qmlToolsMenu = ActionManager::actionContainer(Id(QmlJSTools::Constants::M_TOOLS_QMLJS));
@@ -157,34 +158,34 @@ QmlJSEditorPluginPrivate::QmlJSEditorPluginPrivate()
     contextMenu->addAction(cmd);
     qmlToolsMenu->addAction(cmd);
 
-    QAction *findUsagesAction = new QAction(QmlJSEditorPlugin::tr("Find Usages"), this);
-    cmd = ActionManager::registerAction(findUsagesAction, Constants::FIND_USAGES, context);
-    cmd->setDefaultKeySequence(QKeySequence(QmlJSEditorPlugin::tr("Ctrl+Shift+U")));
-    connect(findUsagesAction, &QAction::triggered, this, &QmlJSEditorPluginPrivate::findUsages);
+    cmd = ActionManager::command(TextEditor::Constants::FIND_USAGES);
     contextMenu->addAction(cmd);
     qmlToolsMenu->addAction(cmd);
 
     QAction *renameUsagesAction = new QAction(QmlJSEditorPlugin::tr("Rename Symbol Under Cursor"), this);
-    cmd = ActionManager::registerAction(renameUsagesAction, Constants::RENAME_USAGES, context);
+    cmd = ActionManager::registerAction(renameUsagesAction, "QmlJSEditor.RenameUsages", context);
     cmd->setDefaultKeySequence(QKeySequence(QmlJSEditorPlugin::tr("Ctrl+Shift+R")));
     connect(renameUsagesAction, &QAction::triggered, this, &QmlJSEditorPluginPrivate::renameUsages);
     contextMenu->addAction(cmd);
     qmlToolsMenu->addAction(cmd);
 
     QAction *semanticScan = new QAction(QmlJSEditorPlugin::tr("Run Checks"), this);
-    cmd = ActionManager::registerAction(semanticScan, Id(Constants::RUN_SEMANTIC_SCAN));
+    cmd = ActionManager::registerAction(semanticScan, Id("QmlJSEditor.RunSemanticScan"));
     cmd->setDefaultKeySequence(QKeySequence(QmlJSEditorPlugin::tr("Ctrl+Shift+C")));
     connect(semanticScan, &QAction::triggered, this, &QmlJSEditorPluginPrivate::runSemanticScan);
     qmlToolsMenu->addAction(cmd);
 
     m_reformatFileAction = new QAction(QmlJSEditorPlugin::tr("Reformat File"), this);
-    cmd = ActionManager::registerAction(m_reformatFileAction, Id(Constants::REFORMAT_FILE), context);
+    cmd = ActionManager::registerAction(m_reformatFileAction,
+                                        Id("QmlJSEditor.ReformatFile"),
+                                        context);
     connect(m_reformatFileAction, &QAction::triggered, this, &QmlJSEditorPluginPrivate::reformatFile);
     qmlToolsMenu->addAction(cmd);
 
     QAction *inspectElementAction = new QAction(QmlJSEditorPlugin::tr("Inspect API for Element Under Cursor"), this);
     cmd = ActionManager::registerAction(inspectElementAction,
-                                              Id(Constants::INSPECT_ELEMENT_UNDER_CURSOR), context);
+                                        Id("QmlJSEditor.InspectElementUnderCursor"),
+                                        context);
     connect(inspectElementAction, &QAction::triggered, [] {
         if (auto widget = qobject_cast<QmlJSEditorWidget *>(EditorManager::currentEditor()->widget()))
             widget->inspectElementUnderCursor();
@@ -243,15 +244,9 @@ QuickToolBar *QmlJSEditorPlugin::quickToolBar()
     return &m_instance->d->m_quickToolBar;
 }
 
-void QmlJSEditorPluginPrivate::findUsages()
-{
-    if (QmlJSEditorWidget *editor = qobject_cast<QmlJSEditorWidget*>(EditorManager::currentEditor()->widget()))
-        editor->findUsages();
-}
-
 void QmlJSEditorPluginPrivate::renameUsages()
 {
-    if (QmlJSEditorWidget *editor = qobject_cast<QmlJSEditorWidget*>(EditorManager::currentEditor()->widget()))
+    if (auto editor = qobject_cast<QmlJSEditorWidget*>(EditorManager::currentEditor()->widget()))
         editor->renameUsages();
 }
 
@@ -303,7 +298,7 @@ void QmlJSEditorPluginPrivate::reformatFile()
 
 void QmlJSEditorPluginPrivate::showContextPane()
 {
-    if (QmlJSEditorWidget *editor = qobject_cast<QmlJSEditorWidget*>(EditorManager::currentEditor()->widget()))
+    if (auto editor = qobject_cast<QmlJSEditorWidget*>(EditorManager::currentEditor()->widget()))
         editor->showContextPane();
 }
 
@@ -359,7 +354,8 @@ void QmlJSEditorPluginPrivate::autoFormatOnSave(IDocument *document)
         return;
 
     // Check that we are dealing with a QML/JS editor
-    if (document->id() != Constants::C_QMLJSEDITOR_ID)
+    if (document->id() != Constants::C_QMLJSEDITOR_ID
+        && document->id() != Constants::C_QTQUICKDESIGNEREDITOR_ID)
         return;
 
     // Check if file is contained in the current project (if wished)

@@ -30,10 +30,9 @@
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 
-#include <QFile>
 #include <QDir>
-#include <QFileInfoList>
-#include <QMutexLocker>
+#include <QFile>
+#include <QFileInfo>
 
 using namespace AutotoolsProjectManager::Internal;
 
@@ -49,7 +48,7 @@ bool MakefileParser::parse()
 {
     m_mutex.lock();
     m_cancel = false;
-    m_mutex.unlock(),
+    m_mutex.unlock();
 
     m_success = true;
     m_executable.clear();
@@ -291,11 +290,26 @@ void MakefileParser::parseSubDirs()
         foreach (const QString& source, parser.sources())
             m_sources.append(subDir + slash + source);
 
-        // Duplicates might be possible in combination with several
-        // "..._SUBDIRS" targets
-        m_makefiles.removeDuplicates();
-        m_sources.removeDuplicates();
+        // Append the include paths of the sub directory
+        m_includePaths.append(parser.includePaths());
+
+        // Append the flags of the sub directory
+        m_cflags.append(parser.cflags());
+        m_cxxflags.append(parser.cxxflags());
+
+        // Append the macros of the sub directory
+        foreach (const auto& m, parser.macros())
+        {
+            if (!m_macros.contains(m))
+                m_macros.append(m);
+        }
+
     }
+
+    // Duplicates might be possible in combination with several
+    // "..._SUBDIRS" targets
+    m_makefiles.removeDuplicates();
+    m_sources.removeDuplicates();
 
     if (subDirs.isEmpty())
         m_success = false;

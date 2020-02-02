@@ -27,9 +27,10 @@
 
 #include <projectexplorer/devicesupport/deviceprocess.h>
 #include <projectexplorer/devicesupport/idevice.h>
-#include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/runcontrol.h>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace RemoteLinux {
 namespace Internal {
@@ -37,10 +38,8 @@ namespace Internal {
 RemoteLinuxEnvironmentReader::RemoteLinuxEnvironmentReader(const IDevice::ConstPtr &device,
                                                            QObject *parent)
     : QObject(parent)
-    , m_stop(false)
     , m_env(Utils::OsTypeLinux)
     , m_device(device)
-    , m_deviceProcess(0)
 {
 }
 
@@ -58,7 +57,7 @@ void RemoteLinuxEnvironmentReader::start()
     connect(m_deviceProcess, &DeviceProcess::finished,
             this, &RemoteLinuxEnvironmentReader::remoteProcessFinished);
     Runnable runnable;
-    runnable.executable = QLatin1String("env");
+    runnable.executable = FilePath::fromString("env");
     m_deviceProcess->start(runnable);
 }
 
@@ -127,7 +126,7 @@ void RemoteLinuxEnvironmentReader::destroyProcess()
     if (m_deviceProcess->state() != QProcess::NotRunning)
         m_deviceProcess->terminate();
     m_deviceProcess->deleteLater();
-    m_deviceProcess = 0;
+    m_deviceProcess = nullptr;
 }
 
 } // namespace Internal

@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>551</width>
-    <height>493</height>
+    <height>507</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -101,7 +101,7 @@
       <item row="1" column="4">
        <widget class="QSpinBox" name="automaticProposalTimeoutSpinBox">
         <property name="maximum">
-         <number>500</number>
+         <number>2000</number>
         </property>
         <property name="singleStep">
          <number>50</number>
@@ -302,6 +302,16 @@ In addition, Shift+Enter inserts an escape character at the cursor position and 
          </widget>
         </item>
        </layout>
+      </item>
+      <item row="3" column="1">
+       <widget class="QCheckBox" name="overwriteClosingChars">
+        <property name="toolTip">
+         <string>Automatically overwrite closing parentheses and quotes.</string>
+        </property>
+        <property name="text">
+         <string>Overwrite closing punctuation</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>

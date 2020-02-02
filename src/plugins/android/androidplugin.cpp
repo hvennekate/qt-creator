@@ -28,20 +28,17 @@
 #include "androidconfigurations.h"
 #include "androidconstants.h"
 #include "androiddebugsupport.h"
-#include "androiddeployconfiguration.h"
 #include "androiddeployqtstep.h"
 #include "androiddevice.h"
-#include "androiddevicefactory.h"
-#include "androidgdbserverkitinformation.h"
 #include "androidmanager.h"
 #include "androidmanifesteditorfactory.h"
 #include "androidpackageinstallationstep.h"
 #include "androidpotentialkit.h"
 #include "androidqmltoolingsupport.h"
-#include "androidqtversionfactory.h"
+#include "androidqtversion.h"
 #include "androidrunconfiguration.h"
 #include "androidruncontrol.h"
-#include "androidsettingspage.h"
+#include "androidsettingswidget.h"
 #include "androidtoolchain.h"
 #include "javaeditor.h"
 
@@ -50,8 +47,12 @@
 #endif
 
 #include <projectexplorer/devicesupport/devicemanager.h>
+#include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/deployconfiguration.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/kitmanager.h>
+#include <projectexplorer/project.h>
+#include <projectexplorer/session.h>
 #include <projectexplorer/target.h>
 
 #include <qtsupport/qtversionmanager.h>
@@ -62,6 +63,19 @@ using namespace ProjectExplorer::Constants;
 namespace Android {
 namespace Internal {
 
+class AndroidDeployConfigurationFactory : public DeployConfigurationFactory
+{
+public:
+    AndroidDeployConfigurationFactory()
+    {
+        setConfigBaseId("Qt4ProjectManager.AndroidDeployConfiguration2");
+        addSupportedTargetDeviceType(Constants::ANDROID_DEVICE_TYPE);
+        setDefaultDisplayName(QCoreApplication::translate("Android::Internal",
+                                                          "Deploy to Android device"));
+        addInitialStep(AndroidDeployQtStep::stepId());
+    }
+};
+
 class AndroidRunConfigurationFactory : public RunConfigurationFactory
 {
 public:
@@ -70,14 +84,18 @@ public:
         registerRunConfiguration<Android::AndroidRunConfiguration>
                 ("Qt4ProjectManager.AndroidRunConfiguration:");
         addSupportedTargetDeviceType(Android::Constants::ANDROID_DEVICE_TYPE);
-        addRunWorkerFactory<AndroidRunSupport>(NORMAL_RUN_MODE);
-        addRunWorkerFactory<AndroidDebugSupport>(DEBUG_RUN_MODE);
-        addRunWorkerFactory<AndroidQmlToolingSupport>(QML_PROFILER_RUN_MODE);
-        addRunWorkerFactory<AndroidQmlToolingSupport>(QML_PREVIEW_RUN_MODE);
     }
 };
 
-class AndroidPluginPrivate
+class AndroidQmlPreviewWorker : public AndroidQmlToolingSupport
+{
+public:
+    AndroidQmlPreviewWorker(RunControl *runControl)
+        : AndroidQmlToolingSupport(runControl, runControl->runnable().executable.toString())
+    {}
+};
+
+class AndroidPluginPrivate : public QObject
 {
 public:
     AndroidConfigurations androidConfiguration;
@@ -92,6 +110,34 @@ public:
     AndroidPackageInstallationFactory packackeInstallationFactory;
     AndroidManifestEditorFactory manifestEditorFactory;
     AndroidRunConfigurationFactory runConfigFactory;
+
+    RunWorkerFactory runWorkerFactory{
+        RunWorkerFactory::make<AndroidRunSupport>(),
+        {NORMAL_RUN_MODE},
+        {runConfigFactory.id()}
+    };
+    RunWorkerFactory debugWorkerFactory{
+        RunWorkerFactory::make<AndroidDebugSupport>(),
+        {DEBUG_RUN_MODE},
+        {runConfigFactory.id()}
+    };
+    RunWorkerFactory profilerWorkerFactory{
+        RunWorkerFactory::make<AndroidQmlToolingSupport>(),
+        {QML_PROFILER_RUN_MODE},
+        {runConfigFactory.id()}
+    };
+    RunWorkerFactory qmlPreviewWorkerFactory{
+        RunWorkerFactory::make<AndroidQmlToolingSupport>(),
+        {QML_PREVIEW_RUN_MODE},
+        {runConfigFactory.id()}
+    };
+    RunWorkerFactory qmlPreviewWorkerFactory2{
+        RunWorkerFactory::make<AndroidQmlPreviewWorker>(),
+        {QML_PREVIEW_RUN_MODE},
+        {"QmlProjectManager.QmlRunConfiguration"},
+        {Android::Constants::ANDROID_DEVICE_TYPE}
+    };
+
     AndroidBuildApkStepFactory buildApkStepFactory;
 };
 
@@ -102,22 +148,10 @@ AndroidPlugin::~AndroidPlugin()
 
 bool AndroidPlugin::initialize(const QStringList &arguments, QString *errorMessage)
 {
-    Q_UNUSED(arguments);
-    Q_UNUSED(errorMessage);
-
-    RunControl::registerWorker(QML_PREVIEW_RUN_MODE, [](RunControl *runControl) -> RunWorker* {
-        const Runnable runnable = runControl->runConfiguration()->runnable();
-        return new AndroidQmlToolingSupport(runControl, runnable.executable);
-    }, [](RunConfiguration *runConfig) {
-        return runConfig->isEnabled()
-                && runConfig->id().name().startsWith("QmlProjectManager.QmlRunConfiguration")
-                && DeviceTypeKitInformation::deviceTypeId(runConfig->target()->kit())
-                    == Android::Constants::ANDROID_DEVICE_TYPE;
-    });
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorMessage)
 
     d = new AndroidPluginPrivate;
-
-    KitManager::registerKitInformation<Internal::AndroidGdbServerKitInformation>();
 
     connect(KitManager::instance(), &KitManager::kitsLoaded,
             this, &AndroidPlugin::kitsRestored);

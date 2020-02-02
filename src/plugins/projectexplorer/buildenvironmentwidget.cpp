@@ -33,25 +33,24 @@
 #include <QVBoxLayout>
 #include <QCheckBox>
 
-using namespace ProjectExplorer;
+namespace ProjectExplorer {
 
-BuildEnvironmentWidget::BuildEnvironmentWidget(BuildConfiguration *bc) :
-    m_buildConfiguration(nullptr)
+BuildEnvironmentWidget::BuildEnvironmentWidget(BuildConfiguration *bc)
+    : NamedWidget(tr("Build Environment")), m_buildConfiguration(bc)
 {
     auto vbox = new QVBoxLayout(this);
-    vbox->setMargin(0);
+    vbox->setContentsMargins(0, 0, 0, 0);
     m_clearSystemEnvironmentCheckBox = new QCheckBox(this);
     m_clearSystemEnvironmentCheckBox->setText(tr("Clear system environment"));
 
-    m_buildEnvironmentWidget = new EnvironmentWidget(this, m_clearSystemEnvironmentCheckBox);
+    m_buildEnvironmentWidget = new EnvironmentWidget(this, EnvironmentWidget::TypeLocal,
+                                                     m_clearSystemEnvironmentCheckBox);
     vbox->addWidget(m_buildEnvironmentWidget);
 
     connect(m_buildEnvironmentWidget, &EnvironmentWidget::userChangesChanged,
             this, &BuildEnvironmentWidget::environmentModelUserChangesChanged);
     connect(m_clearSystemEnvironmentCheckBox, &QAbstractButton::toggled,
             this, &BuildEnvironmentWidget::clearSystemEnvironmentCheckBoxClicked);
-
-    m_buildConfiguration = bc;
 
     connect(m_buildConfiguration, &BuildConfiguration::environmentChanged,
             this, &BuildEnvironmentWidget::environmentChanged);
@@ -60,8 +59,6 @@ BuildEnvironmentWidget::BuildEnvironmentWidget(BuildConfiguration *bc) :
     m_buildEnvironmentWidget->setBaseEnvironment(m_buildConfiguration->baseEnvironment());
     m_buildEnvironmentWidget->setBaseEnvironmentText(m_buildConfiguration->baseEnvironmentText());
     m_buildEnvironmentWidget->setUserChanges(m_buildConfiguration->userEnvironmentChanges());
-
-    setDisplayName(tr("Build Environment"));
 }
 
 void BuildEnvironmentWidget::environmentModelUserChangesChanged()
@@ -81,3 +78,5 @@ void BuildEnvironmentWidget::environmentChanged()
     m_buildEnvironmentWidget->setBaseEnvironment(m_buildConfiguration->baseEnvironment());
     m_buildEnvironmentWidget->setBaseEnvironmentText(m_buildConfiguration->baseEnvironmentText());
 }
+
+} // ProjectExplorer

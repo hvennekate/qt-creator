@@ -31,6 +31,7 @@
 #include <utils/hostosinfo.h>
 
 #include <QAbstractSocket>
+#include <QCoreApplication>
 #include <QList>
 #include <QObject>
 #include <QSharedPointer>
@@ -60,8 +61,6 @@ class DeviceProcess;
 class DeviceProcessList;
 class Kit;
 class Runnable;
-class RunControl;
-class RunWorker;
 
 namespace Internal { class IDevicePrivate; }
 
@@ -72,7 +71,7 @@ class PROJECTEXPLORER_EXPORT DeviceProcessSignalOperation : public QObject
 {
     Q_OBJECT
 public:
-    typedef QSharedPointer<DeviceProcessSignalOperation> Ptr;
+    using Ptr = QSharedPointer<DeviceProcessSignalOperation>;
 
     virtual void killProcess(qint64 pid) = 0;
     virtual void killProcess(const QString &filePath) = 0;
@@ -96,7 +95,7 @@ class PROJECTEXPLORER_EXPORT DeviceEnvironmentFetcher : public QObject
 {
     Q_OBJECT
 public:
-    typedef QSharedPointer<DeviceEnvironmentFetcher> Ptr;
+    using Ptr = QSharedPointer<DeviceEnvironmentFetcher>;
 
     virtual void start() = 0;
 
@@ -110,7 +109,7 @@ protected:
 class PROJECTEXPLORER_EXPORT PortsGatheringMethod
 {
 public:
-    typedef QSharedPointer<const PortsGatheringMethod> Ptr;
+    using Ptr = QSharedPointer<const PortsGatheringMethod>;
 
     virtual ~PortsGatheringMethod() = default;
     virtual Runnable runnable(QAbstractSocket::NetworkLayerProtocol protocol) const = 0;
@@ -120,17 +119,21 @@ public:
 // See cpp file for documentation.
 class PROJECTEXPLORER_EXPORT IDevice : public QEnableSharedFromThis<IDevice>
 {
+    friend class Internal::IDevicePrivate;
 public:
-    typedef QSharedPointer<IDevice> Ptr;
-    typedef QSharedPointer<const IDevice> ConstPtr;
+    using Ptr = QSharedPointer<IDevice>;
+    using ConstPtr = QSharedPointer<const IDevice>;
 
     enum Origin { ManuallyAdded, AutoDetected };
     enum MachineType { Hardware, Emulator };
 
     virtual ~IDevice();
 
+    Ptr clone() const;
+
     QString displayName() const;
     void setDisplayName(const QString &name);
+    void setDefaultDisplayName(const QString &name);
 
     // Provide some information on the device suitable for formated
     // output, e.g. in tool tips. Get a list of name value pairs.
@@ -141,20 +144,28 @@ public:
         QString key;
         QString value;
     };
-    typedef QList<DeviceInfoItem> DeviceInfo;
+    using DeviceInfo = QList<DeviceInfoItem>;
     virtual DeviceInfo deviceInformation() const;
 
     Core::Id type() const;
+    void setType(Core::Id type);
+
     bool isAutoDetected() const;
     Core::Id id() const;
 
     virtual bool isCompatibleWith(const Kit *k) const;
 
-    virtual QString displayType() const = 0;
+    QString displayType() const;
+    Utils::OsType osType() const;
+
     virtual IDeviceWidget *createWidget() = 0;
-    virtual QList<Core::Id> actionIds() const = 0;
-    virtual QString displayNameForActionId(Core::Id actionId) const = 0;
-    virtual void executeAction(Core::Id actionId, QWidget *parent = nullptr) = 0;
+
+    struct DeviceAction {
+        QString display;
+        std::function<void(const IDevice::Ptr &device, QWidget *parent)> execute;
+    };
+    void addDeviceAction(const DeviceAction &deviceAction);
+    const QList<DeviceAction> deviceActions() const;
 
     // Devices that can auto detect ports need not return a ports gathering method. Such devices can
     // obtain a free port on demand. eg: Desktop device.
@@ -164,14 +175,11 @@ public:
     virtual DeviceProcessList *createProcessListModel(QObject *parent = nullptr) const;
     virtual bool hasDeviceTester() const { return false; }
     virtual DeviceTester *createDeviceTester() const;
-    virtual Utils::OsType osType() const;
 
     virtual bool canCreateProcess() const { return false; }
     virtual DeviceProcess *createProcess(QObject *parent) const;
     virtual DeviceProcessSignalOperation::Ptr signalOperation() const = 0;
     virtual DeviceEnvironmentFetcher::Ptr environmentFetcher() const;
-
-    virtual std::function<RunWorker *(RunControl *)> workerCreator(Core::Id) const { return {}; }
 
     enum DeviceState { DeviceReadyToUse, DeviceConnected, DeviceDisconnected, DeviceStateUnknown };
     DeviceState deviceState() const;
@@ -180,7 +188,6 @@ public:
 
     virtual void fromMap(const QVariantMap &map);
     virtual QVariantMap toMap() const;
-    virtual Ptr clone() const = 0;
 
     static Core::Id typeFromMap(const QVariantMap &map);
     static Core::Id idFromMap(const QVariantMap &map);
@@ -198,19 +205,35 @@ public:
     void setFreePorts(const Utils::PortList &freePorts);
 
     MachineType machineType() const;
+    void setMachineType(MachineType machineType);
 
     QString debugServerPath() const;
     void setDebugServerPath(const QString &path);
 
+    QString peripheralDescriptionFilePath() const;
+    void setPeripheralDescriptionFilePath(const QString &path);
+
     QString qmlsceneCommand() const;
     void setQmlsceneCommand(const QString &path);
 
+    void setExtraData(Core::Id kind, const QVariant &data);
+    QVariant extraData(Core::Id kind) const;
+
+    void setupId(Origin origin, Core::Id id = Core::Id());
+
+    bool canOpenTerminal() const;
+    void openTerminal(const Utils::Environment &env, const QString &workingDir) const;
+
 protected:
     IDevice();
-    IDevice(Core::Id type, Origin origin, MachineType machineType, Core::Id id = Core::Id());
-    IDevice(const IDevice &other);
+
+    using OpenTerminal = std::function<void(const Utils::Environment &, const QString &)>;
+    void setOpenTerminal(const OpenTerminal &openTerminal);
+    void setDisplayType(const QString &type);
+    void setOsType(Utils::OsType osType);
 
 private:
+    IDevice(const IDevice &) = delete;
     IDevice &operator=(const IDevice &) = delete;
 
     int version() const;
@@ -227,7 +250,7 @@ class PROJECTEXPLORER_EXPORT DeviceTester : public QObject
 public:
     enum TestResult { TestSuccess, TestFailure };
 
-    virtual void testDevice(const ProjectExplorer::IDevice::ConstPtr &deviceConfiguration) = 0;
+    virtual void testDevice(const ProjectExplorer::IDevice::Ptr &deviceConfiguration) = 0;
     virtual void stopTest() = 0;
 
 signals:

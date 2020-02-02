@@ -27,11 +27,12 @@
 #include "desktopdeviceprocess.h"
 #include "deviceprocesslist.h"
 #include "localprocesslist.h"
-#include "desktopdeviceconfigurationwidget.h"
 #include "desktopprocesssignaloperation.h"
 
+#include <coreplugin/fileutils.h>
+
 #include <projectexplorer/projectexplorerconstants.h>
-#include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/runcontrol.h>
 
 #include <ssh/sshconnection.h>
 
@@ -48,28 +49,28 @@ using namespace Utils;
 
 namespace ProjectExplorer {
 
-DesktopDevice::DesktopDevice() : IDevice(Core::Id(DESKTOP_DEVICE_TYPE),
-                                         IDevice::AutoDetected,
-                                         IDevice::Hardware,
-                                         Core::Id(DESKTOP_DEVICE_ID))
+DesktopDevice::DesktopDevice()
 {
-    setDisplayName(QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Local PC"));
+    setupId(IDevice::AutoDetected, DESKTOP_DEVICE_ID);
+    setType(DESKTOP_DEVICE_TYPE);
+    setDefaultDisplayName(tr("Local PC"));
+    setDisplayType(QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Desktop"));
+
     setDeviceState(IDevice::DeviceStateUnknown);
+    setMachineType(IDevice::Hardware);
+    setOsType(HostOsInfo::hostOs());
+
     const QString portRange =
             QString::fromLatin1("%1-%2").arg(DESKTOP_PORT_START).arg(DESKTOP_PORT_END);
     setFreePorts(Utils::PortList::fromString(portRange));
+    setOpenTerminal([](const Utils::Environment &env, const QString &workingDir) {
+        Core::FileUtils::openTerminal(workingDir, env);
+    });
 }
-
-DesktopDevice::DesktopDevice(const DesktopDevice &other) = default;
 
 IDevice::DeviceInfo DesktopDevice::deviceInformation() const
 {
     return DeviceInfo();
-}
-
-QString DesktopDevice::displayType() const
-{
-    return QCoreApplication::translate("ProjectExplorer::DesktopDevice", "Desktop");
 }
 
 IDeviceWidget *DesktopDevice::createWidget()
@@ -78,23 +79,6 @@ IDeviceWidget *DesktopDevice::createWidget()
     // DesktopDeviceConfigurationWidget currently has just one editable field viz. free ports.
     // Querying for an available port is quite straightforward. Having a field for the port
     // range can be confusing to the user. Hence, disabling the widget for now.
-}
-
-QList<Core::Id> DesktopDevice::actionIds() const
-{
-    return QList<Core::Id>();
-}
-
-QString DesktopDevice::displayNameForActionId(Core::Id actionId) const
-{
-    Q_UNUSED(actionId);
-    return QString();
-}
-
-void DesktopDevice::executeAction(Core::Id actionId, QWidget *parent)
-{
-    Q_UNUSED(actionId);
-    Q_UNUSED(parent);
 }
 
 bool DesktopDevice::canAutoDetectPorts() const
@@ -154,10 +138,10 @@ class DesktopPortsGatheringMethod : public PortsGatheringMethod
 
         Runnable runnable;
         if (HostOsInfo::isWindowsHost() || HostOsInfo::isMacHost()) {
-            runnable.executable = "netstat";
+            runnable.executable = FilePath::fromString("netstat");
             runnable.commandLineArguments =  "-a -n";
         } else if (HostOsInfo::isLinuxHost()) {
-            runnable.executable = "/bin/sh";
+            runnable.executable = FilePath::fromString("/bin/sh");
             runnable.commandLineArguments = "-c 'cat /proc/net/tcp*'";
         }
         return runnable;
@@ -187,16 +171,6 @@ QUrl DesktopDevice::toolControlChannel(const ControlChannelHint &) const
     url.setScheme(Utils::urlTcpScheme());
     url.setHost("localhost");
     return url;
-}
-
-Utils::OsType DesktopDevice::osType() const
-{
-    return Utils::HostOsInfo::hostOs();
-}
-
-IDevice::Ptr DesktopDevice::clone() const
-{
-    return Ptr(new DesktopDevice(*this));
 }
 
 } // namespace ProjectExplorer

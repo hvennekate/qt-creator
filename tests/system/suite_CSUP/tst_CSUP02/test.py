@@ -25,6 +25,13 @@
 
 source("../../shared/qtcreator.py")
 
+import time
+
+def delayedType(editor, text):
+    for c in text:
+        type(editor, c)
+        time.sleep(0.1)
+
 # entry of test
 def main():
     for useClang in [False, True]:
@@ -45,16 +52,14 @@ def main():
 # Steps 3&4: Insert text "class" to new line in Editor mode and press Ctrl+Space.
 # Focus "class derived from QObject" in the list and press Tab or Enter to complete the code.
             editorWidget = findObject(":Qt Creator_CppEditor::Internal::CPPEditorWidget")
-            mouseClick(editorWidget, 5, 5, 0, Qt.LeftButton)
+            mouseClick(editorWidget)
+            jumpToFirstLine(editorWidget)
             type(editorWidget, "<Return>")
             type(editorWidget, "<Up>")
-            type(editorWidget, "class")
-            if useClang and JIRA.isBugStillOpen(18769):
+            delayedType(editorWidget, "class")
+            if useClang:
                 snooze(4)
-            if platform.system() == "Darwin":
-                type(editorWidget, "<Meta+Space>")
-            else:
-                type(editorWidget, "<Ctrl+Space>")
+            type(editorWidget, "<Ctrl+Space>")
             listView = waitForObject(":popupFrame_Proposal_QListView")
             shownProposals = dumpItems(listView.model())
             usedProposal = "class derived from QObject"

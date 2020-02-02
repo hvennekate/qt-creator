@@ -28,6 +28,7 @@
 #include "projectexplorer_export.h"
 
 #include "buildsteplist.h"
+#include "deploymentdata.h"
 #include "projectconfiguration.h"
 
 namespace ProjectExplorer {
@@ -35,58 +36,58 @@ namespace ProjectExplorer {
 class BuildStepList;
 class Target;
 class DeployConfigurationFactory;
-class NamedWidget;
 
-class PROJECTEXPLORER_EXPORT DeployConfiguration : public ProjectConfiguration
+class PROJECTEXPLORER_EXPORT DeployConfiguration final : public ProjectConfiguration
 {
     Q_OBJECT
 
-protected:
+private:
     friend class DeployConfigurationFactory;
     explicit DeployConfiguration(Target *target, Core::Id id);
 
 public:
     ~DeployConfiguration() override = default;
-    virtual void initialize();
 
     BuildStepList *stepList();
     const BuildStepList *stepList() const;
 
+    QWidget *createConfigWidget();
+
     bool fromMap(const QVariantMap &map) override;
     QVariantMap toMap() const override;
 
-    virtual NamedWidget *createConfigWidget();
-
-    virtual bool isEnabled() const;
-    virtual QString disabledReason() const;
-
-    Target *target() const;
-    Project *project() const override;
-
     bool isActive() const override;
 
-signals:
-    void enabledChanged();
+    bool usesCustomDeploymentData() const { return m_usesCustomDeploymentData; }
+    void setUseCustomDeploymentData(bool enabled) { m_usesCustomDeploymentData = enabled; }
+
+    DeploymentData customDeploymentData() const { return m_customDeploymentData; }
+    void setCustomDeploymentData(const DeploymentData &data) { m_customDeploymentData = data; }
 
 private:
     BuildStepList m_stepList;
+    using WidgetCreator = std::function<QWidget *(DeployConfiguration *)>;
+    WidgetCreator m_configWidgetCreator;
+    DeploymentData m_customDeploymentData;
+    bool m_usesCustomDeploymentData = false;
 };
 
 class PROJECTEXPLORER_EXPORT DeployConfigurationFactory
 {
 public:
     DeployConfigurationFactory();
+    DeployConfigurationFactory(const DeployConfigurationFactory &) = delete;
+    DeployConfigurationFactory operator=(const DeployConfigurationFactory &) = delete;
     virtual ~DeployConfigurationFactory();
 
-    // used to show the list of possible additons to a target, returns a list of types
-    QList<Core::Id> availableCreationIds(Target *parent) const;
-    // used to translate the types to names to display to the user
-    QString displayNameForId(Core::Id id) const;
+    // return possible addition to a target, invalid if there is none
+    Core::Id creationId() const;
+    // the name to display to the user
+    QString defaultDisplayName() const;
 
-    bool canCreate(Target *parent, Core::Id id) const;
-    virtual DeployConfiguration *create(Target *parent, Core::Id id);
+    DeployConfiguration *create(Target *parent);
 
-    static QList<DeployConfigurationFactory *> find(Target *parent);
+    static const QList<DeployConfigurationFactory *> find(Target *parent);
     static DeployConfiguration *restore(Target *parent, const QVariantMap &map);
     static DeployConfiguration *clone(Target *parent, const DeployConfiguration *dc);
 
@@ -94,42 +95,37 @@ public:
     void setDefaultDisplayName(const QString &defaultDisplayName);
     void setSupportedProjectType(Core::Id id);
 
+    // Step is only added if condition is not set, or returns true when called.
+    void addInitialStep(Core::Id stepId, const std::function<bool(Target *)> &condition = {});
+
+    bool canHandle(ProjectExplorer::Target *target) const;
+
+    void setConfigWidgetCreator(const DeployConfiguration::WidgetCreator &configWidgetCreator);
+    void setUseDeploymentDataView();
+
+    using PostRestore = std::function<void(DeployConfiguration *dc, const QVariantMap &)>;
+    void setPostRestore(const PostRestore &postRestore) {  m_postRestore = postRestore; }
+    PostRestore postRestore() const { return m_postRestore; }
+
 protected:
-    virtual bool canHandle(ProjectExplorer::Target *target) const;
-    virtual QList<QString> availableBuildTargets(Target *parent) const;
-    virtual QString displayNameForBuildTarget(const QString &buildTarget) const;
-
     using DeployConfigurationCreator = std::function<DeployConfiguration *(Target *)>;
-
-    template <class DeployConfig>
-    void registerDeployConfiguration(Core::Id deployConfigBaseId)
-    {
-        m_creator = [this, deployConfigBaseId](Target *t) {
-            auto dc = new DeployConfig(t, deployConfigBaseId);
-            dc->setDefaultDisplayName(m_defaultDisplayName);
-            return dc;
-        };
-        m_deployConfigBaseId = deployConfigBaseId;
-    }
+    void setConfigBaseId(Core::Id deployConfigBaseId);
 
 private:
-    DeployConfigurationFactory(const DeployConfigurationFactory &) = delete;
-    DeployConfigurationFactory operator=(const DeployConfigurationFactory &) = delete;
-
-    DeployConfigurationCreator m_creator;
+    DeployConfiguration *createDeployConfiguration(Target *target);
     Core::Id m_deployConfigBaseId;
     Core::Id m_supportedProjectType;
     QList<Core::Id> m_supportedTargetDeviceTypes;
+    QList<BuildStepList::StepCreationInfo> m_initialSteps;
     QString m_defaultDisplayName;
+    DeployConfiguration::WidgetCreator m_configWidgetCreator;
+    PostRestore m_postRestore;
 };
 
 class DefaultDeployConfigurationFactory : public DeployConfigurationFactory
 {
 public:
     DefaultDeployConfigurationFactory();
-
-private:
-    bool canHandle(Target *parent) const override;
 };
 
 } // namespace ProjectExplorer

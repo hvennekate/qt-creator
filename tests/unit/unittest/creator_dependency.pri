@@ -4,6 +4,7 @@ IDE_LIBEXEC_PATH=$$PWD
 IDE_BIN_PATH=$$PWD
 include($$PWD/../../../src/libs/utils/utils-lib.pri)
 
+include($$PWD/../../../src/libs/3rdparty/yaml-cpp/yaml-cpp.pri)
 include($$PWD/../../../src/libs/sqlite/sqlite-lib.pri)
 include($$PWD/../../../src/libs/clangsupport/clangsupport-lib.pri)
 include($$PWD/../../../src/plugins/coreplugin/corepluginunittestfiles.pri)
@@ -13,12 +14,15 @@ include($$PWD/../../../src/tools/clangpchmanagerbackend/source/clangpchmanagerba
 include($$PWD/../../../src/plugins/clangrefactoring/clangrefactoring-source.pri)
 include($$PWD/../../../src/plugins/clangpchmanager/clangpchmanager-source.pri)
 include($$PWD/../../../src/plugins/cpptools/cpptoolsunittestfiles.pri)
+include($$PWD/../../../src/plugins/clangtools/clangtoolsunittestfiles.pri)
+include($$PWD/../../../src/plugins/debugger/debuggerunittestfiles.pri)
 include($$PWD/../../../src/plugins/compilationdatabaseprojectmanager/compilationdatabaseunittestfiles.pri)
 include(cplusplus.pri)
 !isEmpty(LLVM_VERSION) {
 include($$PWD/../../../src/shared/clang/clang_defines.pri)
 include($$PWD/../../../src/tools/clangbackend/source/clangbackendclangipc-source.pri)
 include($$PWD/../../../src/plugins/clangcodemodel/clangcodemodelunittestfiles.pri)
+!isEmpty(CLANGFORMAT_LIBS): include($$PWD/../../../src/plugins/clangformat/clangformat-source.pri)
 } else {
 DEFINES += CLANG_VERSION=\\\"6.0.0\\\"
 DEFINES += "\"CLANG_RESOURCE_DIR=\\\"/usr/include\\\"\""

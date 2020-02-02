@@ -73,40 +73,12 @@ namespace QmlJSEditor {
     { return !s1.equals(s2); }
 
 
-class QmlJsEditingSettings;
-
 namespace Internal {
-
-class QmlJsEditingSettignsPageWidget : public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit QmlJsEditingSettignsPageWidget(QWidget *parent = 0);
-
-    QmlJsEditingSettings settings() const;
-    void setSettings(const QmlJsEditingSettings &);
-
-    static QmlJsEditingSettings get();
-
-private:
-    Ui::QmlJsEditingSettingsPage m_ui;
-};
-
 
 class QmlJsEditingSettingsPage : public Core::IOptionsPage
 {
-    Q_OBJECT
-
 public:
     QmlJsEditingSettingsPage();
-
-    QWidget *widget();
-    void apply();
-    void finish();
-
-private:
-    QPointer<QmlJsEditingSettignsPageWidget> m_widget;
 };
 
 } // namespace Internal

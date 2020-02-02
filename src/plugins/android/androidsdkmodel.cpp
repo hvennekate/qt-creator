@@ -26,9 +26,9 @@
 #include "androidmanager.h"
 #include "androidsdkmanager.h"
 
-#include "utils/algorithm.h"
-#include "utils/qtcassert.h"
-#include "utils/utilsicons.h"
+#include <utils/algorithm.h>
+#include <utils/qtcassert.h>
+#include <utils/utilsicons.h>
 
 #include <QIcon>
 
@@ -306,7 +306,7 @@ void AndroidSdkModel::selectMissingEssentials()
 
 QList<const AndroidSdkPackage *> AndroidSdkModel::userSelection() const
 {
-    return m_changeState.toList();
+    return Utils::toList(m_changeState);
 }
 
 void AndroidSdkModel::resetSelection()

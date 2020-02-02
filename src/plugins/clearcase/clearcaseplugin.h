@@ -61,7 +61,6 @@ namespace ClearCase {
 namespace Internal {
 
 class ClearCaseSubmitEditor;
-class ClearCaseControl;
 
 class ClearCaseResponse
 {
@@ -88,7 +87,7 @@ public:
 
     QFile::Permissions permissions;
 
-    FileStatus(Status _status = Unknown, QFile::Permissions perm = nullptr)
+    FileStatus(Status _status = Unknown, QFile::Permissions perm = {})
         : status(_status), permissions(perm)
     { }
 };
@@ -104,19 +103,42 @@ public:
     QString root;
 };
 
-class ClearCasePlugin : public VcsBase::VcsBasePlugin
+class ClearCasePluginPrivate final : public VcsBase::VcsBasePluginPrivate
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "ClearCase.json")
-
     enum { SilentRun = VcsBase::VcsCommand::NoOutput | VcsBase::VcsCommand::FullySynchronously };
 
 public:
-    ClearCasePlugin();
-    ~ClearCasePlugin() override;
+    ClearCasePluginPrivate();
+    ~ClearCasePluginPrivate() final;
 
-    bool initialize(const QStringList &arguments, QString *error_message) override;
+    // IVersionControl
+    QString displayName() const final;
+    Core::Id id() const final;
 
+    bool isVcsFileOrDirectory(const Utils::FilePath &fileName) const final;
+
+    bool managesDirectory(const QString &directory, QString *topLevel) const final;
+    bool managesFile(const QString &workingDirectory, const QString &fileName) const final;
+
+    bool isConfigured() const final;
+
+    bool supportsOperation(Operation operation) const final;
+    OpenSupportMode openSupportMode(const QString &fileName) const final;
+    bool vcsOpen(const QString &fileName) final;
+    SettingsFlags settingsFlags() const final;
+    bool vcsAdd(const QString &fileName) final;
+    bool vcsDelete(const QString &filename) final;
+    bool vcsMove(const QString &from, const QString &to) final;
+    bool vcsCreateRepository(const QString &directory) final;
+
+    bool vcsAnnotate(const QString &file, int line) final;
+
+    QString vcsOpenText() const final;
+    QString vcsMakeWritableText() const final;
+    QString vcsTopic(const QString &directory) final;
+
+    ///
     ClearCaseSubmitEditor *openClearCaseSubmitEditor(const QString &fileName, bool isUcm);
 
     const ClearCaseSettings &settings() const;
@@ -132,10 +154,8 @@ public:
     bool vcsUndoHijack(const QString &workingDir, const QString &fileName, bool keep);
     bool vcsMove(const QString &workingDir, const QString &from, const QString &to);
     bool vcsSetActivity(const QString &workingDir, const QString &title, const QString &activity);
-    bool managesDirectory(const QString &directory, QString *topLevel = nullptr) const;
-    bool vcsCheckout(const QString &directory, const QByteArray &url);
 
-    static ClearCasePlugin *instance();
+    static ClearCasePluginPrivate *instance();
 
     QString ccGetCurrentActivity() const;
     QList<QStringPair> activities(int *current = nullptr) const;
@@ -155,42 +175,21 @@ public:
     void setStatus(const QString &file, FileStatus::Status status, bool update = true);
 
     bool ccCheckUcm(const QString &viewname, const QString &workingDir) const;
-    bool managesFile(const QString &workingDirectory, const QString &fileName) const;
 #ifdef WITH_TESTS
     inline void setFakeCleartool(const bool b = true) { m_fakeClearTool = b; }
-    inline bool isFakeCleartool() const { return m_fakeClearTool; }
 #endif
 
-    void vcsAnnotate(const QString &workingDir, const QString &file,
-                     const QString &revision = QString(), int lineNumber = -1) const;
+    void vcsAnnotateHelper(const QString &workingDir, const QString &file,
+                           const QString &revision = QString(), int lineNumber = -1) const;
     bool newActivity();
     void updateStreamAndView();
     void describe(const QString &source, const QString &changeNr);
 
 protected:
-    void updateActions(VcsBase::VcsBasePlugin::ActionState) override;
+    void updateActions(VcsBase::VcsBasePluginPrivate::ActionState) override;
     bool submitEditorAboutToClose() override;
     QString ccGet(const QString &workingDir, const QString &file, const QString &prefix = QString());
     QList<QStringPair> ccGetActivities() const;
-
-#ifdef WITH_TESTS
-private slots:
-    void initTestCase();
-    void cleanupTestCase();
-    void testDiffFileResolving_data();
-    void testDiffFileResolving();
-    void testLogResolving();
-    void testFileStatusParsing_data();
-    void testFileStatusParsing();
-    void testFileNotManaged();
-    void testFileCheckedOutDynamicView();
-    void testFileCheckedInDynamicView();
-    void testFileNotManagedDynamicView();
-    void testStatusActions_data();
-    void testStatusActions();
-    void testVcsStatusDynamicReadonlyNotManaged();
-    void testVcsStatusDynamicNotManaged();
-#endif
 
 private:
     void syncSlot();
@@ -239,7 +238,6 @@ private:
     void ccDiffWithPred(const QString &workingDir, const QStringList &files);
     void startCheckIn(const QString &workingDir, const QStringList &files = QStringList());
     void cleanCheckInMessageFile();
-    inline ClearCaseControl *clearCaseControl() const;
     QString ccGetFileActivity(const QString &workingDir, const QString &file);
     QStringList ccGetActivityVersions(const QString &workingDir, const QString &activity);
     void diffGraphical(const QString &file1, const QString &file2 = QString());
@@ -287,10 +285,40 @@ private:
     QList<QStringPair> m_activities;
     QSharedPointer<StatusMap> m_statusMap;
 
-    static ClearCasePlugin *m_clearcasePluginInstance;
+    friend class ClearCasePlugin;
 #ifdef WITH_TESTS
     bool m_fakeClearTool = false;
     QString m_tempFile;
+#endif
+};
+
+class ClearCasePlugin final : public ExtensionSystem::IPlugin
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "ClearCase.json")
+
+    ~ClearCasePlugin() final;
+
+    bool initialize(const QStringList &arguments, QString *error_message) final;
+    void extensionsInitialized() final;
+
+#ifdef WITH_TESTS
+private slots:
+    void initTestCase();
+    void cleanupTestCase();
+    void testDiffFileResolving_data();
+    void testDiffFileResolving();
+    void testLogResolving();
+    void testFileStatusParsing_data();
+    void testFileStatusParsing();
+    void testFileNotManaged();
+    void testFileCheckedOutDynamicView();
+    void testFileCheckedInDynamicView();
+    void testFileNotManagedDynamicView();
+    void testStatusActions_data();
+    void testStatusActions();
+    void testVcsStatusDynamicReadonlyNotManaged();
+    void testVcsStatusDynamicNotManaged();
 #endif
 };
 

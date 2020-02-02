@@ -136,8 +136,20 @@ void HelpManager::registerDocumentation(const QStringList &files)
             emit Core::HelpManager::Signals::instance()->documentationChanged();
         }
     });
-    ProgressManager::addTask(future, tr("Update Documentation"),
-                             kUpdateDocumentationTask);
+    ProgressManager::addTask(future, tr("Update Documentation"), kUpdateDocumentationTask);
+}
+
+void HelpManager::unregisterDocumentation(const QStringList &fileNames)
+{
+    if (fileNames.isEmpty())
+        return;
+    const auto getNamespaces = [](const QStringList &fileNames) {
+        QMutexLocker locker(&d->m_helpengineMutex);
+        return Utils::transform(fileNames, [](const QString &filePath) {
+            return d->m_helpEngine->namespaceName(filePath);
+        });
+    };
+    unregisterNamespaces(getNamespaces(fileNames));
 }
 
 void HelpManager::registerDocumentationNow(QFutureInterface<bool> &futureInterface,
@@ -167,24 +179,12 @@ void HelpManager::registerDocumentationNow(QFutureInterface<bool> &futureInterfa
                 qWarning() << "Error registering namespace '" << nameSpace
                     << "' from file '" << file << "':" << helpEngine.error();
             }
-        } else {
-            const QLatin1String key("CreationDate");
-            const QString &newDate = helpEngine.metaData(file, key).toString();
-            const QString &oldDate = helpEngine.metaData(
-                helpEngine.documentationFileName(nameSpace), key).toString();
-            if (QDateTime::fromString(newDate, Qt::ISODate)
-                > QDateTime::fromString(oldDate, Qt::ISODate)) {
-                if (helpEngine.unregisterDocumentation(nameSpace)) {
-                    docsChanged = true;
-                    helpEngine.registerDocumentation(file);
-                }
-            }
         }
     }
     futureInterface.reportResult(docsChanged);
 }
 
-void HelpManager::unregisterDocumentation(const QStringList &nameSpaces)
+void HelpManager::unregisterNamespaces(const QStringList &nameSpaces)
 {
     if (d->m_needsSetup) {
         for (const QString &name : nameSpaces)
@@ -196,6 +196,8 @@ void HelpManager::unregisterDocumentation(const QStringList &nameSpaces)
     bool docsChanged = false;
     for (const QString &nameSpace : nameSpaces) {
         const QString filePath = d->m_helpEngine->documentationFileName(nameSpace);
+        if (filePath.isEmpty()) // wasn't registered anyhow, ignore
+            continue;
         if (d->m_helpEngine->unregisterDocumentation(nameSpace)) {
             docsChanged = true;
             d->m_userRegisteredFiles.remove(filePath);
@@ -226,13 +228,16 @@ QSet<QString> HelpManager::userDocumentationPaths()
 QMap<QString, QUrl> HelpManager::linksForKeyword(const QString &key)
 {
     QTC_ASSERT(!d->m_needsSetup, return {});
+    if (key.isEmpty())
+        return {};
     return d->m_helpEngine->linksForKeyword(key);
 }
 
 QMap<QString, QUrl> HelpManager::linksForIdentifier(const QString &id)
 {
-    QMap<QString, QUrl> empty;
     QTC_ASSERT(!d->m_needsSetup, return {});
+    if (id.isEmpty())
+        return {};
     return d->m_helpEngine->linksForIdentifier(id);
 }
 
@@ -248,7 +253,7 @@ QByteArray HelpManager::fileData(const QUrl &url)
     return d->m_helpEngine->fileData(url);
 }
 
-void HelpManager::handleHelpRequest(const QUrl &url, Core::HelpManager::HelpViewerLocation location)
+void HelpManager::showHelpUrl(const QUrl &url, Core::HelpManager::HelpViewerLocation location)
 {
     emit m_instance->helpRequested(url, location);
 }
@@ -381,12 +386,12 @@ void HelpManager::setupHelpManager()
     d->cleanUpDocumentation();
 
     if (!d->m_nameSpacesToUnregister.isEmpty()) {
-        m_instance->unregisterDocumentation(d->m_nameSpacesToUnregister.toList());
+        m_instance->unregisterNamespaces(Utils::toList(d->m_nameSpacesToUnregister));
         d->m_nameSpacesToUnregister.clear();
     }
 
     if (!d->m_filesToRegister.isEmpty()) {
-        m_instance->registerDocumentation(d->m_filesToRegister.toList());
+        m_instance->registerDocumentation(Utils::toList(d->m_filesToRegister));
         d->m_filesToRegister.clear();
     }
 
@@ -441,13 +446,13 @@ const QStringList HelpManagerPrivate::documentationFromInstaller()
 
 void HelpManagerPrivate::readSettings()
 {
-    m_userRegisteredFiles = ICore::settings()->value(QLatin1String(kUserDocumentationKey))
-            .toStringList().toSet();
+    m_userRegisteredFiles = Utils::toSet(ICore::settings()->value(QLatin1String(kUserDocumentationKey))
+            .toStringList());
 }
 
 void HelpManagerPrivate::writeSettings()
 {
-    const QStringList list = m_userRegisteredFiles.toList();
+    const QStringList list = Utils::toList(m_userRegisteredFiles);
     ICore::settings()->setValue(QLatin1String(kUserDocumentationKey), list);
 }
 

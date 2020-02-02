@@ -29,6 +29,8 @@
 
 #include <coreplugin/editormanager/ieditorfactory.h>
 #include <coreplugin/iversioncontrol.h>
+
+#include <vcsbase/vcsbaseconstants.h>
 #include <vcsbase/vcsbaseplugin.h>
 
 #include <QObject>
@@ -69,19 +71,35 @@ struct PerforceResponse
     QString message;
 };
 
-class PerforcePlugin : public VcsBase::VcsBasePlugin
+class PerforcePluginPrivate final : public VcsBase::VcsBasePluginPrivate
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Perforce.json")
 
 public:
-    PerforcePlugin() = default;
+    PerforcePluginPrivate();
 
-    bool initialize(const QStringList &arguments, QString *errorMessage) override;
-    void extensionsInitialized() override;
+    // IVersionControl
+    QString displayName() const final { return {"perforce"}; }
+    Core::Id id() const final { return Core::Id(VcsBase::Constants::VCS_ID_PERFORCE); }
 
-    bool managesDirectory(const QString &directory, QString *topLevel = nullptr);
-    bool managesFile(const QString &workingDirectory, const QString &fileName) const;
+    bool isVcsFileOrDirectory(const Utils::FilePath &fileName) const final;
+    bool managesDirectory(const QString &directory, QString *topLevel = nullptr) const final;
+    bool managesFile(const QString &workingDirectory, const QString &fileName) const final;
+
+    bool isConfigured() const final;
+    bool supportsOperation(Operation operation) const final;
+    OpenSupportMode openSupportMode(const QString &fileName) const final;
+    bool vcsOpen(const QString &fileName) final;
+    SettingsFlags settingsFlags() const final;
+    bool vcsAdd(const QString &fileName) final;
+    bool vcsDelete(const QString &filename) final;
+    bool vcsMove(const QString &from, const QString &to) final;
+    bool vcsCreateRepository(const QString &directory) final;
+    bool vcsAnnotate(const QString &file, int line) final;
+    QString vcsOpenText() const final;
+    QString vcsMakeWritableText() const final;
+
+    ///
     bool vcsOpen(const QString &workingDir, const QString &fileName, bool silently = false);
     bool vcsAdd(const QString &workingDir, const QString &fileName);
     bool vcsDelete(const QString &workingDir, const QString &filename);
@@ -103,14 +121,11 @@ public:
     void vcsAnnotate(const QString &workingDirectory, const QString &file,
                      const QString &revision, int lineNumber);
 
-protected:
-    void updateActions(VcsBase::VcsBasePlugin::ActionState) override;
-    bool submitEditorAboutToClose() override;
+    static void getTopLevel(const QString &workingDirectory = QString(), bool isSync = false);
 
-#ifdef WITH_TESTS
-private slots:
-    void testLogResolving();
-#endif
+protected:
+    void updateActions(VcsBase::VcsBasePluginPrivate::ActionState) override;
+    bool submitEditorAboutToClose() override;
 
 private:
     QString commitDisplayName() const final;
@@ -203,15 +218,12 @@ private:
     static QSharedPointer<Utils::TempFileSaver> createTemporaryArgumentFile(const QStringList &extraArgs,
                                                                             QString *errorString);
 
-    static void getTopLevel(const QString &workingDirectory = QString(), bool isSync = false);
     QString pendingChangesData();
 
     void updateCheckout(const QString &workingDir = QString(),
                         const QStringList &dirs = QStringList());
     bool revertProject(const QString &workingDir, const QStringList &args, bool unchangedOnly);
     bool managesDirectoryFstat(const QString &directory);
-
-    static PerforceVersionControl *perforceVersionControl();
 
     Core::CommandLocator *m_commandLocator = nullptr;
     Utils::ParameterAction *m_editAction = nullptr;
@@ -240,10 +252,24 @@ private:
     mutable QString m_tempFilePattern;
     QAction *m_menuAction = nullptr;
 
-    static PerforcePlugin *m_instance;
-
     PerforceSettings m_settings;
     ManagedDirectoryCache m_managedDirectoryCache;
+};
+
+class PerforcePlugin final : public ExtensionSystem::IPlugin
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Perforce.json")
+
+    ~PerforcePlugin() final;
+
+    bool initialize(const QStringList &arguments, QString *errorMessage) final;
+    void extensionsInitialized() final;
+
+#ifdef WITH_TESTS
+private slots:
+    void testLogResolving();
+#endif
 };
 
 } // namespace Perforce

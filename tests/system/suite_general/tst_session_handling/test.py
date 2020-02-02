@@ -40,7 +40,7 @@ def main():
     checkWelcomePage(sessionName, True)
     for project in projects:
         openQmakeProject(project, [Targets.DESKTOP_5_6_1_DEFAULT])
-    progressBarWait(20000)
+    waitForProjectParsing()
     checkNavigator(52, "Verifying whether all projects have been opened.")
     openDocument("animation.Resources.animation\\.qrc./animation.basics.animators\\.qml")
     openDocument("keyinteraction.Sources.main\\.cpp")
@@ -84,9 +84,9 @@ def prepareTestExamples():
 def switchSession(toSession):
     test.log("Switching to session '%s'" % toSession)
     invokeMenuItem("File", "Sessions", "Manage...")
-    clickItem(waitForObject("{name='sessionView' type='ProjectExplorer::Internal::SessionView' visible='1' "
-                            "window=':Session Manager_ProjectExplorer::Internal::SessionDialog'}"),
-                            toSession, 5, 5, 0, Qt.LeftButton)
+    sessionView = ("{name='sessionView' type='ProjectExplorer::Internal::SessionView' visible='1' "
+                   "window=':Session Manager_ProjectExplorer::Internal::SessionDialog'}")
+    mouseClick(waitForObjectItem(sessionView, toSession))
     clickButton(waitForObject("{name='btSwitch' text='Switch to' type='QPushButton' visible='1' "
                               "window=':Session Manager_ProjectExplorer::Internal::SessionDialog'}"))
 

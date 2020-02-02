@@ -39,7 +39,7 @@ using namespace ClearCase;
 using namespace ClearCase::Internal;
 
 ActivitySelector::ActivitySelector(QWidget *parent) : QWidget(parent),
-    m_plugin(ClearCasePlugin::instance())
+    m_plugin(ClearCasePluginPrivate::instance())
 {
     QTC_ASSERT(m_plugin->isUcm(), return);
 
@@ -66,7 +66,7 @@ ActivitySelector::ActivitySelector(QWidget *parent) : QWidget(parent),
     connect(btnAdd, &QToolButton::clicked, this, &ActivitySelector::newActivity);
 
     refresh();
-    connect(m_cmbActivity, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+    connect(m_cmbActivity, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ActivitySelector::userChanged);
 }
 
@@ -103,10 +103,10 @@ void ActivitySelector::setActivity(const QString &act)
 {
     int index = m_cmbActivity->findData(act);
     if (index != -1) {
-        disconnect(m_cmbActivity, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+        disconnect(m_cmbActivity, QOverload<int>::of(&QComboBox::currentIndexChanged),
                    this, &ActivitySelector::userChanged);
         m_cmbActivity->setCurrentIndex(index);
-        connect(m_cmbActivity, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+        connect(m_cmbActivity, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, &ActivitySelector::userChanged);
     }
 }

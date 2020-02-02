@@ -63,7 +63,7 @@ TodoProjectSettingsWidget::~TodoProjectSettingsWidget()
 
 QListWidgetItem *TodoProjectSettingsWidget::addToExcludedPatternsList(const QString &pattern)
 {
-    QListWidgetItem *item = new QListWidgetItem(pattern);
+    auto item = new QListWidgetItem(pattern);
     item->setFlags(item->flags() | Qt::ItemIsEditable);
     prepareItem(item);
     ui->excludedPatternsList->addItem(item);
@@ -103,7 +103,7 @@ void TodoProjectSettingsWidget::prepareItem(QListWidgetItem *item) const
 
 void TodoProjectSettingsWidget::addExcludedPatternButtonClicked()
 {
-    if (ui->excludedPatternsList->findItems(excludePlaceholder(), Qt::MatchFixedString).count())
+    if (!ui->excludedPatternsList->findItems(excludePlaceholder(), Qt::MatchFixedString).isEmpty())
         return;
     ui->excludedPatternsList->editItem(addToExcludedPatternsList(excludePlaceholder()));
 }
@@ -116,7 +116,7 @@ void TodoProjectSettingsWidget::removeExcludedPatternButtonClicked()
 
 void TodoProjectSettingsWidget::setExcludedPatternsButtonsEnabled()
 {
-    bool isSomethingSelected = ui->excludedPatternsList->selectedItems().count() != 0;
+    const bool isSomethingSelected = !ui->excludedPatternsList->selectedItems().isEmpty();
     ui->removeExcludedPatternButton->setEnabled(isSomethingSelected);
 }
 

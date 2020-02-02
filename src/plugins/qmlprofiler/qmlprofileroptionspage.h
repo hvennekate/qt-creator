@@ -31,15 +31,14 @@
 namespace QmlProfiler {
 namespace Internal {
 
-class QmlProfilerOptionsPage : public Core::IOptionsPage
+class QmlProfilerOptionsPage final : public Core::IOptionsPage
 {
-    Q_OBJECT
 public:
     QmlProfilerOptionsPage();
 
-    QWidget *widget();
-    void apply();
-    void finish();
+    QWidget *widget() override;
+    void apply() override;
+    void finish() override;
 
 private:
     QPointer<QWidget> m_widget;

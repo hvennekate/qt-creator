@@ -30,9 +30,10 @@
 #include "lsputils.h"
 
 #include <utils/fileutils.h>
-#include <utils/optional.h>
-#include <utils/variant.h>
 #include <utils/link.h>
+#include <utils/optional.h>
+#include <utils/textutils.h>
+#include <utils/variant.h>
 
 #include <QTextCursor>
 #include <QJsonObject>
@@ -45,16 +46,16 @@ class LANGUAGESERVERPROTOCOL_EXPORT DocumentUri : public QUrl
 {
 public:
     DocumentUri() = default;
-    Utils::FileName toFileName() const;
+    Utils::FilePath toFilePath() const;
 
     static DocumentUri fromProtocol(const QString &uri) { return DocumentUri(uri); }
-    static DocumentUri fromFileName(const Utils::FileName &file) { return DocumentUri(file); }
+    static DocumentUri fromFilePath(const Utils::FilePath &file) { return DocumentUri(file); }
 
     operator QJsonValue() const { return QJsonValue(toString()); }
 
 private:
     DocumentUri(const QString &other);
-    DocumentUri(const Utils::FileName &other);
+    DocumentUri(const Utils::FilePath &other);
 
     friend class LanguageClientValue<QString>;
 };
@@ -86,13 +87,21 @@ public:
     { return check<int>(error, lineKey) && check<int>(error, characterKey); }
 
     int toPositionInDocument(QTextDocument *doc) const;
+    QTextCursor toTextCursor(QTextDocument *doc) const;
 };
+
+static bool operator<=(const Position &first, const Position &second)
+{
+    return first.line() < second.line()
+            || (first.line() == second.line() && first.character() <= second.character());
+}
 
 class LANGUAGESERVERPROTOCOL_EXPORT Range : public JsonObject
 {
 public:
     Range() = default;
     Range(const Position &start, const Position &end);
+    explicit Range(const QTextCursor &cursor);
     using JsonObject::JsonObject;
 
     // The range's start position.
@@ -103,6 +112,9 @@ public:
     Position end() const { return typedValue<Position>(endKey); }
     void setEnd(const Position &end) { insert(endKey, end); }
 
+    bool contains(const Position &pos) const { return start() <= pos && pos <= end(); }
+    bool overlaps(const Range &range) const;
+
     bool isValid(QStringList *error) const override
     { return check<Position>(error, startKey) && check<Position>(error, endKey); }
 };
@@ -111,7 +123,7 @@ class LANGUAGESERVERPROTOCOL_EXPORT Location : public JsonObject
 {
 public:
     using JsonObject::JsonObject;
-    using JsonObject::operator=;
+    Location &operator=(const Location &) = default;
 
     DocumentUri uri() const { return DocumentUri::fromProtocol(typedValue<QString>(uriKey)); }
     void setUri(const DocumentUri &uri) { insert(uriKey, uri); }
@@ -179,14 +191,17 @@ public:
     // Title of the command, like `save`.
     QString title() const { return typedValue<QString>(titleKey); }
     void setTitle(const QString &title) { insert(titleKey, title); }
+    void clearTitle() { remove(titleKey); }
 
     // The identifier of the actual command handler.
     QString command() const { return typedValue<QString>(commandKey); }
     void setCommand(const QString &command) { insert(commandKey, command); }
+    void clearCommand() { remove(commandKey); }
 
     // Arguments that the command handler should be invoked with.
     Utils::optional<QJsonArray> arguments() const { return typedValue<QJsonArray>(argumentsKey); }
-    void setArguments(const QJsonObject &arguments) { insert(argumentsKey, arguments); }
+    void setArguments(const QJsonArray &arguments) { insert(argumentsKey, arguments); }
+    void clearArguments() { remove(argumentsKey); }
 
     bool isValid(QStringList *error) const override
     { return check<QString>(error, titleKey)
@@ -207,6 +222,8 @@ public:
     // The string to be inserted. For delete operations use an empty string.
     QString newText() const { return typedValue<QString>(newTextKey); }
     void setNewText(const QString &text) { insert(newTextKey, text); }
+
+    Utils::Text::Replacement toReplacement(QTextDocument *document) const;
 
     bool isValid(QStringList *error) const override
     { return check<Range>(error, rangeKey) && check<QString>(error, newTextKey); }
@@ -268,8 +285,9 @@ public:
     using JsonObject::JsonObject;
 
     // Holds changes to existing resources.
-    Utils::optional<QMap<QString, QList<TextEdit>>> changes() const;
-    void setChanges(const QMap<QString, QList<TextEdit>> &changes);
+    using Changes = QMap<DocumentUri, QList<TextEdit>>;
+    Utils::optional<Changes> changes() const;
+    void setChanges(const Changes &changes);
 
     /*
      * An array of `TextDocumentEdit`s to express changes to n different text documents
@@ -357,16 +375,30 @@ public:
     void setPattern(const QString &pattern) { insert(patternKey, pattern); }
     void clearPattern() { remove(patternKey); }
 
-    bool applies(const Utils::FileName &fileName,
+    bool applies(const Utils::FilePath &fileName,
                  const Utils::MimeType &mimeType = Utils::MimeType()) const;
 
     bool isValid(QStringList *error) const override;
 };
 
-enum class MarkupKind
+class LANGUAGESERVERPROTOCOL_EXPORT MarkupKind
 {
-    plaintext,
-    markdown,
+public:
+    enum Value { plaintext, markdown };
+    MarkupKind() = default;
+    MarkupKind(const Value value)
+        : m_value(value)
+    {}
+    MarkupKind(const QJsonValue &value);
+
+    operator QJsonValue() const;
+    Value value() const { return m_value; }
+
+    bool operator==(const Value &value) const { return m_value == value; }
+
+    bool isValid(void *) const { return true; }
+private:
+    Value m_value = plaintext;
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT MarkupContent : public JsonObject
@@ -375,15 +407,15 @@ public:
     using JsonObject::JsonObject;
 
     // The type of the Markup
-    MarkupKind kind() const { return static_cast<MarkupKind>(typedValue<int>(kindKey)); }
-    void setKind(MarkupKind kind) { insert(kindKey, static_cast<int>(kind)); }
+    MarkupKind kind() const { return value(kindKey); }
+    void setKind(MarkupKind kind) { insert(kindKey, kind); }
 
     // The content itself
     QString content() const { return typedValue<QString>(contentKey); }
     void setContent(const QString &content) { insert(contentKey, content); }
 
     bool isValid(QStringList *error) const override
-    { return check<int>(error, kindKey) && check<QString>(error, contentKey); }
+    { return check<MarkupKind>(error, kindKey) && check<QString>(error, contentKey); }
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT MarkupOrString : public Utils::variant<QString, MarkupContent>
@@ -430,6 +462,10 @@ public:
     int kind() const { return typedValue<int>(kindKey); }
     void setKind(int kind) { insert(kindKey, kind); }
 
+    Utils::optional<bool> deprecated() const { return optionalValue<bool>(deprecatedKey); }
+    void setDeprecated(bool deprecated) { insert(deprecatedKey, deprecated); }
+    void clearDeprecated() { remove(deprecatedKey); }
+
     Location location() const { return typedValue<Location>(locationKey); }
     void setLocation(const Location &location) { insert(locationKey, location); }
 
@@ -439,6 +475,37 @@ public:
     void clearContainerName() { remove(containerNameKey); }
 
     bool isValid(QStringList *error) const override;
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT DocumentSymbol : public JsonObject
+{
+public:
+    using JsonObject::JsonObject;
+
+    QString name() const { return typedValue<QString>(nameKey); }
+    void setName(const QString &name) { insert(nameKey, name); }
+
+    Utils::optional<QString> detail() const { return optionalValue<QString>(detailKey); }
+    void setDetail(const QString &detail) { insert(detailKey, detail); }
+    void clearDetail() { remove(detailKey); }
+
+    int kind() const { return typedValue<int>(kindKey); }
+    void setKind(int kind) { insert(kindKey, kind); }
+
+    Utils::optional<bool> deprecated() const { return optionalValue<bool>(deprecatedKey); }
+    void setDeprecated(bool deprecated) { insert(deprecatedKey, deprecated); }
+    void clearDeprecated() { remove(deprecatedKey); }
+
+    Range range() const { return typedValue<Range>(rangeKey); }
+    void setRange(Range range) { insert(rangeKey, range); }
+
+    Range selectionRange() const { return typedValue<Range>(selectionRangeKey); }
+    void setSelectionRange(Range selectionRange) { insert(selectionRangeKey, selectionRange); }
+
+    Utils::optional<QList<DocumentSymbol>> children() const
+    { return optionalArray<DocumentSymbol>(childrenKey); }
+    void setChildren(QList<DocumentSymbol> children) { insertArray(childrenKey, children); }
+    void clearChildren() { remove(childrenKey); }
 };
 
 enum class SymbolKind {

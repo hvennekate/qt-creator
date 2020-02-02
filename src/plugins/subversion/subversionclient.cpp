@@ -69,17 +69,17 @@ public:
     }
 };
 
-SubversionClient::SubversionClient() : VcsBaseClient(new SubversionSettings)
+SubversionClient::SubversionClient(SubversionSettings *settings) : VcsBaseClient(settings)
 {
-    setLogConfigCreator([this](QToolBar *toolBar) {
-        return new SubversionLogConfig(settings(), toolBar);
+    setLogConfigCreator([settings](QToolBar *toolBar) {
+        return new SubversionLogConfig(*settings, toolBar);
     });
 }
 
-VcsCommand *SubversionClient::createCommitCmd(const QString &repositoryRoot,
-                                              const QStringList &files,
-                                              const QString &commitMessageFile,
-                                              const QStringList &extraOptions) const
+bool SubversionClient::doCommit(const QString &repositoryRoot,
+                                const QStringList &files,
+                                const QString &commitMessageFile,
+                                const QStringList &extraOptions) const
 {
     const QStringList svnExtraOptions =
             QStringList(extraOptions)
@@ -88,11 +88,11 @@ VcsCommand *SubversionClient::createCommitCmd(const QString &repositoryRoot,
             << QLatin1String("--encoding") << QLatin1String("UTF-8")
             << QLatin1String("--file") << commitMessageFile;
 
-    VcsCommand *cmd = createCommand(repositoryRoot);
-    cmd->addFlags(VcsCommand::ShowStdOut);
     QStringList args(vcsCommandString(CommitCommand));
-    cmd->addJob(vcsBinary(), args << svnExtraOptions << escapeFiles(files));
-    return cmd;
+    SynchronousProcessResponse resp =
+            vcsSynchronousExec(repositoryRoot, args << svnExtraOptions << escapeFiles(files),
+                               VcsCommand::ShowStdOut | VcsCommand::NoFullySync);
+    return resp.result == SynchronousProcessResponse::Finished;
 }
 
 void SubversionClient::commit(const QString &repositoryRoot,
@@ -103,8 +103,7 @@ void SubversionClient::commit(const QString &repositoryRoot,
     if (Subversion::Constants::debug)
         qDebug() << Q_FUNC_INFO << commitMessageFile << files;
 
-    VcsCommand *cmd = createCommitCmd(repositoryRoot, files, commitMessageFile, extraOptions);
-    cmd->execute();
+    doCommit(repositoryRoot, files, commitMessageFile, extraOptions);
 }
 
 Id SubversionClient::vcsEditorKind(VcsCommandTag cmd) const
@@ -139,7 +138,7 @@ QStringList SubversionClient::addAuthenticationOptions(const VcsBaseClientSettin
     return rc;
 }
 
-QString SubversionClient::synchronousTopic(const QString &repository)
+QString SubversionClient::synchronousTopic(const QString &repository) const
 {
     QStringList args;
 
@@ -151,7 +150,7 @@ QString SubversionClient::synchronousTopic(const QString &repository)
         svnVersionBinary = svnVersionBinary.left(pos + 1);
     svnVersionBinary.append(HostOsInfo::withExecutableSuffix("svnversion"));
     const SynchronousProcessResponse result
-            = vcsFullySynchronousExec(repository, FileName::fromString(svnVersionBinary), args);
+            = vcsFullySynchronousExec(repository, {svnVersionBinary, args});
     if (result.result != SynchronousProcessResponse::Finished)
         return QString();
 
@@ -173,7 +172,12 @@ class SubversionDiffEditorController : public VcsBaseDiffEditorController
     Q_OBJECT
 public:
     SubversionDiffEditorController(IDocument *document,
-                                   const QString &workingDirectory);
+                                   VcsBaseClient *client,
+                                   const QString &workingDirectory)
+        : VcsBaseDiffEditorController(document, client, workingDirectory)
+    {
+        forceContextLineCount(3); // SVN cannot change that when using internal diff
+    }
 
     void setFilesList(const QStringList &filesList);
     void setChangeNumber(int changeNumber);
@@ -187,19 +191,11 @@ private:
     void requestDiff();
 
     enum State { Idle, GettingDescription, GettingDiff };
-    State m_state;
+    State m_state = Idle;
     QStringList m_filesList;
     int m_changeNumber = 0;
 };
 
-SubversionDiffEditorController::SubversionDiffEditorController(
-        IDocument *document,
-        const QString &workingDirectory)
-    : VcsBaseDiffEditorController(document, SubversionPlugin::instance()->client(), workingDirectory)
-    , m_state(Idle)
-{
-    forceContextLineCount(3); // SVN cannot change that when using internal diff
-}
 
 void SubversionDiffEditorController::setFilesList(const QStringList &filesList)
 {
@@ -272,21 +268,21 @@ void SubversionDiffEditorController::processCommandOutput(const QString &output)
 SubversionDiffEditorController *SubversionClient::findOrCreateDiffEditor(const QString &documentId,
                                                          const QString &source,
                                                          const QString &title,
-                                                         const QString &workingDirectory) const
+                                                         const QString &workingDirectory)
 {
     IDocument *document = DiffEditorController::findOrCreateDocument(documentId, title);
     auto controller = qobject_cast<SubversionDiffEditorController *>(
                 DiffEditorController::controller(document));
     if (!controller)
-        controller = new SubversionDiffEditorController(document, workingDirectory);
-    VcsBasePlugin::setSource(document, source);
+        controller = new SubversionDiffEditorController(document, this, workingDirectory);
+    VcsBase::setSource(document, source);
     EditorManager::activateEditorForDocument(document);
     return controller;
 }
 
 void SubversionClient::diff(const QString &workingDirectory, const QStringList &files, const QStringList &extraOptions)
 {
-    Q_UNUSED(extraOptions);
+    Q_UNUSED(extraOptions)
 
     const QString vcsCmdString = vcsCommandString(DiffCommand);
     const QString documentId = QLatin1String(Constants::SUBVERSION_PLUGIN)

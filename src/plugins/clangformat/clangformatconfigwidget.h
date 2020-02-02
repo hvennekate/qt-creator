@@ -25,19 +25,27 @@
 
 #pragma once
 
-#include <QWidget>
+#include <texteditor/icodestylepreferencesfactory.h>
+
+#include <QScrollArea>
 
 #include <memory>
 
-namespace ProjectExplorer { class Project; }
+namespace ProjectExplorer {
+class Project;
+}
+namespace TextEditor {
+class SnippetEditorWidget;
+}
 
 namespace ClangFormat {
 
 namespace Ui {
 class ClangFormatConfigWidget;
+class ClangFormatChecksWidget;
 }
 
-class ClangFormatConfigWidget : public QWidget
+class ClangFormatConfigWidget : public TextEditor::CodeStyleEditorWidget
 {
     Q_OBJECT
 
@@ -45,14 +53,34 @@ public:
     explicit ClangFormatConfigWidget(ProjectExplorer::Project *project = nullptr,
                                      QWidget *parent = nullptr);
     ~ClangFormatConfigWidget() override;
-    void apply();
+    void apply() override;
 
 private:
-    void initialize();
+    void onTableChanged();
+
+    bool eventFilter(QObject *object, QEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+
+    void showOrHideWidgets();
+    void initChecksAndPreview();
+    void connectChecks();
+
     void fillTable();
+    std::string tableToString(QObject *sender);
+
+    void hideGlobalCheckboxes();
+    void showGlobalCheckboxes();
+
+    void saveConfig(const std::string &text) const;
+    void updatePreview();
 
     ProjectExplorer::Project *m_project;
+    QWidget *m_checksWidget;
+    QScrollArea *m_checksScrollArea;
+    TextEditor::SnippetEditorWidget *m_preview;
+    std::unique_ptr<Ui::ClangFormatChecksWidget> m_checks;
     std::unique_ptr<Ui::ClangFormatConfigWidget> m_ui;
+    bool m_disableTableUpdate = false;
 };
 
 } // namespace ClangFormat

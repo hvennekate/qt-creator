@@ -27,6 +27,7 @@
 
 #include "buildsteplist.h"
 #include "buildconfiguration.h"
+#include "deploymentdataview.h"
 #include "kitinformation.h"
 #include "project.h"
 #include "projectexplorer.h"
@@ -38,11 +39,14 @@ namespace ProjectExplorer {
 
 const char BUILD_STEP_LIST_COUNT[] = "ProjectExplorer.BuildConfiguration.BuildStepListCount";
 const char BUILD_STEP_LIST_PREFIX[] = "ProjectExplorer.BuildConfiguration.BuildStepList.";
+const char USES_DEPLOYMENT_DATA[] = "ProjectExplorer.DeployConfiguration.CustomDataEnabled";
+const char DEPLOYMENT_DATA[] = "ProjectExplorer.DeployConfiguration.CustomData";
 
 DeployConfiguration::DeployConfiguration(Target *target, Core::Id id)
     : ProjectConfiguration(target, id),
       m_stepList(this, Constants::BUILDSTEPS_DEPLOY)
 {
+    QTC_CHECK(target && target == this->target());
     Utils::MacroExpander *expander = macroExpander();
     expander->setDisplayName(tr("Deploy Settings"));
     expander->setAccumulating(true);
@@ -51,14 +55,8 @@ DeployConfiguration::DeployConfiguration(Target *target, Core::Id id)
         return bc ? bc->macroExpander() : target->macroExpander();
     });
 
-    //: Display name of the deploy build step list. Used as part of the labels in the project window.
-    m_stepList.setDefaultDisplayName(tr("Deploy"));
     //: Default DeployConfiguration display name
     setDefaultDisplayName(tr("Deploy locally"));
-}
-
-void DeployConfiguration::initialize()
-{
 }
 
 BuildStepList *DeployConfiguration::stepList()
@@ -71,27 +69,26 @@ const BuildStepList *DeployConfiguration::stepList() const
     return &m_stepList;
 }
 
+QWidget *DeployConfiguration::createConfigWidget()
+{
+    if (!m_configWidgetCreator)
+        return nullptr;
+    return m_configWidgetCreator(this);
+}
+
 QVariantMap DeployConfiguration::toMap() const
 {
     QVariantMap map(ProjectConfiguration::toMap());
     map.insert(QLatin1String(BUILD_STEP_LIST_COUNT), 1);
     map.insert(QLatin1String(BUILD_STEP_LIST_PREFIX) + QLatin1Char('0'), m_stepList.toMap());
+    map.insert(USES_DEPLOYMENT_DATA, usesCustomDeploymentData());
+    QVariantMap deployData;
+    for (int i = 0; i < m_customDeploymentData.fileCount(); ++i) {
+        const DeployableFile &f = m_customDeploymentData.fileAt(i);
+        deployData.insert(f.localFilePath().toString(), f.remoteDirectory());
+    }
+    map.insert(DEPLOYMENT_DATA, deployData);
     return map;
-}
-
-NamedWidget *DeployConfiguration::createConfigWidget()
-{
-    return nullptr;
-}
-
-bool DeployConfiguration::isEnabled() const
-{
-    return false;
-}
-
-QString DeployConfiguration::disabledReason() const
-{
-    return QString();
 }
 
 bool DeployConfiguration::fromMap(const QVariantMap &map)
@@ -110,23 +107,16 @@ bool DeployConfiguration::fromMap(const QVariantMap &map)
             m_stepList.clear();
             return false;
         }
-        m_stepList.setDefaultDisplayName(tr("Deploy"));
     } else {
         qWarning() << "No data for deploy step list found!";
         return false;
     }
 
+    m_usesCustomDeploymentData = map.value(USES_DEPLOYMENT_DATA, false).toBool();
+    const QVariantMap deployData = map.value(DEPLOYMENT_DATA).toMap();
+    for (auto it = deployData.begin(); it != deployData.end(); ++it)
+        m_customDeploymentData.addFile(it.key(), it.value().toString());
     return true;
-}
-
-Target *DeployConfiguration::target() const
-{
-    return static_cast<Target *>(parent());
-}
-
-Project *DeployConfiguration::project() const
-{
-    return target()->project();
 }
 
 bool DeployConfiguration::isActive() const
@@ -151,28 +141,14 @@ DeployConfigurationFactory::~DeployConfigurationFactory()
     g_deployConfigurationFactories.removeOne(this);
 }
 
-QList<Core::Id> DeployConfigurationFactory::availableCreationIds(Target *parent) const
+Core::Id DeployConfigurationFactory::creationId() const
 {
-    if (!canHandle(parent))
-        return {};
-    return Utils::transform(availableBuildTargets(parent), [this](const QString &suffix) {
-        return m_deployConfigBaseId.withSuffix(suffix);
-    });
+    return m_deployConfigBaseId;
 }
 
-QList<QString> DeployConfigurationFactory::availableBuildTargets(Target *) const
-{
-    return {QString()};
-}
-
-QString DeployConfigurationFactory::displayNameForBuildTarget(const QString &) const
+QString DeployConfigurationFactory::defaultDisplayName() const
 {
     return m_defaultDisplayName;
-}
-
-QString DeployConfigurationFactory::displayNameForId(Core::Id id) const
-{
-    return displayNameForBuildTarget(id.suffixAfter(m_deployConfigBaseId));
 }
 
 bool DeployConfigurationFactory::canHandle(Target *target) const
@@ -187,31 +163,48 @@ bool DeployConfigurationFactory::canHandle(Target *target) const
 
     if (!m_supportedTargetDeviceTypes.isEmpty()) {
         if (!m_supportedTargetDeviceTypes.contains(
-                    DeviceTypeKitInformation::deviceTypeId(target->kit())))
+                    DeviceTypeKitAspect::deviceTypeId(target->kit())))
             return false;
     }
 
     return true;
 }
 
-bool DeployConfigurationFactory::canCreate(Target *parent, Core::Id id) const
+void DeployConfigurationFactory::setConfigWidgetCreator(const DeployConfiguration::WidgetCreator &configWidgetCreator)
 {
-    if (!canHandle(parent))
-        return false;
-    if (!id.name().startsWith(m_deployConfigBaseId.name()))
-        return false;
-    return true;
+    m_configWidgetCreator = configWidgetCreator;
 }
 
-DeployConfiguration *DeployConfigurationFactory::create(Target *parent, Core::Id id)
+void DeployConfigurationFactory::setUseDeploymentDataView()
 {
-    if (!canCreate(parent, id))
-        return nullptr;
-    QTC_ASSERT(m_creator, return nullptr);
-    DeployConfiguration *dc = m_creator(parent);
-    if (!dc)
-        return nullptr;
-    dc->initialize();
+    m_configWidgetCreator = [](DeployConfiguration *dc) {
+        return new Internal::DeploymentDataView(dc);
+    };
+}
+
+void DeployConfigurationFactory::setConfigBaseId(Core::Id deployConfigBaseId)
+{
+    m_deployConfigBaseId = deployConfigBaseId;
+}
+
+DeployConfiguration *DeployConfigurationFactory::createDeployConfiguration(Target *t)
+{
+    auto dc = new DeployConfiguration(t, m_deployConfigBaseId);
+    dc->setDefaultDisplayName(m_defaultDisplayName);
+    dc->m_configWidgetCreator = m_configWidgetCreator;
+    return dc;
+}
+
+DeployConfiguration *DeployConfigurationFactory::create(Target *parent)
+{
+    QTC_ASSERT(canHandle(parent), return nullptr);
+    DeployConfiguration *dc = createDeployConfiguration(parent);
+    QTC_ASSERT(dc, return nullptr);
+    BuildStepList *stepList = dc->stepList();
+    for (const BuildStepList::StepCreationInfo &info : qAsConst(m_initialSteps)) {
+        if (!info.condition || info.condition(parent))
+            stepList->appendStep(info.stepId);
+    }
     return dc;
 }
 
@@ -232,21 +225,23 @@ DeployConfiguration *DeployConfigurationFactory::restore(Target *parent, const Q
         });
     if (!factory)
         return nullptr;
-    QTC_ASSERT(factory->m_creator, return nullptr);
-    DeployConfiguration *dc = factory->m_creator(parent);
+    DeployConfiguration *dc = factory->createDeployConfiguration(parent);
     QTC_ASSERT(dc, return nullptr);
     if (!dc->fromMap(map)) {
         delete dc;
         dc = nullptr;
+    } else if (factory->postRestore()) {
+        factory->postRestore()(dc, map);
     }
+
     return dc;
 }
 
-QList<DeployConfigurationFactory *> DeployConfigurationFactory::find(Target *parent)
+const QList<DeployConfigurationFactory *> DeployConfigurationFactory::find(Target *parent)
 {
     return Utils::filtered(g_deployConfigurationFactories,
         [&parent](DeployConfigurationFactory *factory) {
-            return !factory->availableCreationIds(parent).isEmpty();
+            return factory->canHandle(parent);
         });
 }
 
@@ -265,22 +260,21 @@ void DeployConfigurationFactory::setSupportedProjectType(Core::Id id)
     m_supportedProjectType = id;
 }
 
+void DeployConfigurationFactory::addInitialStep(Core::Id stepId, const std::function<bool (Target *)> &condition)
+{
+    m_initialSteps.append({stepId, condition});
+}
+
 ///
 // DefaultDeployConfigurationFactory
 ///
 
 DefaultDeployConfigurationFactory::DefaultDeployConfigurationFactory()
 {
-    registerDeployConfiguration<DeployConfiguration>("ProjectExplorer.DefaultDeployConfiguration");
+    setConfigBaseId("ProjectExplorer.DefaultDeployConfiguration");
     addSupportedTargetDeviceType(Constants::DESKTOP_DEVICE_TYPE);
     //: Display name of the default deploy configuration
     setDefaultDisplayName(DeployConfiguration::tr("Deploy Configuration"));
-}
-
-bool DefaultDeployConfigurationFactory::canHandle(Target *parent) const
-{
-    return DeployConfigurationFactory::canHandle(parent)
-            && !parent->project()->needsSpecialDeployment();
 }
 
 } // namespace ProjectExplorer

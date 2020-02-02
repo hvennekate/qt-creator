@@ -27,55 +27,52 @@
 #pragma once
 
 #include <projectexplorer/devicesupport/idevice.h>
+#include <projectexplorer/devicesupport/idevicefactory.h>
 
 namespace BareMetal {
 namespace Internal {
 
-class GdbServerProvider;
+class IDebugServerProvider;
 
-class BareMetalDevice : public ProjectExplorer::IDevice
+// BareMetalDevice
+
+class BareMetalDevice final : public ProjectExplorer::IDevice
 {
+    Q_DECLARE_TR_FUNCTIONS(BareMetal::Internal::BareMetalDevice)
+
 public:
     using Ptr = QSharedPointer<BareMetalDevice>;
     using ConstPtr = QSharedPointer<const BareMetalDevice>;
 
-    static Ptr create();
-    static Ptr create(const QString &name, Core::Id type, MachineType machineType,
-                      Origin origin = ManuallyAdded, Core::Id id = Core::Id());
-    static Ptr create(const BareMetalDevice &other);
+    static Ptr create() { return Ptr(new BareMetalDevice); }
+    ~BareMetalDevice() final;
 
-    ~BareMetalDevice() override;
-    QString displayType() const override;
-    ProjectExplorer::IDeviceWidget *createWidget() override;
-    QList<Core::Id> actionIds() const override;
-    QString displayNameForActionId(Core::Id actionId) const override;
-    void executeAction(Core::Id actionId, QWidget *parent) override;
-    Utils::OsType osType() const override;
-    ProjectExplorer::IDevice::Ptr clone() const override;
+    static QString defaultDisplayName();
 
-    ProjectExplorer::DeviceProcessSignalOperation::Ptr signalOperation() const override;
+    ProjectExplorer::IDeviceWidget *createWidget() final;
 
-    bool canCreateProcess() const override { return true; }
-    ProjectExplorer::DeviceProcess *createProcess(QObject *parent) const override;
+    ProjectExplorer::DeviceProcessSignalOperation::Ptr signalOperation() const final;
 
-    QString gdbServerProviderId() const;
-    void setGdbServerProviderId(const QString &id);
-    void unregisterProvider(GdbServerProvider *provider);
-    void providerUpdated(GdbServerProvider *provider);
+    QString debugServerProviderId() const;
+    void setDebugServerProviderId(const QString &id);
+    void unregisterDebugServerProvider(IDebugServerProvider *provider);
 
-    void fromMap(const QVariantMap &map) override;
-    QVariantMap toMap() const override;
-
-protected:
-    BareMetalDevice() = default;
-    BareMetalDevice(const QString &name, Core::Id type,
-                    MachineType machineType, Origin origin, Core::Id id);
-    BareMetalDevice(const BareMetalDevice &other);
+    void fromMap(const QVariantMap &map) final;
+    QVariantMap toMap() const final;
 
 private:
-    void setChannelByServerProvider(GdbServerProvider *provider);
-    BareMetalDevice &operator=(const BareMetalDevice &);
-    QString m_gdbServerProviderId;
+    BareMetalDevice();
+    QString m_debugServerProviderId;
+};
+
+// BareMetalDeviceFactory
+
+class BareMetalDeviceFactory final : public ProjectExplorer::IDeviceFactory
+{
+public:
+   explicit BareMetalDeviceFactory();
+
+   ProjectExplorer::IDevice::Ptr create() const final;
 };
 
 } //namespace Internal

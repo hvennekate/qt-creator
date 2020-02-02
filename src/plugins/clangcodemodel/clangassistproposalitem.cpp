@@ -140,6 +140,30 @@ static QString methodDefinitionParameters(const CodeCompletionChunks &chunks)
     return result;
 }
 
+static bool skipParenForFunctionLikeSnippet(const std::vector<int> &placeholderPositions,
+                                            const QString &text,
+                                            int position)
+{
+    return placeholderPositions.size() == 1
+           && position > 0
+           && text[position - 1] == '('
+           && text[position] == ')'
+           && position + 1 == text.size();
+}
+
+static bool isFuncDeclAsSingleTypedText(const CodeCompletion &completion)
+{
+    // There is no libclang API to tell function call items from declaration items apart.
+    // However, the chunks differ for these items (c-index-test -code-completion-at=...):
+    //   An (override) declaration (available in derived class scope):
+    //     CXXMethod:{TypedText void hello() override} (40)
+    //   A function call:
+    //     CXXMethod:{ResultType void}{TypedText hello}{LeftParen (}{RightParen )} (36)
+    return completion.completionKind == CodeCompletion::FunctionDefinitionCompletionKind
+           && completion.chunks.size() == 1
+           && completion.chunks[0].kind == CodeCompletionChunk::TypedText;
+}
+
 void ClangAssistProposalItem::apply(TextDocumentManipulatorInterface &manipulator,
                                     int basePosition) const
 {
@@ -167,12 +191,20 @@ void ClangAssistProposalItem::apply(TextDocumentManipulatorInterface &manipulato
     } else if (ccr.completionKind == CodeCompletion::KeywordCompletionKind) {
         CompletionChunksToTextConverter converter;
         converter.setupForKeywords();
-
         converter.parseChunks(ccr.chunks);
 
         textToBeInserted = converter.text();
-        if (converter.hasPlaceholderPositions())
-            cursorOffset = converter.placeholderPositions().at(0) - converter.text().size();
+
+        if (converter.hasPlaceholderPositions()) {
+            const std::vector<int> &placeholderPositions = converter.placeholderPositions();
+            const int position = placeholderPositions[0];
+            cursorOffset = position - converter.text().size();
+            // If the snippet looks like a function call, e.g. "sizeof(<PLACEHOLDER>)",
+            // ensure that we can "overtype" ')' after inserting it.
+            setAutoCompleteSkipPos = skipParenForFunctionLikeSnippet(placeholderPositions,
+                                                                     textToBeInserted,
+                                                                     position);
+        }
     } else if (ccr.completionKind == CodeCompletion::NamespaceCompletionKind) {
         CompletionChunksToTextConverter converter;
         converter.parseChunks(ccr.chunks); // Appends "::" after name space name
@@ -213,8 +245,12 @@ void ClangAssistProposalItem::apply(TextDocumentManipulatorInterface &manipulato
                 cursor.setPosition(basePosition);
                 abandonParen = QString("(;,{}").contains(prevChar);
             }
-            if (!abandonParen)
-                abandonParen = isAtUsingDeclaration(manipulator, basePosition);
+            if (!abandonParen) {
+                const bool isFullDecl = isFuncDeclAsSingleTypedText(ccr);
+                if (isFullDecl)
+                    extraCharacters += QLatin1Char(';');
+                abandonParen = isAtUsingDeclaration(manipulator, basePosition) || isFullDecl;
+            }
 
             if (!abandonParen && ccr.completionKind == CodeCompletion::FunctionDefinitionCompletionKind) {
                 const CodeCompletionChunk resultType = ccr.chunks.first();
@@ -387,7 +423,7 @@ int ClangAssistProposalItem::fixItsShift(const TextDocumentManipulatorInterface 
 
 QIcon ClangAssistProposalItem::icon() const
 {
-    using CPlusPlus::Icons;
+    using namespace CPlusPlus::Icons;
     static const char SNIPPET_ICON_PATH[] = ":/texteditor/images/snippet.png";
     static const QIcon snippetIcon = QIcon(QLatin1String(SNIPPET_ICON_PATH));
 
@@ -468,6 +504,17 @@ QString ClangAssistProposalItem::detail() const
         detail += "<br><br><b>" + fixItText() + "</b>";
 
     return detail;
+}
+
+bool ClangAssistProposalItem::isKeyword() const
+{
+    // KeywordCompletionKind includes real keywords but also "code patterns"/snippets.
+    return m_codeCompletions[0].completionKind == CodeCompletion::KeywordCompletionKind;
+}
+
+Qt::TextFormat ClangAssistProposalItem::detailFormat() const
+{
+    return Qt::RichText;
 }
 
 bool ClangAssistProposalItem::isSnippet() const

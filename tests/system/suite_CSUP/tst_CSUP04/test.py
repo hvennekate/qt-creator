@@ -44,7 +44,7 @@ def main():
             # open example project
             openQmakeProject(examplePath)
             # wait for parsing to complete
-            progressBarWait(30000)
+            waitForProjectParsing()
             checkCodeModelSettings(useClang)
             # open .cpp file in editor
             if not openDocument("openglwindow.Sources.main\\.cpp"):
@@ -53,9 +53,9 @@ def main():
                 return
             test.verify(checkIfObjectExists(":Qt Creator_CppEditor::Internal::CPPEditorWidget"),
                         "Verifying if: .cpp file is opened in Edit mode.")
-            # place cursor on line "QmlApplicationViewer viewer;"
             editorWidget = findObject(":Qt Creator_CppEditor::Internal::CPPEditorWidget")
-            # invoke find usages from context menu on word "viewer"
+            # place cursor on line "class TriangleWindow : public OpenGLWindow"
+            # invoke find usages from context menu on word "OpenGLWindow"
             if not invokeFindUsage(editorWidget, "class TriangleWindow : public OpenGLWindow",
                                    "<Left>"):
                 invokeMenuItem("File", "Exit")

@@ -14,7 +14,6 @@ Project {
         Depends { name: "Core" }
         Depends { name: "Debugger" }
         Depends { name: "ProjectExplorer" }
-        Depends { name: "QtSupport" }
 
         files: [
             "abstractpackagingstep.cpp",
@@ -27,16 +26,10 @@ Project {
             "abstractuploadandinstallpackageservice.h",
             "deploymenttimeinfo.cpp",
             "deploymenttimeinfo.h",
-            "embeddedlinuxqtversion.cpp",
-            "embeddedlinuxqtversion.h",
-            "embeddedlinuxqtversionfactory.cpp",
-            "embeddedlinuxqtversionfactory.h",
             "genericdirectuploadservice.cpp",
             "genericdirectuploadservice.h",
             "genericdirectuploadstep.cpp",
             "genericdirectuploadstep.h",
-            "genericlinuxdeviceconfigurationfactory.cpp",
-            "genericlinuxdeviceconfigurationfactory.h",
             "genericlinuxdeviceconfigurationwidget.cpp",
             "genericlinuxdeviceconfigurationwidget.h",
             "genericlinuxdeviceconfigurationwidget.ui",
@@ -51,6 +44,8 @@ Project {
             "linuxdeviceprocess.h",
             "linuxdevicetester.cpp",
             "linuxdevicetester.h",
+            "makeinstallstep.cpp",
+            "makeinstallstep.h",
             "packageuploader.cpp",
             "packageuploader.h",
             "publickeydeploymentdialog.cpp",
@@ -62,7 +57,6 @@ Project {
             "remotelinuxcheckforfreediskspaceservice.h",
             "remotelinuxcheckforfreediskspacestep.cpp",
             "remotelinuxcheckforfreediskspacestep.h",
-            "remotelinuxcheckforfreediskspacestepwidget.ui",
             "remotelinuxcustomcommanddeploymentstep.cpp",
             "remotelinuxcustomcommanddeploymentstep.h",
             "remotelinuxcustomcommanddeployservice.cpp",
@@ -93,6 +87,10 @@ Project {
             "remotelinuxrunconfiguration.h",
             "remotelinuxsignaloperation.cpp",
             "remotelinuxsignaloperation.h",
+            "remotelinuxx11forwardingaspect.cpp",
+            "remotelinuxx11forwardingaspect.h",
+            "rsyncdeploystep.cpp",
+            "rsyncdeploystep.h",
             "sshkeydeployer.cpp",
             "sshkeydeployer.h",
             "tarpackagecreationstep.cpp",
@@ -101,7 +99,7 @@ Project {
             "typespecificdeviceconfigurationlistmodel.h",
             "uploadandinstalltarpackagestep.cpp",
             "uploadandinstalltarpackagestep.h",
-            "images/embeddedtarget.png"
+            "images/embeddedtarget.png",
         ]
 
         Export {

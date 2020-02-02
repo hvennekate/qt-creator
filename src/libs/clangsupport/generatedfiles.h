@@ -35,8 +35,10 @@ public:
     void update(V2::FileContainers &&fileContainers);
     void update(const V2::FileContainers &fileContainers);
     void remove(const FilePaths &filePaths);
+    bool isValid() const;
 
     const V2::FileContainers &fileContainers() const;
+    FilePathIds filePathIds() const;
 
 private:
     V2::FileContainers m_fileContainers;

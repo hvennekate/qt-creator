@@ -48,6 +48,7 @@
 #include <QRegularExpression>
 
 namespace ClangCodeModel {
+namespace Internal {
 
 ClangCurrentDocumentFilter::ClangCurrentDocumentFilter()
 {
@@ -74,8 +75,8 @@ static Core::LocatorFilterEntry makeEntry(Core::ILocatorFilter *filter,
 {
     const ClangBackEnd::ExtraInfo &extraInfo = info.extraInfo;
     QString displayName = extraInfo.token;
-    ::Utils::LineColumn lineColumn(static_cast<int>(info.line), static_cast<int>(info.column));
-    Core::LocatorFilterEntry entry(filter, displayName, qVariantFromValue(lineColumn));
+    ::Utils::LineColumn lineColumn(info.line, info.column);
+    Core::LocatorFilterEntry entry(filter, displayName, QVariant::fromValue(lineColumn));
     QString extra;
     ClangBackEnd::HighlightingType mainType = info.types.mainHighlightingType;
     if (mainType == ClangBackEnd::HighlightingType::VirtualFunction
@@ -108,7 +109,6 @@ QList<Core::LocatorFilterEntry> ClangCurrentDocumentFilter::matchesFor(
     if (!regexp.isValid())
         return goodEntries;
 
-    using Internal::ClangEditorDocumentProcessor;
     ClangEditorDocumentProcessor *processor = ClangEditorDocumentProcessor::get(m_currentPath);
     if (!processor)
         return goodEntries;
@@ -170,4 +170,5 @@ void ClangCurrentDocumentFilter::onCurrentEditorChanged(Core::IEditor *newCurren
     reset();
 }
 
+} // namespace Internal
 } // namespace ClangCodeModel

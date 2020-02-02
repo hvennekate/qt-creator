@@ -46,7 +46,7 @@ class TodoItemsProvider : public QObject
     Q_OBJECT
 
 public:
-    explicit TodoItemsProvider(Settings settings, QObject *parent = 0);
+    explicit TodoItemsProvider(Settings settings, QObject *parent = nullptr);
     TodoItemsModel *todoItemsModel();
 
     void settingsChanged(const Settings &newSettings);
@@ -60,7 +60,7 @@ private:
     TodoItemsModel *m_itemsModel;
 
     // All to-do items are stored here regardless current scanning scope
-    QHash<QString, QList<TodoItem> > m_itemsHash;
+    QHash<Utils::FilePath, QList<TodoItem> > m_itemsHash;
 
     // This list contains only those to-do items that are within current scanning scope
     QList<TodoItem> m_itemsList;

@@ -1,10 +1,13 @@
+
+#line 182 "qmljs.g"
 /****************************************************************************
 **
 ** Copyright (C) 2016 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
-** This file is part of Qt Creator.
+** This file is part of the QtQml module of the Qt Toolkit.
 **
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
@@ -13,13 +16,26 @@
 ** and conditions see https://www.qt.io/terms-conditions. For further
 ** information use the contact form at https://www.qt.io/contact-us.
 **
+** GNU Lesser General Public License Usage
+** Alternatively, this file may be used under the terms of the GNU Lesser
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
+**
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
 ** included in the packaging of this file. Please review the following
 ** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
+**
+** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
@@ -70,30 +86,45 @@ public:
     union Value {
       int ival;
       double dval;
+      AST::VariableScope scope;
+      AST::ForEachType forEachType;
       AST::ArgumentList *ArgumentList;
       AST::CaseBlock *CaseBlock;
       AST::CaseClause *CaseClause;
       AST::CaseClauses *CaseClauses;
       AST::Catch *Catch;
       AST::DefaultClause *DefaultClause;
-      AST::ElementList *ElementList;
       AST::Elision *Elision;
       AST::ExpressionNode *Expression;
+      AST::TemplateLiteral *Template;
       AST::Finally *Finally;
       AST::FormalParameterList *FormalParameterList;
-      AST::FunctionBody *FunctionBody;
       AST::FunctionDeclaration *FunctionDeclaration;
       AST::Node *Node;
       AST::PropertyName *PropertyName;
-      AST::PropertyAssignment *PropertyAssignment;
-      AST::PropertyAssignmentList *PropertyAssignmentList;
-      AST::SourceElement *SourceElement;
-      AST::SourceElements *SourceElements;
       AST::Statement *Statement;
       AST::StatementList *StatementList;
       AST::Block *Block;
-      AST::VariableDeclaration *VariableDeclaration;
       AST::VariableDeclarationList *VariableDeclarationList;
+      AST::Pattern *Pattern;
+      AST::PatternElement *PatternElement;
+      AST::PatternElementList *PatternElementList;
+      AST::PatternProperty *PatternProperty;
+      AST::PatternPropertyList *PatternPropertyList;
+      AST::ClassElementList *ClassElementList;
+      AST::ImportClause *ImportClause;
+      AST::FromClause *FromClause;
+      AST::NameSpaceImport *NameSpaceImport;
+      AST::ImportsList *ImportsList;
+      AST::NamedImports *NamedImports;
+      AST::ImportSpecifier *ImportSpecifier;
+      AST::ExportSpecifier *ExportSpecifier;
+      AST::ExportsList *ExportsList;
+      AST::ExportClause *ExportClause;
+      AST::ExportDeclaration *ExportDeclaration;
+      AST::TypeAnnotation *TypeAnnotation;
+      AST::TypeArgumentList *TypeArgumentList;
+      AST::Type *Type;
 
       AST::UiProgram *UiProgram;
       AST::UiHeaderItemList *UiHeaderItemList;
@@ -110,8 +141,8 @@ public:
       AST::UiObjectMemberList *UiObjectMemberList;
       AST::UiArrayMemberList *UiArrayMemberList;
       AST::UiQualifiedId *UiQualifiedId;
-      AST::UiQualifiedPragmaId *UiQualifiedPragmaId;
       AST::UiEnumMemberList *UiEnumMemberList;
+      AST::UiVersionSpecifier *UiVersionSpecifier;
     };
 
 public:
@@ -119,12 +150,13 @@ public:
     ~Parser();
 
     // parse a UI program
-    bool parse() { return parse(T_FEED_UI_PROGRAM); }
+    bool parse() { ++functionNestingLevel; bool r = parse(T_FEED_UI_PROGRAM); --functionNestingLevel; return r; }
     bool parseStatement() { return parse(T_FEED_JS_STATEMENT); }
     bool parseExpression() { return parse(T_FEED_JS_EXPRESSION); }
-    bool parseSourceElement() { return parse(T_FEED_JS_SOURCE_ELEMENT); }
-    bool parseUiObjectMember() { return parse(T_FEED_UI_OBJECT_MEMBER); }
-    bool parseProgram() { return parse(T_FEED_JS_PROGRAM); }
+    bool parseUiObjectMember() { ++functionNestingLevel; bool r = parse(T_FEED_UI_OBJECT_MEMBER); --functionNestingLevel; return r; }
+    bool parseProgram() { return parse(T_FEED_JS_SCRIPT); }
+    bool parseScript() { return parse(T_FEED_JS_SCRIPT); }
+    bool parseModule() { return parse(T_FEED_JS_MODULE); }
 
     AST::UiProgram *ast() const
     { return AST::cast<AST::UiProgram *>(program); }
@@ -189,42 +221,80 @@ protected:
     inline QStringRef &stringRef(int index)
     { return string_stack [tos + index - 1]; }
 
+    inline QStringRef &rawStringRef(int index)
+    { return rawString_stack [tos + index - 1]; }
+
     inline AST::SourceLocation &loc(int index)
     { return location_stack [tos + index - 1]; }
 
     AST::UiQualifiedId *reparseAsQualifiedId(AST::ExpressionNode *expr);
-    AST::UiQualifiedPragmaId *reparseAsQualifiedPragmaId(AST::ExpressionNode *expr);
+
+    void pushToken(int token);
+    int lookaheadToken(Lexer *lexer);
+
+    static DiagnosticMessage compileError(const AST::SourceLocation &location,
+                                          const QString &message, Severity::Enum kind = Severity::Error)
+    {
+        DiagnosticMessage error;
+        error.loc = location;
+        error.message = message;
+        error.kind = kind;
+        return error;
+    }
+
+    void syntaxError(const AST::SourceLocation &location, const char *message) {
+        diagnostic_messages.append(compileError(location, QLatin1String(message)));
+     }
+     void syntaxError(const AST::SourceLocation &location, const QString &message) {
+        diagnostic_messages.append(compileError(location, message));
+      }
+
+    bool ensureNoFunctionTypeAnnotations(AST::TypeAnnotation *returnTypeAnnotation, AST::FormalParameterList *formals);
 
 protected:
     Engine *driver;
     MemoryPool *pool;
-    int tos;
-    int stack_size;
-    Value *sym_stack;
-    int *state_stack;
-    AST::SourceLocation *location_stack;
-    QStringRef *string_stack;
+    int tos = 0;
+    int stack_size = 0;
+    Value *sym_stack = nullptr;
+    int *state_stack = nullptr;
+    AST::SourceLocation *location_stack = nullptr;
+    QVector<QStringRef> string_stack;
+    QVector<QStringRef> rawString_stack;
 
-    AST::Node *program;
+    AST::Node *program = nullptr;
 
-    // error recovery
-    enum { TOKEN_BUFFER_SIZE = 3 };
+    // error recovery and lookahead handling
+    enum { TOKEN_BUFFER_SIZE = 5 };
 
     struct SavedToken {
        int token;
        double dval;
        AST::SourceLocation loc;
        QStringRef spell;
+       QStringRef raw;
     };
 
-    double yylval;
+    int yytoken = -1;
+    double yylval = 0.;
     QStringRef yytokenspell;
+    QStringRef yytokenraw;
     AST::SourceLocation yylloc;
     AST::SourceLocation yyprevlloc;
 
     SavedToken token_buffer[TOKEN_BUFFER_SIZE];
-    SavedToken *first_token;
-    SavedToken *last_token;
+    SavedToken *first_token = nullptr;
+    SavedToken *last_token = nullptr;
+
+    int functionNestingLevel = 0;
+
+    enum CoverExpressionType {
+        CE_Invalid,
+        CE_ParenthesizedExpression,
+        CE_FormalParameterList
+    };
+    AST::SourceLocation coverExpressionErrorLocation;
+    CoverExpressionType coverExpressionType = CE_Invalid;
 
     QList<DiagnosticMessage> diagnostic_messages;
 };
@@ -233,9 +303,27 @@ protected:
 
 
 
-#define J_SCRIPT_REGEXPLITERAL_RULE1 96
+#line 1686 "qmljs.g"
 
-#define J_SCRIPT_REGEXPLITERAL_RULE2 97
+#define J_SCRIPT_REGEXPLITERAL_RULE1 144
+
+#line 1698 "qmljs.g"
+
+#define J_SCRIPT_REGEXPLITERAL_RULE2 145
+
+#line 3198 "qmljs.g"
+
+#define J_SCRIPT_EXPRESSIONSTATEMENTLOOKAHEAD_RULE 435
+
+#line 3850 "qmljs.g"
+
+#define J_SCRIPT_CONCISEBODYLOOKAHEAD_RULE 505
+
+#line 4389 "qmljs.g"
+
+#define J_SCRIPT_EXPORTDECLARATIONLOOKAHEAD_RULE 574
+
+#line 4673 "qmljs.g"
 
 QT_QML_END_NAMESPACE
 

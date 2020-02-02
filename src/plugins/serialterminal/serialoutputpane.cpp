@@ -36,6 +36,8 @@
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/outputwindow.h>
+#include <texteditor/fontsettings.h>
+#include <texteditor/texteditorsettings.h>
 
 #include <utils/algorithm.h>
 #include <utils/icon.h>
@@ -140,7 +142,7 @@ SerialOutputPane::SerialOutputPane(Settings &settings) :
     createToolButtons();
 
     auto layout = new QVBoxLayout;
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     m_tabWidget->setDocumentMode(true);
@@ -155,7 +157,7 @@ SerialOutputPane::SerialOutputPane(Settings &settings) :
             this, &SerialOutputPane::contextMenuRequested);
 
     auto inputLayout = new QHBoxLayout;
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(2);
 
     m_inputLine->setPlaceholderText(tr("Type text and hit Enter to send."));
@@ -167,7 +169,7 @@ SerialOutputPane::SerialOutputPane(Settings &settings) :
     updateLineEndingsComboBox();
     inputLayout->addWidget(m_lineEndingsSelection);
 
-    connect(m_lineEndingsSelection, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+    connect(m_lineEndingsSelection, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SerialOutputPane::defaultLineEndingChanged);
 
     layout->addLayout(inputLayout);
@@ -300,10 +302,18 @@ void SerialOutputPane::createNewOutputWindow(SerialControl *rc)
     Utils::OutputFormatter *formatter = rc->outputFormatter();
 
     // Create new
-    static uint counter = 0;
+    static int counter = 0;
     Core::Id contextId = Core::Id(Constants::C_SERIAL_OUTPUT).withSuffix(counter++);
     Core::Context context(contextId);
-    Core::OutputWindow *ow = new Core::OutputWindow(context, m_tabWidget);
+    auto ow = new Core::OutputWindow(context, QString(), m_tabWidget);
+    using TextEditor::TextEditorSettings;
+    auto fontSettingsChanged = [ow] {
+        ow->setBaseFont(TextEditorSettings::fontSettings().font());
+    };
+
+    connect(TextEditorSettings::instance(), &TextEditorSettings::fontSettingsChanged,
+            this, fontSettingsChanged);
+    fontSettingsChanged();
     ow->setWindowTitle(tr("Serial Terminal Window"));
     ow->setFormatter(formatter);
     // TODO: wordwrap, maxLineCount, zoom/wheelZoom (add to settings)
@@ -342,7 +352,6 @@ void SerialOutputPane::createToolButtons()
     m_connectButton = new QToolButton;
     m_connectButton->setIcon(Utils::Icons::RUN_SMALL_TOOLBAR.icon());
     m_connectButton->setToolTip(tr("Connect"));
-    m_connectButton->setAutoRaise(true);
     m_connectButton->setEnabled(false);
     connect(m_connectButton, &QToolButton::clicked,
             this, &SerialOutputPane::connectControl);
@@ -351,7 +360,6 @@ void SerialOutputPane::createToolButtons()
     m_disconnectButton = new QToolButton;
     m_disconnectButton->setIcon(Utils::Icons::STOP_SMALL_TOOLBAR.icon());
     m_disconnectButton->setToolTip(tr("Disconnect"));
-    m_disconnectButton->setAutoRaise(true);
     m_disconnectButton->setEnabled(false);
 
     connect(m_disconnectButton, &QToolButton::clicked,
@@ -361,7 +369,6 @@ void SerialOutputPane::createToolButtons()
     m_resetButton = new QToolButton;
     m_resetButton->setIcon(Utils::Icons::RELOAD.icon());
     m_resetButton->setToolTip(tr("Reset Board"));
-    m_resetButton->setAutoRaise(true);
     m_resetButton->setEnabled(false);
 
     connect(m_resetButton, &QToolButton::clicked,
@@ -371,7 +378,6 @@ void SerialOutputPane::createToolButtons()
     m_newButton = new QToolButton;
     m_newButton->setIcon(Utils::Icons::PLUS_TOOLBAR.icon());
     m_newButton->setToolTip(tr("Add New Terminal"));
-    m_newButton->setAutoRaise(true);
     m_newButton->setEnabled(true);
 
     connect(m_newButton, &QToolButton::clicked,
@@ -381,8 +387,9 @@ void SerialOutputPane::createToolButtons()
     m_portsSelection = new ComboBox;
     m_portsSelection->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_portsSelection->setModel(m_devicesModel);
-    connect(m_portsSelection, &ComboBox::opened, m_devicesModel, &SerialDeviceModel::update);
-    connect(m_portsSelection, static_cast<void (ComboBox::*)(int)>(&ComboBox::currentIndexChanged),
+    updatePortsList();
+    connect(m_portsSelection, &ComboBox::opened, this, &SerialOutputPane::updatePortsList);
+    connect(m_portsSelection, QOverload<int>::of(&ComboBox::currentIndexChanged),
             this, &SerialOutputPane::activePortNameChanged);
     // TODO: the ports are not updated with the box opened (if the user wait for it) -> add a timer?
 
@@ -391,7 +398,7 @@ void SerialOutputPane::createToolButtons()
     m_baudRateSelection = new ComboBox;
     m_baudRateSelection->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_baudRateSelection->addItems(m_devicesModel->baudRates());
-    connect(m_baudRateSelection, static_cast<void (ComboBox::*)(int)>(&ComboBox::currentIndexChanged),
+    connect(m_baudRateSelection, QOverload<int>::of(&ComboBox::currentIndexChanged),
             this, &SerialOutputPane::activeBaudRateChanged);
 
     if (m_settings.baudRate > 0)
@@ -403,10 +410,16 @@ void SerialOutputPane::createToolButtons()
 void SerialOutputPane::updateLineEndingsComboBox()
 {
     m_lineEndingsSelection->clear();
-    for (QPair<QString,QByteArray> value : m_settings.lineEndings)
+    for (auto &value : m_settings.lineEndings)
         m_lineEndingsSelection->addItem(value.first, value.second);
 
     m_lineEndingsSelection->setCurrentIndex(m_settings.defaultLineEndingIndex);
+}
+
+void SerialOutputPane::updatePortsList()
+{
+    m_devicesModel->update();
+    m_portsSelection->setCurrentIndex(m_devicesModel->indexForPort(m_settings.portName));
 }
 
 int SerialOutputPane::indexOf(const SerialControl *rc) const
@@ -503,7 +516,7 @@ void SerialOutputPane::contextMenuRequested(const QPoint &pos, int index)
 {
     QList<QAction *> actions { m_closeCurrentTabAction, m_closeAllTabsAction, m_closeOtherTabsAction };
 
-    QAction *action = QMenu::exec(actions, m_tabWidget->mapToGlobal(pos), 0, m_tabWidget);
+    QAction *action = QMenu::exec(actions, m_tabWidget->mapToGlobal(pos), nullptr, m_tabWidget);
     const int currentIdx = index != -1 ? index : currentIndex();
 
     if (action == m_closeCurrentTabAction) {
@@ -618,6 +631,8 @@ void SerialOutputPane::activePortNameChanged(int index)
 
     // Update current port name
     m_currentPortName = pn;
+    m_settings.setPortName(pn);
+    emit settingsChanged(m_settings);
 }
 
 void SerialOutputPane::activeBaudRateChanged(int index)
@@ -643,6 +658,11 @@ void SerialOutputPane::defaultLineEndingChanged(int index)
         return;
 
     m_settings.setDefaultLineEndingIndex(index);
+    const int currentControlIndex = currentIndex();
+    if (currentControlIndex >= 0) {
+        m_serialControlTabs[currentControlIndex].lineEnd =
+                m_lineEndingsSelection->currentData().toByteArray();
+    }
 
     qCDebug(log) << "Set default line ending to "
                  << m_settings.defaultLineEndingText()
@@ -674,7 +694,7 @@ void SerialOutputPane::connectControl()
         current->setBaudRate(m_devicesModel->baudRate(m_baudRateSelection->currentIndex()));
         // Gray out old and connect
         if (index != -1) {
-            auto& tab = m_serialControlTabs[index];
+            auto &tab = m_serialControlTabs[index];
             handleOldOutput(tab.window);
             tab.window->scrollToBottom();
         }
@@ -736,6 +756,7 @@ void SerialOutputPane::sendInput()
 
         current->writeData(m_inputLine->text().toUtf8() + m_serialControlTabs.at(index).lineEnd);
     }
+    m_inputLine->selectAll();
     // TODO: add a blink or something to visually see if the data was sent or not
 }
 

@@ -23,45 +23,58 @@
 **
 ****************************************************************************/
 
+#include <builddependenciesprovider.h>
+#include <builddependenciesstorage.h>
+#include <builddependencycollector.h>
 #include <clangpathwatcher.h>
 #include <connectionserver.h>
 #include <environment.h>
+#include <executeinloop.h>
+#include <filepathcaching.h>
+#include <filesystem.h>
 #include <generatedfiles.h>
+#include <modifiedtimechecker.h>
 #include <pchcreator.h>
-#include <pchmanagerserver.h>
 #include <pchmanagerclientproxy.h>
+#include <pchmanagerserver.h>
+#include <pchtaskgenerator.h>
+#include <pchtaskqueue.h>
+#include <pchtasksmerger.h>
 #include <precompiledheaderstorage.h>
 #include <processormanager.h>
 #include <progresscounter.h>
-#include <projectparts.h>
-#include <projectpartqueue.h>
-#include <filepathcaching.h>
+#include <projectpartsmanager.h>
+#include <projectpartsstorage.h>
 #include <refactoringdatabaseinitializer.h>
 #include <sqlitedatabase.h>
 #include <taskscheduler.h>
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFileSystemWatcher>
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTimer>
-
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 using namespace std::chrono_literals;
 
 using ClangBackEnd::ClangPathWatcher;
 using ClangBackEnd::ConnectionServer;
+using ClangBackEnd::FilePathCache;
+using ClangBackEnd::FilePathView;
 using ClangBackEnd::GeneratedFiles;
 using ClangBackEnd::PchCreator;
 using ClangBackEnd::PchManagerClientProxy;
 using ClangBackEnd::PchManagerServer;
 using ClangBackEnd::PrecompiledHeaderStorage;
-using ClangBackEnd::ProjectParts;
-using ClangBackEnd::FilePathCache;
+using ClangBackEnd::ProjectPartsManager;
+using ClangBackEnd::ProjectPartsStorage;
+using ClangBackEnd::TimeStamp;
 
 class PchManagerApplication final : public QCoreApplication
 {
@@ -83,28 +96,22 @@ public:
 class ApplicationEnvironment final : public ClangBackEnd::Environment
 {
 public:
-    ApplicationEnvironment(const QString &pchsPath)
-        : m_pchBuildDirectoryPath(pchsPath)
+    ApplicationEnvironment(const QString &pchsPath, const QString &preIncludeSearchPath)
+        : m_pchBuildDirectoryPath(pchsPath.toStdString())
+        , m_preIncludeSearchPath(ClangBackEnd::FilePath{preIncludeSearchPath})
     {
     }
 
-    QString pchBuildDirectory() const override
+    Utils::PathString pchBuildDirectory() const override { return m_pchBuildDirectoryPath; }
+    uint hardwareConcurrency() const override { return std::thread::hardware_concurrency(); }
+    ClangBackEnd::NativeFilePathView preIncludeSearchPath() const override
     {
-        return m_pchBuildDirectoryPath;
-    }
-
-    QString clangCompilerPath() const override
-    {
-        return QString(CLANG_COMPILER_PATH);
-    }
-
-    uint hardwareConcurrency() const override
-    {
-        return std::thread::hardware_concurrency();
+        return m_preIncludeSearchPath;
     }
 
 private:
-    QString m_pchBuildDirectoryPath;
+    Utils::PathString m_pchBuildDirectoryPath;
+    ClangBackEnd::NativeFilePath m_preIncludeSearchPath;
 };
 
 QStringList processArguments(QCoreApplication &application)
@@ -116,6 +123,7 @@ QStringList processArguments(QCoreApplication &application)
     parser.addPositionalArgument(QStringLiteral("connection"), QStringLiteral("Connection"));
     parser.addPositionalArgument(QStringLiteral("databasepath"), QStringLiteral("Database path"));
     parser.addPositionalArgument(QStringLiteral("pchspath"), QStringLiteral("PCHs path"));
+    parser.addPositionalArgument(QStringLiteral("resourcepath"), QStringLiteral("Resource path"));
 
     parser.process(application);
 
@@ -131,58 +139,129 @@ public:
     using Processor = ClangBackEnd::PchCreator;
     PchCreatorManager(const ClangBackEnd::GeneratedFiles &generatedFiles,
                       ClangBackEnd::Environment &environment,
-                      Sqlite::Database &database,
+                      ClangBackEnd::FilePathCaching &filePathCache,
                       PchManagerServer &pchManagerServer,
-                      ClangBackEnd::ClangPathWatcherInterface &fileSystemWatcher)
-        : ProcessorManager(generatedFiles),
-          m_environment(environment),
-          m_database(database),
-          m_pchManagerServer(pchManagerServer),
-          m_fileSystemWatcher(fileSystemWatcher)
+                      ClangBackEnd::ClangPathWatcherInterface &pathWatcher,
+                      ClangBackEnd::BuildDependenciesStorageInterface &buildDependenciesStorage)
+        : ProcessorManager(generatedFiles)
+        , m_environment(environment)
+        , m_filePathCache(filePathCache)
+        , m_pchManagerServer(pchManagerServer)
+        , m_pathWatcher(pathWatcher)
+        , m_buildDependenciesStorage(buildDependenciesStorage)
     {}
 
 protected:
     std::unique_ptr<ClangBackEnd::PchCreator> createProcessor() const override
     {
         return std::make_unique<PchCreator>(m_environment,
-                                            m_database,
+                                            m_filePathCache,
                                             *m_pchManagerServer.client(),
-                                            m_fileSystemWatcher);
+                                            m_pathWatcher,
+                                            m_buildDependenciesStorage);
     }
 
 private:
     ClangBackEnd::Environment &m_environment;
-    Sqlite::Database &m_database;
+    ClangBackEnd::FilePathCaching &m_filePathCache;
     ClangBackEnd::PchManagerServer &m_pchManagerServer;
-    ClangBackEnd::ClangPathWatcherInterface &m_fileSystemWatcher;
+    ClangBackEnd::ClangPathWatcherInterface &m_pathWatcher;
+    ClangBackEnd::BuildDependenciesStorageInterface &m_buildDependenciesStorage;
 };
 
 struct Data // because we have a cycle dependency
 {
-    using TaskScheduler = ClangBackEnd::TaskScheduler<PchCreatorManager, ClangBackEnd::ProjectPartQueue::Task>;
+    using TaskScheduler = ClangBackEnd::TaskScheduler<PchCreatorManager, ClangBackEnd::PchTaskQueue::Task>;
 
-    Data(const QString &databasePath,
-         const QString &pchsPath)
-        : database{Utils::PathString{databasePath}, 100000ms},
-          environment{pchsPath}
+    Data(const QString &databasePath, const QString &pchsPath, const QString &preIncludeSearchPath)
+        : database{Utils::PathString{databasePath}, 100000ms}
+        , environment{pchsPath, preIncludeSearchPath}
     {}
     Sqlite::Database database;
     ClangBackEnd::RefactoringDatabaseInitializer<Sqlite::Database> databaseInitializer{database};
     ClangBackEnd::FilePathCaching filePathCache{database};
-    ClangPathWatcher<QFileSystemWatcher, QTimer> includeWatcher{filePathCache};
+    ClangBackEnd::FileSystem fileSystem{filePathCache};
+    ClangPathWatcher<QFileSystemWatcher, QTimer> includeWatcher{filePathCache, fileSystem};
     ApplicationEnvironment environment;
-    ProjectParts projectParts;
-    GeneratedFiles generatedFiles;
-    PchCreatorManager pchCreatorManager{generatedFiles, environment, database, clangPchManagerServer, includeWatcher};
+    ProjectPartsStorage<> projectPartsStorage{database};
     PrecompiledHeaderStorage<> preCompiledHeaderStorage{database};
-    ClangBackEnd::ProgressCounter progressCounter{[&] (int progress, int total) { clangPchManagerServer.setProgress(progress, total); }};
-    TaskScheduler taskScheduler{pchCreatorManager, projectPartQueue, progressCounter, std::thread::hardware_concurrency()};
-    ClangBackEnd::ProjectPartQueue projectPartQueue{taskScheduler, preCompiledHeaderStorage, database, progressCounter};
-    PchManagerServer clangPchManagerServer{includeWatcher, projectPartQueue, projectParts, generatedFiles};
+    GeneratedFiles generatedFiles;
+    ProjectPartsManager projectParts{projectPartsStorage,
+                                     preCompiledHeaderStorage,
+                                     buildDependencyProvider,
+                                     filePathCache,
+                                     includeWatcher,
+                                     generatedFiles};
+    PchCreatorManager pchCreatorManager{generatedFiles,
+                                        environment,
+                                        filePathCache,
+                                        clangPchManagerServer,
+                                        includeWatcher,
+                                        buildDependencyStorage};
+    ClangBackEnd::ProgressCounter pchCreationProgressCounter{[&](int progress, int total) {
+        executeInLoop([&] {
+            clangPchManagerServer.setPchCreationProgress(progress, total);
+        });
+    }};
+    ClangBackEnd::ProgressCounter dependencyCreationProgressCounter{[&](int progress, int total) {
+        executeInLoop([&] {
+            clangPchManagerServer.setDependencyCreationProgress(progress, total);
+        });
+    }};
+    ClangBackEnd::PchTaskQueue pchTaskQueue{systemTaskScheduler,
+                                            projectTaskScheduler,
+                                            pchCreationProgressCounter,
+                                            preCompiledHeaderStorage,
+                                            database,
+                                            environment};
+    ClangBackEnd::PchTasksMerger pchTaskMerger{pchTaskQueue};
+    ClangBackEnd::BuildDependenciesStorage<> buildDependencyStorage{database};
+    ClangBackEnd::BuildDependencyCollector buildDependencyCollector{filePathCache,
+                                                                    generatedFiles,
+                                                                    environment};
+    ClangBackEnd::ModifiedTimeChecker<ClangBackEnd::SourceEntries> modifiedTimeChecker{fileSystem};
+    ClangBackEnd::BuildDependenciesProvider buildDependencyProvider{buildDependencyStorage,
+                                                                    modifiedTimeChecker,
+                                                                    buildDependencyCollector,
+                                                                    database};
+    ClangBackEnd::PchTaskGenerator pchTaskGenerator{buildDependencyProvider,
+                                                    pchTaskMerger,
+                                                    dependencyCreationProgressCounter,
+                                                    pchTaskQueue};
+    PchManagerServer clangPchManagerServer{includeWatcher,
+                                           pchTaskGenerator,
+                                           projectParts,
+                                           generatedFiles,
+                                           buildDependencyStorage,
+                                           filePathCache};
+    TaskScheduler systemTaskScheduler{pchCreatorManager,
+                                      pchTaskQueue,
+                                      pchCreationProgressCounter,
+                                      std::thread::hardware_concurrency(),
+                                      ClangBackEnd::CallDoInMainThreadAfterFinished::No};
+    TaskScheduler projectTaskScheduler{pchCreatorManager,
+                                       pchTaskQueue,
+                                       pchCreationProgressCounter,
+                                       std::thread::hardware_concurrency(),
+                                       ClangBackEnd::CallDoInMainThreadAfterFinished::Yes};
 };
+
+#ifdef Q_OS_WIN
+extern "C" void __stdcall OutputDebugStringW(const wchar_t* msg);
+static void messageOutput(QtMsgType type, const QMessageLogContext &, const QString &msg)
+{
+    OutputDebugStringW(msg.toStdWString().c_str());
+    std::wcout << msg.toStdWString() << std::endl;
+    if (type == QtFatalMsg)
+        abort();
+}
+#endif
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    qInstallMessageHandler(messageOutput);
+#endif
     try {
         QCoreApplication::setOrganizationName(QStringLiteral("QtProject"));
         QCoreApplication::setOrganizationDomain(QStringLiteral("qt-project.org"));
@@ -195,13 +274,16 @@ int main(int argc, char *argv[])
         const QString connectionName = arguments[0];
         const QString databasePath = arguments[1];
         const QString pchsPath = arguments[2];
+        const QString preIncludeSearchPath = arguments[3] + "/indexer_preincludes";
 
-        Data data{databasePath, pchsPath};
+        Data data{databasePath, pchsPath, preIncludeSearchPath};
 
         data.includeWatcher.setNotifier(&data.clangPchManagerServer);
 
         ConnectionServer<PchManagerServer, PchManagerClientProxy> connectionServer;
         connectionServer.setServer(&data.clangPchManagerServer);
+        data.buildDependencyProvider.setEnsureAliveMessageIsSentCallback(
+            [&] { connectionServer.ensureAliveMessageIsSent(); });
         connectionServer.start(connectionName);
 
         return application.exec();

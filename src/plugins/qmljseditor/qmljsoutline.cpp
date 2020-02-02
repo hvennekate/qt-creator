@@ -47,7 +47,6 @@ enum {
 namespace QmlJSEditor {
 namespace Internal {
 
-
 QmlJSOutlineFilterModel::QmlJSOutlineFilterModel(QObject *parent) :
     QSortFilterProxyModel(parent)
 {
@@ -104,9 +103,9 @@ QmlJSOutlineWidget::QmlJSOutlineWidget(QWidget *parent)
     m_treeView->setModel(m_filterModel);
     setFocusProxy(m_treeView);
 
-    QVBoxLayout *layout = new QVBoxLayout;
+    auto layout = new QVBoxLayout;
 
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(Core::ItemViewFind::createSearchableWrapper(m_treeView));
 
@@ -259,10 +258,10 @@ bool QmlJSOutlineWidgetFactory::supportsEditor(Core::IEditor *editor) const
 
 TextEditor::IOutlineWidget *QmlJSOutlineWidgetFactory::createWidget(Core::IEditor *editor)
 {
-    QmlJSOutlineWidget *widget = new QmlJSOutlineWidget;
+    auto widget = new QmlJSOutlineWidget;
 
-    QmlJSEditor *qmlJSEditable = qobject_cast<QmlJSEditor*>(editor);
-    QmlJSEditorWidget *qmlJSEditor = qobject_cast<QmlJSEditorWidget*>(qmlJSEditable->widget());
+    auto qmlJSEditable = qobject_cast<const QmlJSEditor*>(editor);
+    auto qmlJSEditor = qobject_cast<QmlJSEditorWidget*>(qmlJSEditable->widget());
     Q_ASSERT(qmlJSEditor);
 
     widget->setEditor(qmlJSEditor);

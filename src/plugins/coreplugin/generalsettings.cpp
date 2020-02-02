@@ -28,6 +28,8 @@
 #include "icore.h"
 #include "infobar.h"
 
+#include <coreplugin/dialogs/restartdialog.h>
+
 #include <utils/checkablemessagebox.h>
 #include <utils/hostosinfo.h>
 #include <utils/stylehelper.h>
@@ -37,6 +39,7 @@
 #include <QLibraryInfo>
 #include <QMessageBox>
 #include <QSettings>
+#include <QStyleHints>
 
 #include "ui_generalsettings.h"
 
@@ -46,6 +49,7 @@ namespace Core {
 namespace Internal {
 
 const char settingsKeyDPI[] = "Core/EnableHighDpiScaling";
+const char settingsKeyShortcutsInContextMenu[] = "General/ShowShortcutsInContextMenu";
 
 GeneralSettings::GeneralSettings()
     : m_page(nullptr), m_dialog(nullptr)
@@ -54,8 +58,10 @@ GeneralSettings::GeneralSettings()
     setDisplayName(tr("Interface"));
     setCategory(Constants::SETTINGS_CATEGORY_CORE);
     setDisplayCategory(QCoreApplication::translate("Core", "Environment"));
-    setCategoryIcon(Utils::Icon({{":/core/images/settingscategory_core.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/core/images/settingscategory_core.png");
+
+    m_defaultShowShortcutsInContextMenu = QGuiApplication::styleHints()
+                                              ->showShortcutsInContextMenus();
 }
 
 static bool hasQmFilesForLocale(const QString &locale, const QString &creatorTrPath)
@@ -107,8 +113,15 @@ QWidget *GeneralSettings::widget()
         m_page->colorButton->setColor(StyleHelper::requestedBaseColor());
         m_page->resetWarningsButton->setEnabled(canResetWarnings());
 
+        m_page->showShortcutsInContextMenus->setText(
+            tr("Show keyboard shortcuts in context menus (default: %1)")
+                .arg(QLatin1String(m_defaultShowShortcutsInContextMenu ? "on" : "off")));
+        m_page->showShortcutsInContextMenus->setChecked(showShortcutsInContextMenu());
+#if (QT_VERSION < QT_VERSION_CHECK(5, 13, 0))
+        m_page->showShortcutsInContextMenus->setVisible(false);
+#endif
+
         if (Utils::HostOsInfo().isMacHost()) {
-            m_page->dpiLabel->setVisible(false);
             m_page->dpiCheckbox->setVisible(false);
         } else {
             const bool defaultValue = Utils::HostOsInfo().isWindowsHost();
@@ -134,6 +147,7 @@ void GeneralSettings::apply()
         return;
     int currentIndex = m_page->languageBox->currentIndex();
     setLanguage(m_page->languageBox->itemData(currentIndex, Qt::UserRole).toString());
+    setShowShortcutsInContextMenu(m_page->showShortcutsInContextMenus->isChecked());
     // Apply the new base color if accepted
     StyleHelper::setBaseColor(m_page->colorButton->color());
     m_page->themeChooser->apply();
@@ -144,6 +158,14 @@ void GeneralSettings::finish()
     delete m_widget;
     delete m_page;
     m_page = nullptr;
+}
+
+bool GeneralSettings::showShortcutsInContextMenu() const
+{
+    return ICore::settings()
+        ->value(settingsKeyShortcutsInContextMenu,
+                QGuiApplication::styleHints()->showShortcutsInContextMenus())
+        .toBool();
 }
 
 void GeneralSettings::resetInterfaceColor()
@@ -179,14 +201,27 @@ QString GeneralSettings::language() const
 void GeneralSettings::setLanguage(const QString &locale)
 {
     QSettings *settings = ICore::settings();
-    if (settings->value(QLatin1String("General/OverrideLanguage")).toString() != locale)
-        QMessageBox::information(ICore::mainWindow(), tr("Restart Required"),
-                                 tr("The language change will take effect after restart."));
+    if (settings->value(QLatin1String("General/OverrideLanguage")).toString() != locale) {
+        RestartDialog dialog(ICore::dialogParent(),
+                             tr("The language change will take effect after restart."));
+        dialog.exec();
+    }
 
     if (locale.isEmpty())
         settings->remove(QLatin1String("General/OverrideLanguage"));
     else
         settings->setValue(QLatin1String("General/OverrideLanguage"), locale);
+}
+
+void GeneralSettings::setShowShortcutsInContextMenu(bool show)
+{
+    if (show == m_defaultShowShortcutsInContextMenu)
+        ICore::settings()->remove(settingsKeyShortcutsInContextMenu);
+    else
+        ICore::settings()->setValue(settingsKeyShortcutsInContextMenu, show);
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 13, 0))
+    QGuiApplication::styleHints()->setShowShortcutsInContextMenus(show);
+#endif
 }
 
 } // namespace Internal

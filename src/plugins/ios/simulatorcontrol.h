@@ -24,9 +24,10 @@
 ****************************************************************************/
 #pragma once
 
+#include <utils/fileutils.h>
+
 #include <QObject>
 #include <QFuture>
-#include "utils/fileutils.h"
 #include <QDebug>
 #include <memory>
 
@@ -89,7 +90,7 @@ public:
 
 public:
     explicit SimulatorControl(QObject* parent = nullptr);
-    ~SimulatorControl();
+    ~SimulatorControl() override;
 
 public:
     static QList<DeviceTypeInfo> availableDeviceTypes();
@@ -99,12 +100,12 @@ public:
     static QList<SimulatorInfo> availableSimulators();
     static QFuture<QList<SimulatorInfo> > updateAvailableSimulators();
     static bool isSimulatorRunning(const QString &simUdid);
-    static QString bundleIdentifier(const Utils::FileName &bundlePath);
-    static QString bundleExecutable(const Utils::FileName &bundlePath);
+    static QString bundleIdentifier(const Utils::FilePath &bundlePath);
+    static QString bundleExecutable(const Utils::FilePath &bundlePath);
 
 public:
     QFuture<ResponseData> startSimulator(const QString &simUdid) const;
-    QFuture<ResponseData> installApp(const QString &simUdid, const Utils::FileName &bundlePath) const;
+    QFuture<ResponseData> installApp(const QString &simUdid, const Utils::FilePath &bundlePath) const;
     QFuture<ResponseData> launchApp(const QString &simUdid, const QString &bundleIdentifier,
                                     bool waitForDebugger, const QStringList &extraArgs,
                                     const QString& stdoutPath = QString(),

@@ -30,6 +30,8 @@
 #include <QAbstractListModel>
 #include <QVariant>
 
+namespace VcsBase { class VcsCommand; }
+
 namespace Git {
 namespace Internal {
 
@@ -71,7 +73,6 @@ public:
     QStringList localBranchNames() const;
     QString sha(const QModelIndex &idx) const;
     QDateTime dateTime(const QModelIndex &idx) const;
-    bool hasTags() const;
     bool isHead(const QModelIndex &idx) const;
     bool isLocal(const QModelIndex &idx) const;
     bool isLeaf(const QModelIndex &idx) const;
@@ -79,19 +80,20 @@ public:
 
     void removeBranch(const QModelIndex &idx);
     void removeTag(const QModelIndex &idx);
-    void checkoutBranch(const QModelIndex &idx);
+    VcsBase::VcsCommand *checkoutBranch(const QModelIndex &idx);
     bool branchIsMerged(const QModelIndex &idx);
     QModelIndex addBranch(const QString &name, bool track, const QModelIndex &trackedBranch);
     void setRemoteTracking(const QModelIndex &trackingIndex);
     void setOldBranchesIncluded(bool value);
     Utils::optional<QString> remoteName(const QModelIndex &idx) const;
+    void refreshCurrentBranch();
 
 private:
-    void parseOutputLine(const QString &line);
     void setCurrentBranch();
     BranchNode *indexToNode(const QModelIndex &index) const;
     QModelIndex nodeToIndex(BranchNode *node, int column) const;
     void removeNode(const QModelIndex &idx);
+    void updateUpstreamStatus(BranchNode *node);
 
     QString toolTip(const QString &sha) const;
 

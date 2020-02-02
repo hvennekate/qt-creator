@@ -30,12 +30,13 @@
 
 #include "ui_valgrindconfigwidget.h"
 
+#include <debugger/analyzer/analyzericons.h>
+
 #include <utils/algorithm.h>
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 
 #include <QDebug>
-
 #include <QStandardItemModel>
 #include <QFileDialog>
 
@@ -44,7 +45,39 @@
 namespace Valgrind {
 namespace Internal {
 
-ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool global)
+class ValgrindBaseSettings;
+
+class ValgrindConfigWidget : public Core::IOptionsPageWidget
+{
+    Q_DECLARE_TR_FUNCTIONS(Valgrind::Internal::ValgrindConfigWidget)
+
+public:
+    explicit ValgrindConfigWidget(ValgrindBaseSettings *settings);
+    ~ValgrindConfigWidget() override;
+
+    void apply() final
+    {
+        ValgrindGlobalSettings::instance()->writeSettings();
+    }
+
+    void setSuppressions(const QStringList &files);
+    QStringList suppressions() const;
+
+    void slotAddSuppression();
+    void slotRemoveSuppression();
+    void slotSuppressionsRemoved(const QStringList &files);
+    void slotSuppressionsAdded(const QStringList &files);
+    void slotSuppressionSelectionChanged();
+
+private:
+    void updateUi();
+
+    ValgrindBaseSettings *m_settings;
+    Ui::ValgrindConfigWidget *m_ui;
+    QStandardItemModel *m_model;
+};
+
+ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings)
     : m_settings(settings),
       m_ui(new Ui::ValgrindConfigWidget)
 {
@@ -52,7 +85,7 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool 
     m_model = new QStandardItemModel(this);
 
     m_ui->valgrindExeChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
-    m_ui->valgrindExeChooser->setHistoryCompleter(QLatin1String("Valgrind.Command.History"));
+    m_ui->valgrindExeChooser->setHistoryCompleter("Valgrind.Command.History");
     m_ui->valgrindExeChooser->setPromptDialogTitle(tr("Valgrind Command"));
 
     updateUi();
@@ -60,7 +93,7 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool 
 
     connect(m_ui->valgrindExeChooser, &Utils::PathChooser::rawPathChanged,
             m_settings, &ValgrindBaseSettings::setValgrindExecutable);
-    connect(m_ui->smcDetectionComboBox, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+    connect(m_ui->smcDetectionComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             m_settings, &ValgrindBaseSettings::setSelfModifyingCodeDetection);
 
     if (Utils::HostOsInfo::isWindowsHost()) {
@@ -73,6 +106,10 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool 
     //
     // Callgrind
     //
+    m_ui->kcachegrindExeChooser->setExpectedKind(Utils::PathChooser::ExistingCommand);
+    m_ui->kcachegrindExeChooser->setPromptDialogTitle(tr("KCachegrind Command"));
+    connect(m_ui->kcachegrindExeChooser, &Utils::PathChooser::rawPathChanged,
+            m_settings, &ValgrindBaseSettings::setKCachegrindExecutable);
     connect(m_ui->enableCacheSim, &QCheckBox::toggled,
             m_settings, &ValgrindBaseSettings::setEnableCacheSim);
     connect(m_settings, &ValgrindBaseSettings::enableCacheSimChanged,
@@ -98,12 +135,12 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool 
     connect(m_settings, &ValgrindBaseSettings::enableEventToolTipsChanged,
             m_ui->enableEventToolTips, &QGroupBox::setChecked);
 
-    connect(m_ui->minimumInclusiveCostRatio, static_cast<void (QDoubleSpinBox::*)(double)>(&QDoubleSpinBox::valueChanged),
+    connect(m_ui->minimumInclusiveCostRatio, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             m_settings, &ValgrindBaseSettings::setMinimumInclusiveCostRatio);
     connect(m_settings, &ValgrindBaseSettings::minimumInclusiveCostRatioChanged,
             m_ui->minimumInclusiveCostRatio, &QDoubleSpinBox::setValue);
 
-    connect(m_ui->visualisationMinimumInclusiveCostRatio, static_cast<void (QDoubleSpinBox::*)(double)>(&QDoubleSpinBox::valueChanged),
+    connect(m_ui->visualisationMinimumInclusiveCostRatio, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             m_settings, &ValgrindBaseSettings::setVisualisationMinimumInclusiveCostRatio);
     connect(m_settings, &ValgrindBaseSettings::visualisationMinimumInclusiveCostRatioChanged,
             m_ui->visualisationMinimumInclusiveCostRatio, &QDoubleSpinBox::setValue);
@@ -117,12 +154,12 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool 
     connect(m_ui->addSuppression, &QPushButton::clicked, this, &ValgrindConfigWidget::slotAddSuppression);
     connect(m_ui->removeSuppression, &QPushButton::clicked, this, &ValgrindConfigWidget::slotRemoveSuppression);
 
-    connect(m_ui->numCallers, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+    connect(m_ui->numCallers, QOverload<int>::of(&QSpinBox::valueChanged),
             m_settings, &ValgrindBaseSettings::setNumCallers);
     connect(m_settings, &ValgrindBaseSettings::numCallersChanged,
             m_ui->numCallers, &QSpinBox::setValue);
 
-    connect(m_ui->leakCheckOnFinish, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+    connect(m_ui->leakCheckOnFinish, QOverload<int>::of(&QComboBox::currentIndexChanged),
             m_settings, &ValgrindBaseSettings::setLeakCheckOnFinish);
     connect(m_settings, &ValgrindBaseSettings::leakCheckOnFinishChanged,
             m_ui->leakCheckOnFinish, &QComboBox::setCurrentIndex);
@@ -145,9 +182,9 @@ ValgrindConfigWidget::ValgrindConfigWidget(ValgrindBaseSettings *settings, bool 
             this, &ValgrindConfigWidget::slotSuppressionSelectionChanged);
     slotSuppressionSelectionChanged();
 
-    if (!global) {
+    if (settings != ValgrindGlobalSettings::instance()) {
         // In project settings we want a flat vertical list.
-        QVBoxLayout *l = new QVBoxLayout;
+        auto l = new QVBoxLayout;
         while (layout()->count()) {
             QLayoutItem *item = layout()->takeAt(0);
             if (QWidget *w = item->widget())
@@ -168,6 +205,7 @@ void ValgrindConfigWidget::updateUi()
 {
     m_ui->valgrindExeChooser->setPath(m_settings->valgrindExecutable());
     m_ui->smcDetectionComboBox->setCurrentIndex(m_settings->selfModifyingCodeDetection());
+    m_ui->kcachegrindExeChooser->setPath(m_settings->kcachegrindExecutable());
     m_ui->enableCacheSim->setChecked(m_settings->enableCacheSim());
     m_ui->enableBranchSim->setChecked(m_settings->enableBranchSim());
     m_ui->collectSystime->setChecked(m_settings->collectSystime());
@@ -186,7 +224,7 @@ void ValgrindConfigWidget::updateUi()
 
 void ValgrindConfigWidget::slotAddSuppression()
 {
-    ValgrindGlobalSettings *conf = ValgrindPlugin::globalSettings();
+    ValgrindGlobalSettings *conf = ValgrindGlobalSettings::instance();
     QTC_ASSERT(conf, return);
     QStringList files = QFileDialog::getOpenFileNames(this,
         tr("Valgrind Suppression Files"),
@@ -261,6 +299,23 @@ QStringList ValgrindConfigWidget::suppressions() const
 void ValgrindConfigWidget::slotSuppressionSelectionChanged()
 {
     m_ui->removeSuppression->setEnabled(m_ui->suppressionList->selectionModel()->hasSelection());
+}
+
+// ValgrindOptionsPage
+
+ValgrindOptionsPage::ValgrindOptionsPage()
+{
+    setId(ANALYZER_VALGRIND_SETTINGS);
+    setDisplayName(ValgrindConfigWidget::tr("Valgrind"));
+    setCategory("T.Analyzer");
+    setDisplayCategory(QCoreApplication::translate("Analyzer", "Analyzer"));
+    setCategoryIconPath(Analyzer::Icons::SETTINGSCATEGORY_ANALYZER);
+    setWidgetCreator([] { return new ValgrindConfigWidget(ValgrindGlobalSettings::instance()); });
+}
+
+QWidget *ValgrindOptionsPage::createSettingsWidget(ValgrindBaseSettings *settings)
+{
+    return new ValgrindConfigWidget(settings);
 }
 
 } // namespace Internal

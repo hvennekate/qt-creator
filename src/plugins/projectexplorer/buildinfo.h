@@ -28,49 +28,35 @@
 #include "projectexplorer_export.h"
 
 #include "buildconfiguration.h"
-#include "task.h"
 
 #include <coreplugin/id.h>
 #include <utils/fileutils.h>
 
 namespace ProjectExplorer {
 
-class IBuildConfigurationFactory;
+class BuildConfigurationFactory;
 
-class PROJECTEXPLORER_EXPORT BuildInfo
+class PROJECTEXPLORER_EXPORT BuildInfo final
 {
 public:
-    BuildInfo(const IBuildConfigurationFactory *f) : m_factory(f) { }
-    virtual ~BuildInfo();
-
-    const IBuildConfigurationFactory *factory() const { return m_factory; }
+    BuildInfo() = default;
 
     QString displayName;
     QString typeName;
-    Utils::FileName buildDirectory;
+    Utils::FilePath buildDirectory;
     Core::Id kitId;
     BuildConfiguration::BuildType buildType = BuildConfiguration::Unknown;
 
-    virtual bool operator==(const BuildInfo &o) const
+    QVariant extraInfo;
+    const BuildConfigurationFactory *factory = nullptr;
+
+    bool operator==(const BuildInfo &o) const
     {
-        return m_factory == o.m_factory
+        return factory == o.factory
                 && displayName == o.displayName && typeName == o.typeName
                 && buildDirectory == o.buildDirectory && kitId == o.kitId
                 && buildType == o.buildType;
     }
-
-    virtual QList<Task> reportIssues(const QString &projectPath,
-                                     const QString &buildDir) const
-    {
-        Q_UNUSED(projectPath);
-        Q_UNUSED(buildDir);
-        return QList<Task>();
-    }
-
-private:
-    const IBuildConfigurationFactory *m_factory;
-
-    friend class IBuildConfigurationFactory;
 };
 
 } // namespace ProjectExplorer

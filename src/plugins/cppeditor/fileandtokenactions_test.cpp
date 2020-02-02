@@ -232,7 +232,7 @@ TestActionsTestCase::TestActionsTestCase(const Actions &tokenActions, const Acti
                 i = j - 1; // Continue with next not expanded token
             } else {
                 // Position the cursor on the token
-                unsigned line, column;
+                int line, column;
                 translationUnit->getPosition(token.utf16charsBegin(), &line, &column);
                 editor->gotoLine(line, column - 1);
                 QApplication::processEvents();
@@ -287,7 +287,7 @@ void TestActionsTestCase::moveWordCamelCaseToToken(TranslationUnit *translationU
     CppEditorWidget *editorWidget = dynamic_cast<CppEditorWidget *>(editor->editorWidget());
     QVERIFY(editorWidget);
 
-    unsigned line, column;
+    int line, column;
     translationUnit->getPosition(token.utf16charsBegin(), &line, &column);
 
     while (editor->currentLine() < (int) line
@@ -372,12 +372,12 @@ class FindUsagesTokenAction : public TestActionsTestCase::AbstractAction
 {
 public:
     /// Find Usages on each token
-    void run(CppEditorWidget *);
+    void run(CppEditorWidget *editor);
 };
 
-void FindUsagesTokenAction::run(CppEditorWidget *)
+void FindUsagesTokenAction::run(CppEditorWidget *editor)
 {
-    CppEditorPlugin::instance()->findUsages();
+    editor->findUsages();
     QApplication::processEvents();
 }
 

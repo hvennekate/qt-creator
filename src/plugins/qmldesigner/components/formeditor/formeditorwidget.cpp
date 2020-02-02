@@ -34,24 +34,25 @@
 #include <model.h>
 #include <theme.h>
 
-#include <QWheelEvent>
-#include <QVBoxLayout>
-#include <QActionGroup>
-#include <toolbox.h>
-#include <zoomaction.h>
+#include <backgroundaction.h>
 #include <formeditorgraphicsview.h>
 #include <formeditorscene.h>
 #include <formeditorview.h>
 #include <lineeditaction.h>
-#include <backgroundaction.h>
+#include <option3daction.h>
+#include <zoomaction.h>
+#include <toolbox.h>
 
 #include <coreplugin/icore.h>
 
 #include <utils/fileutils.h>
 #include <utils/utilsicons.h>
 
+#include <QActionGroup>
 #include <QFileDialog>
 #include <QPainter>
+#include <QVBoxLayout>
+#include <QWheelEvent>
 
 namespace QmlDesigner {
 
@@ -61,7 +62,7 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view) :
     setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(Utils::FileReader::fetchQrc(QLatin1String(":/qmldesigner/formeditorstylesheet.css")))));
 
     auto fillLayout = new QVBoxLayout(this);
-    fillLayout->setMargin(0);
+    fillLayout->setContentsMargins(0, 0, 0, 0);
     fillLayout->setSpacing(0);
     setLayout(fillLayout);
 
@@ -143,6 +144,11 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view) :
     upperActions.append(m_backgroundAction.data());
     m_toolBox->addRightSideAction(m_backgroundAction.data());
 
+    m_option3DAction = new Option3DAction(m_toolActionGroup.data());
+    addAction(m_option3DAction.data());
+    upperActions.append(m_option3DAction.data());
+    m_toolBox->addRightSideAction(m_option3DAction.data());
+
     m_zoomAction = new ZoomAction(m_toolActionGroup.data());
     connect(m_zoomAction.data(), &ZoomAction::zoomLevelChanged,
             this, &FormEditorWidget::setZoomLevel);
@@ -154,7 +160,7 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view) :
     m_resetAction->setShortcut(Qt::Key_R);
     m_resetAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     m_resetAction->setIcon(Utils::Icons::RESET_TOOLBAR.icon());
-    connect(m_resetAction.data(), &QAction::triggered, this, &FormEditorWidget::resetNodeInstanceView);
+
     addAction(m_resetAction.data());
     upperActions.append(m_resetAction.data());
     m_toolBox->addRightSideAction(m_resetAction.data());
@@ -168,7 +174,6 @@ FormEditorWidget::FormEditorWidget(FormEditorView *view) :
 void FormEditorWidget::changeTransformTool(bool checked)
 {
     if (checked)
-
         m_formEditorView->changeToTransformTools();
 }
 
@@ -200,16 +205,10 @@ void FormEditorWidget::changeBackgound(const QColor &color)
         m_graphicsView->activateColoredBackground(color);
 }
 
-void FormEditorWidget::resetNodeInstanceView()
-{
-    m_formEditorView->setCurrentStateNode(m_formEditorView->rootModelNode());
-    m_formEditorView->resetPuppet();
-}
-
 void FormEditorWidget::wheelEvent(QWheelEvent *event)
 {
     if (event->modifiers().testFlag(Qt::ControlModifier)) {
-        if (event->delta() > 0)
+        if (event->angleDelta().y() > 0)
             zoomAction()->zoomOut();
         else
             zoomAction()->zoomIn();
@@ -285,6 +284,16 @@ ZoomAction *FormEditorWidget::zoomAction() const
     return m_zoomAction.data();
 }
 
+Option3DAction *FormEditorWidget::option3DAction() const
+{
+    return m_option3DAction.data();
+}
+
+QAction *FormEditorWidget::resetAction() const
+{
+    return m_resetAction.data();
+}
+
 QAction *FormEditorWidget::showBoundingRectAction() const
 {
     return m_showBoundingRectAction.data();
@@ -333,12 +342,12 @@ double FormEditorWidget::containerPadding() const
 }
 
 
-void FormEditorWidget::contextHelpId(const Core::IContext::HelpIdCallback &callback) const
+void FormEditorWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
     if (m_formEditorView)
-        m_formEditorView->contextHelpId(callback);
+        m_formEditorView->contextHelp(callback);
     else
-        callback(QString());
+        callback({});
 }
 
 void FormEditorWidget::setRootItemRect(const QRectF &rect)

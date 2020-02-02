@@ -61,7 +61,7 @@ public:
     DesignModeWidget();
     ~DesignModeWidget() override;
 
-    void contextHelpId(const Core::IContext::HelpIdCallback &callback) const;
+    void contextHelp(const Core::IContext::HelpCallback &callback) const;
 
     void initialize();
 
@@ -95,7 +95,7 @@ private: // functions
     void setup();
     bool isInNodeDefinition(int nodeOffset, int nodeLength, int cursorPos) const;
     QmlDesigner::ModelNode nodeForPosition(int cursorPos) const;
-    void addNavigatorHistoryEntry(const Utils::FileName &fileName);
+    void addNavigatorHistoryEntry(const Utils::FilePath &fileName);
     QWidget *createCenterWidget();
     QWidget *createCrumbleBarFrame();
 

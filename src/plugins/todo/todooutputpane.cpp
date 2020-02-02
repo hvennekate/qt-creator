@@ -91,7 +91,7 @@ int TodoOutputPane::priorityInStatusBar() const
 
 void TodoOutputPane::clearContents()
 {
-    clearFilter();
+    clearKeywordFilter();
 }
 
 void TodoOutputPane::visibilityChanged(bool visible)
@@ -165,7 +165,7 @@ void TodoOutputPane::scopeButtonClicked(QAbstractButton *button)
         emit scanningScopeChanged(ScanningScopeSubProject);
     else if (button == m_wholeProjectButton)
         emit scanningScopeChanged(ScanningScopeProject);
-    setBadgeNumber(m_todoTreeView->model()->rowCount());
+    emit setBadgeNumber(m_todoTreeView->model()->rowCount());
 }
 
 void TodoOutputPane::todoTreeViewClicked(const QModelIndex &index)
@@ -176,9 +176,9 @@ void TodoOutputPane::todoTreeViewClicked(const QModelIndex &index)
 
     TodoItem item;
     item.text = index.sibling(row, Constants::OUTPUT_COLUMN_TEXT).data().toString();
-    item.file = Utils::FileName::fromUserInput(index.sibling(row, Constants::OUTPUT_COLUMN_FILE).data().toString());
+    item.file = Utils::FilePath::fromUserInput(index.sibling(row, Constants::OUTPUT_COLUMN_FILE).data().toString());
     item.line = index.sibling(row, Constants::OUTPUT_COLUMN_LINE).data().toInt();
-    item.color = index.data(Qt::TextColorRole).value<QColor>();
+    item.color = index.data(Qt::ForegroundRole).value<QColor>();
     item.iconType = static_cast<IconType>(index.sibling(row, Constants::OUTPUT_COLUMN_TEXT)
                                           .data(Qt::UserRole).toInt());
 
@@ -187,13 +187,13 @@ void TodoOutputPane::todoTreeViewClicked(const QModelIndex &index)
 
 void TodoOutputPane::updateTodoCount()
 {
-    setBadgeNumber(m_todoTreeView->model()->rowCount());
+    emit setBadgeNumber(m_todoTreeView->model()->rowCount());
 }
 
-void TodoOutputPane::updateFilter()
+void TodoOutputPane::updateKeywordFilter()
 {
     QStringList keywords;
-    for (QToolButton *btn: m_filterButtons) {
+    for (const QToolButton *btn: qAsConst(m_filterButtons)) {
         if (btn->isChecked())
             keywords.append(btn->property(Constants::FILTER_KEYWORD_NAME).toString());
     }
@@ -208,12 +208,12 @@ void TodoOutputPane::updateFilter()
     updateTodoCount();
 }
 
-void TodoOutputPane::clearFilter()
+void TodoOutputPane::clearKeywordFilter()
 {
-    for (QToolButton *btn: m_filterButtons)
+    for (QToolButton *btn: qAsConst(m_filterButtons))
         btn->setChecked(false);
 
-    updateFilter();
+    updateKeywordFilter();
 }
 
 void TodoOutputPane::createTreeView()
@@ -225,7 +225,7 @@ void TodoOutputPane::createTreeView()
 
     m_todoTreeView = new TodoOutputTreeView();
     m_todoTreeView->setModel(m_filteredTodoItemsModel);
-    Aggregation::Aggregate *agg = new Aggregation::Aggregate;
+    auto agg = new Aggregation::Aggregate;
     agg->add(m_todoTreeView);
     agg->add(new Core::ItemViewFind(m_todoTreeView));
 
@@ -240,7 +240,7 @@ void TodoOutputPane::freeTreeView()
 
 QToolButton *TodoOutputPane::createCheckableToolButton(const QString &text, const QString &toolTip, const QIcon &icon)
 {
-    QToolButton *button = new QToolButton();
+    auto button = new QToolButton;
 
     button->setCheckable(true);
     button->setText(text);
@@ -271,7 +271,7 @@ void TodoOutputPane::createScopeButtons()
     m_scopeButtons->addButton(m_wholeProjectButton);
     m_scopeButtons->addButton(m_currentFileButton);
     m_scopeButtons->addButton(m_subProjectButton);
-    connect(m_scopeButtons, static_cast<void (QButtonGroup::*)(QAbstractButton *)>(&QButtonGroup::buttonClicked),
+    connect(m_scopeButtons, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked),
             this, &TodoOutputPane::scopeButtonClicked);
 
     m_spacer = new QWidget;
@@ -282,7 +282,7 @@ void TodoOutputPane::createScopeButtons()
         QToolButton *button = createCheckableToolButton(keyword.name, tooltip.arg(keyword.name), toolBarIcon(keyword.iconType));
         button->setProperty(Constants::FILTER_KEYWORD_NAME, keyword.name);
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        connect(button, &QToolButton::clicked, this, &TodoOutputPane::updateFilter);
+        connect(button, &QToolButton::clicked, this, &TodoOutputPane::updateKeywordFilter);
 
         m_filterButtons.append(button);
     }

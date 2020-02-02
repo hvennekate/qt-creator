@@ -36,11 +36,6 @@
 
 #include <functional>
 
-namespace Core {
-class Context;
-class Id;
-} // Core
-
 namespace Utils {
 
 // To be used for actions that need hideable toolbuttons.
@@ -59,12 +54,26 @@ public:
     QPointer<QToolButton> m_toolButton;
 };
 
-class DEBUGGER_EXPORT Perspective
+class PerspectiveState
+{
+public:
+    static const char *savesHeaderKey();
+
+    QByteArray mainWindowState;
+    QVariantHash headerViewStates;
+
+    friend QDataStream &operator>>(QDataStream &ds, PerspectiveState &state)
+        { return ds >> state.mainWindowState >> state.headerViewStates; }
+    friend QDataStream &operator<<(QDataStream &ds, const PerspectiveState &state)
+        { return ds << state.mainWindowState << state.headerViewStates; }
+};
+
+class DEBUGGER_EXPORT Perspective : public QObject
 {
 public:
     Perspective(const QString &id, const QString &name,
                 const QString &parentPerspectiveId = QString(),
-                const QString &subPerspectiveType = QString());
+                const QString &settingId = QString());
     ~Perspective();
 
     enum OperationType { SplitVertical, SplitHorizontal, AddToTab, Raise };
@@ -92,26 +101,26 @@ public:
 
     using Callback = std::function<void()>;
     void setAboutToActivateCallback(const Callback &cb);
-    void aboutToActivate() const;
 
     void setEnabled(bool enabled);
 
     void select();
+    void destroy();
 
-    static Perspective *currentPerspective();
     static Perspective *findPerspective(const QString &perspectiveId);
 
-    Core::Context context() const;
-
-    void showToolBar();
-    void hideToolBar();
+    bool isCurrent() const;
 
 private:
+    void rampDownAsCurrent();
+    void rampUpAsCurrent();
+
     Perspective(const Perspective &) = delete;
     void operator=(const Perspective &) = delete;
 
     friend class DebuggerMainWindow;
     friend class DebuggerMainWindowPrivate;
+    friend class PerspectivePrivate;
     class PerspectivePrivate *d = nullptr;
 };
 
@@ -126,18 +135,29 @@ public:
     static void doShutdown();
 
     static void showStatusMessage(const QString &message, int timeoutMS);
-    static void onModeChanged(Core::Id mode);
+    static void enterDebugMode();
+    static void leaveDebugMode();
 
     static QWidget *centralWidgetStack();
     void addSubPerspectiveSwitcher(QWidget *widget);
+
+    static Perspective *currentPerspective();
 
 private:
     DebuggerMainWindow();
     ~DebuggerMainWindow() override;
 
+    void savePersistentSettings() const;
+    void restorePersistentSettings();
+
+    void contextMenuEvent(QContextMenuEvent *ev) override;
+
     friend class Perspective;
     friend class PerspectivePrivate;
+    friend class DockOperation;
     class DebuggerMainWindowPrivate *d = nullptr;
 };
 
 } // Utils
+
+Q_DECLARE_METATYPE(Utils::PerspectiveState)

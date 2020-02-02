@@ -502,11 +502,8 @@ QMultiHash<ModelNode, InformationName> convertModelNodeInformationHash(const QMu
 {
     QMultiHash<ModelNode, InformationName>  convertedModelNodeInformationHash;
 
-    QHashIterator<ModelNode, InformationName> hashIterator(informationChangeHash);
-    while (hashIterator.hasNext()) {
-        hashIterator.next();
-        convertedModelNodeInformationHash.insert(ModelNode(hashIterator.key(), view), hashIterator.value());
-    }
+    for (auto it = informationChangeHash.cbegin(), end = informationChangeHash.cend(); it != end; ++it)
+        convertedModelNodeInformationHash.insert(ModelNode(it.key(), view), it.value());
 
     return convertedModelNodeInformationHash;
 }
@@ -1393,16 +1390,10 @@ void ModelPrivate::notifyNodeOrderChanged(const InternalNodeListPropertyPointer 
 
 void ModelPrivate::setSelectedNodes(const QList<InternalNode::Pointer> &selectedNodeList)
 {
+    QList<InternalNode::Pointer> sortedSelectedList
+            = Utils::filtered(selectedNodeList, &InternalNode::isValid);
 
-    QList<InternalNode::Pointer> sortedSelectedList(selectedNodeList);
-    QMutableListIterator<InternalNode::Pointer> iterator(sortedSelectedList);
-    while (iterator.hasNext()) {
-        InternalNode::Pointer node(iterator.next());
-        if (!node->isValid())
-            iterator.remove();
-    }
-
-    sortedSelectedList = sortedSelectedList.toSet().toList();
+    sortedSelectedList = Utils::toList(Utils::toSet(sortedSelectedList));
     Utils::sort(sortedSelectedList);
 
     if (sortedSelectedList == m_selectedInternalNodeList)
@@ -1473,6 +1464,10 @@ void ModelPrivate::changeSelectedNodes(const QList<InternalNode::Pointer> &newSe
         Q_ASSERT(view != nullptr);
         view->selectedNodesChanged(toModelNodeList(newSelectedNodeList, view.data()), toModelNodeList(oldSelectedNodeList, view.data()));
     }
+
+    if (nodeInstanceView())
+        nodeInstanceView()->selectedNodesChanged(toModelNodeList(newSelectedNodeList, nodeInstanceView()),
+                                                 toModelNodeList(oldSelectedNodeList, nodeInstanceView()));
 }
 
 QList<InternalNode::Pointer> ModelPrivate::selectedNodes() const
@@ -1773,7 +1768,8 @@ QList<InternalNodePointer> ModelPrivate::allNodes() const
 
     nodeList.append(m_rootInternalNode);
     nodeList.append(m_rootInternalNode->allSubNodes());
-    nodeList.append((m_nodeSet - nodeList.toSet()).toList());
+    // FIXME: This is horribly expensive compared to a loop.
+    nodeList.append(Utils::toList(m_nodeSet - Utils::toSet(nodeList)));
 
     return nodeList;
 }
@@ -1905,7 +1901,7 @@ static bool compareVersions(const QString &version1, const QString &version2, bo
     return false;
 }
 
-bool Model::hasImport(const Import &import, bool ignoreAlias, bool allowHigherVersion)
+bool Model::hasImport(const Import &import, bool ignoreAlias, bool allowHigherVersion) const
 {
     if (imports().contains(import))
         return true;
@@ -1923,7 +1919,7 @@ bool Model::hasImport(const Import &import, bool ignoreAlias, bool allowHigherVe
     return false;
 }
 
-bool Model::isImportPossible(const Import &import, bool ignoreAlias, bool allowHigherVersion)
+bool Model::isImportPossible(const Import &import, bool ignoreAlias, bool allowHigherVersion) const
 {
     if (imports().contains(import))
         return true;
@@ -2025,6 +2021,14 @@ void Model::setTextModifier(TextModifier *textModifier)
 void Model::setDocumentMessages(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings)
 {
     d->setDocumentMessages(errors, warnings);
+}
+
+/*!
+ * \brief Returns list of selected nodes for a view
+ */
+QList<ModelNode> Model::selectedNodes(AbstractView *view) const
+{
+    return d->toModelNodeList(d->selectedNodes(), view);
 }
 
 /*!

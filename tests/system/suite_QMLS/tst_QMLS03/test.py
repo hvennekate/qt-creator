@@ -92,7 +92,7 @@ def main():
         return
     for _ in range(5):
         type(editorArea, "<Left>")
-    invokeContextMenuItem(editorArea, "Find Usages")
+    invokeContextMenuItem(editorArea, "Find References to Symbol Under Cursor")
     # check if usage was properly found
     expectedResults = [ExpectedResult("color-animation.qml", 49, "Rectangle {"),
                        ExpectedResult("color-animation.qml", 109, "Rectangle {"),
@@ -103,7 +103,7 @@ def main():
                 "Verifying if usages were properly found using context menu.")
     # clear previous results & prepare for next search
     clickButton(waitForObject(":*Qt Creator.Clear_QToolButton"))
-    mouseClick(editorArea, 5, 5, 0, Qt.LeftButton)
+    mouseClick(editorArea)
     # 2. check usages using menu
     # place cursor to component
     if not placeCursorToLine(editorArea, "anchors { left: parent.left; top: parent.top; right: parent.right; bottom: parent.verticalCenter }"):
@@ -111,7 +111,7 @@ def main():
         return
     for _ in range(87):
         type(editorArea, "<Left>")
-    invokeMenuItem("Tools", "QML/JS", "Find Usages")
+    invokeMenuItem("Tools", "QML/JS", "Find References to Symbol Under Cursor")
     # check if usage was properly found
     expectedResults = [ExpectedResult("color-animation.qml", 50, "anchors { left: parent.left; top: parent.top; right: parent.right; bottom: parent.verticalCenter }"),
                        ExpectedResult("color-animation.qml", 110, "anchors { left: parent.left; top: parent.verticalCenter; right: parent.right; bottom: parent.bottom }"),
@@ -122,7 +122,7 @@ def main():
                 "Verifying if usages were properly found using main menu.")
     # clear previous results & prepare for next search
     clickButton(waitForObject(":*Qt Creator.Clear_QToolButton"))
-    mouseClick(editorArea, 5, 5, 0, Qt.LeftButton)
+    mouseClick(editorArea)
     # 3. check usages using keyboard shortcut
     # place cursor to component
     if not placeCursorToLine(editorArea, "SequentialAnimation on opacity {"):

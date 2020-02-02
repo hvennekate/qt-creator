@@ -26,6 +26,7 @@ HEADERS += \
     cppcodestylepreferencesfactory.h \
     cppcodestylesettings.h \
     cppcodestylesettingspage.h \
+    cppcodestylesnippets.h \
     cppcompletionassist.h \
     cppcompletionassistprocessor.h \
     cppcompletionassistprovider.h \
@@ -52,8 +53,8 @@ HEADERS += \
     cpppointerdeclarationformatter.h \
     cppprojectfile.h \
     cppprojectupdater.h \
+    cppprojectupdaterinterface.h \
     cppqtstyleindenter.h \
-    cpprawprojectpart.h \
     cpprefactoringchanges.h \
     cpprefactoringengine.h \
     cppselectionchanger.h \
@@ -99,9 +100,9 @@ HEADERS += \
     cursorineditor.h \
     wrappablelineedit.h \
     usages.h \
-    cpptools_clangtidychecks.h \
     cppmodelmanagerinterface.h \
-    cppbuiltinmodelmanagersupport.h
+    cppbuiltinmodelmanagersupport.h \
+    headerpathfilter.h \
 
 SOURCES += \
     abstracteditorsupport.cpp \
@@ -151,7 +152,6 @@ SOURCES += \
     cppprojectfile.cpp \
     cppprojectupdater.cpp \
     cppqtstyleindenter.cpp \
-    cpprawprojectpart.cpp \
     cpprefactoringchanges.cpp \
     cpprefactoringengine.cpp \
     cppselectionchanger.cpp \
@@ -187,7 +187,8 @@ SOURCES += \
     cppprojectfilecategorizer.cpp \
     cppprojectpartchooser.cpp \
     wrappablelineedit.cpp \
-    cppbuiltinmodelmanagersupport.cpp
+    cppbuiltinmodelmanagersupport.cpp \
+    headerpathfilter.cpp
 
 FORMS += \
     clangdiagnosticconfigswidget.ui \
@@ -195,8 +196,6 @@ FORMS += \
     cppcodestylesettingspage.ui \
     cppfilesettingspage.ui \
     clangbasechecks.ui \
-    clazychecks.ui \
-    tidychecks.ui
 
 equals(TEST, 1) {
     HEADERS += \
@@ -221,6 +220,3 @@ equals(TEST, 1) {
 
     DEFINES += SRCDIR=\\\"$$PWD\\\"
 }
-
-RESOURCES += \
-    cpptools.qrc

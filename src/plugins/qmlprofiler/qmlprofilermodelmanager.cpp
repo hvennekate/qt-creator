@@ -126,10 +126,6 @@ QmlProfilerModelManager::QmlProfilerModelManager(QObject *parent) :
             this, &QmlProfilerModelManager::setTypeDetails);
     connect(d->detailsRewriter, &Internal::QmlProfilerDetailsRewriter::eventDetailsChanged,
             this, &QmlProfilerModelManager::typeDetailsFinished);
-
-    quint64 allFeatures = 0;
-    for (quint8 i = 0; i <= MaximumProfileFeature; ++i)
-        allFeatures |= (1ull << i);
 }
 
 QmlProfilerModelManager::~QmlProfilerModelManager()
@@ -478,7 +474,7 @@ int QmlProfilerEventTypeStorage::append(Timeline::TraceEventType &&type)
         m_types.push_back(std::move(type.asRvalueRef<QmlEventType>()));
     } else {
         QTC_CHECK(false);
-        m_types.push_back(QmlEventType());
+        m_types.emplace_back();
     }
     QTC_ASSERT(index <= static_cast<size_t>(std::numeric_limits<int>::max()),
                return std::numeric_limits<int>::max());

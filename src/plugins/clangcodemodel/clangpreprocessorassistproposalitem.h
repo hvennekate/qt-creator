@@ -31,13 +31,14 @@
 #include <QString>
 
 namespace ClangCodeModel {
+namespace Internal {
 
 class ClangPreprocessorAssistProposalItem final : public TextEditor::AssistProposalItemInterface
 {
 public:
-    ~ClangPreprocessorAssistProposalItem() noexcept {}
+    ~ClangPreprocessorAssistProposalItem() noexcept override = default;
     bool prematurelyApplies(const QChar &typedChar) const final;
-    virtual bool implicitlyApplies() const final;
+    bool implicitlyApplies() const final;
     void apply(TextEditor::TextDocumentManipulatorInterface &manipulator,
                int basePosition) const final;
 
@@ -49,6 +50,8 @@ public:
 
     void setDetail(const QString &detail);
     QString detail() const final;
+
+    Qt::TextFormat detailFormat() const final;
 
     bool isSnippet() const final;
     bool isValid() const final;
@@ -68,4 +71,5 @@ private:
     mutable QChar m_typedCharacter;
 };
 
+} // namespace Internal
 } // namespace ClangCodeModel

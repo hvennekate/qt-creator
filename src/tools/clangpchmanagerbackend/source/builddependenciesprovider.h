@@ -27,36 +27,53 @@
 
 #include "builddependenciesproviderinterface.h"
 
+#include <modifiedtimecheckerinterface.h>
+
+namespace Sqlite {
+class TransactionInterface;
+}
+
 namespace ClangBackEnd {
 
 class BuildDependenciesStorageInterface;
-class ModifiedTimeCheckerInterface;
-class BuildDependenciesGeneratorInterface;
+class BuildDependencyGeneratorInterface;
 
 class BuildDependenciesProvider : public BuildDependenciesProviderInterface
 {
 public:
     BuildDependenciesProvider(BuildDependenciesStorageInterface &buildDependenciesStorage,
-                              ModifiedTimeCheckerInterface &modifiedTimeChecker,
-                              BuildDependenciesGeneratorInterface &buildDependenciesGenerator)
-        : m_buildDependenciesStorage(buildDependenciesStorage),
-          m_modifiedTimeChecker(modifiedTimeChecker),
-          m_buildDependenciesGenerator(buildDependenciesGenerator)
+                              ModifiedTimeCheckerInterface<> &modifiedTimeChecker,
+                              BuildDependencyGeneratorInterface &buildDependenciesGenerator,
+                              Sqlite::TransactionInterface &transactionBackend)
+        : m_storage(buildDependenciesStorage)
+        , m_modifiedTimeChecker(modifiedTimeChecker)
+        , m_generator(buildDependenciesGenerator)
+        , m_transactionBackend(transactionBackend)
+    {}
+
+    BuildDependency create(const ProjectPartContainer &projectPart) override;
+    BuildDependency create(const ProjectPartContainer &projectPart,
+                           SourceEntries &&sourceEntries) override;
+
+    void setEnsureAliveMessageIsSentCallback(std::function<void()> &&callback)
     {
+        m_ensureAliveMessageIsSentCallback = std::move(callback);
     }
 
-    BuildDependency create(const V2::ProjectPartContainer &projectPart) const override;
+    SourceEntries createSourceEntriesFromStorage(const FilePathIds &sourcePathIds,
+                                                 ProjectPartId projectPartId) const override;
 
 private:
     BuildDependency createBuildDependencyFromStorage(SourceEntries &&includes) const;
     UsedMacros createUsedMacrosFromStorage(const SourceEntries &includes) const;
-    SourceEntries createSourceEntriesFromStorage(const FilePathIds &sourcePathIds,
-                                                 Utils::SmallStringView projectPartId) const;
+    void storeBuildDependency(const BuildDependency &buildDependency, ProjectPartId projectPartId);
 
 private:
-    BuildDependenciesStorageInterface &m_buildDependenciesStorage;
-    ModifiedTimeCheckerInterface &m_modifiedTimeChecker;
-    BuildDependenciesGeneratorInterface &m_buildDependenciesGenerator;
+    BuildDependenciesStorageInterface &m_storage;
+    ModifiedTimeCheckerInterface<> &m_modifiedTimeChecker;
+    BuildDependencyGeneratorInterface &m_generator;
+    Sqlite::TransactionInterface &m_transactionBackend;
+    std::function<void()> m_ensureAliveMessageIsSentCallback;
 };
 
 } // namespace ClangBackEnd

@@ -43,7 +43,7 @@ namespace CppTools {
 class CppRefactoringChangesData : public TextEditor::RefactoringChangesData
 {
 public:
-    CppRefactoringChangesData(const Snapshot &snapshot)
+    explicit CppRefactoringChangesData(const Snapshot &snapshot)
         : m_snapshot(snapshot)
         , m_modelManager(CppModelManager::instance())
         , m_workingCopy(m_modelManager->workingCopy())
@@ -56,8 +56,8 @@ public:
         const TextEditor::TabSettings &tabSettings =
             ProjectExplorer::actualTabSettings(fileName, textDocument);
 
-        CppQtStyleIndenter indenter;
-        indenter.indent(selection.document(), selection, QChar::Null, tabSettings);
+        CppQtStyleIndenter indenter(selection.document());
+        indenter.indent(selection, QChar::Null, tabSettings);
     }
 
     void reindentSelection(const QTextCursor &selection,
@@ -67,8 +67,9 @@ public:
         const TextEditor::TabSettings &tabSettings =
             ProjectExplorer::actualTabSettings(fileName, textDocument);
 
-        CppQtStyleIndenter indenter;
-        indenter.reindent(selection.document(), selection, tabSettings);
+        CppQtStyleIndenter indenter(selection.document());
+        indenter.reindent(selection,
+                          tabSettings);
     }
 
     void fileChanged(const QString &fileName) override
@@ -107,7 +108,7 @@ CppRefactoringFilePtr CppRefactoringChanges::file(const QString &fileName) const
 
 CppRefactoringFileConstPtr CppRefactoringChanges::fileNoEditor(const QString &fileName) const
 {
-    QTextDocument *document = 0;
+    QTextDocument *document = nullptr;
     if (data()->m_workingCopy.contains(fileName))
         document = new QTextDocument(QString::fromUtf8(data()->m_workingCopy.source(fileName)));
     CppRefactoringFilePtr result(new CppRefactoringFile(document, fileName));
@@ -158,7 +159,7 @@ void CppRefactoringFile::setCppDocument(Document::Ptr document)
 
 Scope *CppRefactoringFile::scopeAt(unsigned index) const
 {
-    unsigned line, column;
+    int line, column;
     cppDocument()->translationUnit()->getTokenStartPosition(index, &line, &column);
     return cppDocument()->scopeAt(line, column);
 }
@@ -171,10 +172,7 @@ bool CppRefactoringFile::isCursorOn(unsigned tokenIndex) const
     int start = startOf(tokenIndex);
     int end = endOf(tokenIndex);
 
-    if (cursorBegin >= start && cursorBegin <= end)
-        return true;
-
-    return false;
+    return cursorBegin >= start && cursorBegin <= end;
 }
 
 bool CppRefactoringFile::isCursorOn(const AST *ast) const
@@ -185,29 +183,26 @@ bool CppRefactoringFile::isCursorOn(const AST *ast) const
     int start = startOf(ast);
     int end = endOf(ast);
 
-    if (cursorBegin >= start && cursorBegin <= end)
-        return true;
-
-    return false;
+    return cursorBegin >= start && cursorBegin <= end;
 }
 
 Utils::ChangeSet::Range CppRefactoringFile::range(unsigned tokenIndex) const
 {
     const Token &token = tokenAt(tokenIndex);
-    unsigned line, column;
+    int line, column;
     cppDocument()->translationUnit()->getPosition(token.utf16charsBegin(), &line, &column);
     const int start = document()->findBlockByNumber(line - 1).position() + column - 1;
-    return Utils::ChangeSet::Range(start, start + token.utf16chars());
+    return {start, start + token.utf16chars()};
 }
 
 Utils::ChangeSet::Range CppRefactoringFile::range(AST *ast) const
 {
-    return Utils::ChangeSet::Range(startOf(ast), endOf(ast));
+    return {startOf(ast), endOf(ast)};
 }
 
 int CppRefactoringFile::startOf(unsigned index) const
 {
-    unsigned line, column;
+    int line, column;
     cppDocument()->translationUnit()->getPosition(tokenAt(index).utf16charsBegin(), &line, &column);
     return document()->findBlockByNumber(line - 1).position() + column - 1;
 }
@@ -219,21 +214,21 @@ int CppRefactoringFile::startOf(const AST *ast) const
 
 int CppRefactoringFile::endOf(unsigned index) const
 {
-    unsigned line, column;
+    int line, column;
     cppDocument()->translationUnit()->getPosition(tokenAt(index).utf16charsEnd(), &line, &column);
     return document()->findBlockByNumber(line - 1).position() + column - 1;
 }
 
 int CppRefactoringFile::endOf(const AST *ast) const
 {
-    unsigned end = ast->lastToken();
+    int end = ast->lastToken();
     QTC_ASSERT(end > 0, return -1);
     return endOf(end - 1);
 }
 
 void CppRefactoringFile::startAndEndOf(unsigned index, int *start, int *end) const
 {
-    unsigned line, column;
+    int line, column;
     Token token(tokenAt(index));
     cppDocument()->translationUnit()->getPosition(token.utf16charsBegin(), &line, &column);
     *start = document()->findBlockByNumber(line - 1).position() + column - 1;

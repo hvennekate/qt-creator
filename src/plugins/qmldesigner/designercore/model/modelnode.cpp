@@ -42,6 +42,8 @@
 #include "nodeproperty.h"
 #include <rewriterview.h>
 
+#include <utils/algorithm.h>
+
 #include <QHash>
 #include <QRegExp>
 #include <QSet>
@@ -642,6 +644,16 @@ QList<BindingProperty> ModelNode::bindingProperties() const
     return propertyList;
 }
 
+QList<SignalHandlerProperty> ModelNode::signalProperties() const
+{
+    QList<SignalHandlerProperty> propertyList;
+
+    foreach (const AbstractProperty &property, properties())
+        if (property.isSignalHandlerProperty())
+            propertyList.append(property.toSignalHandlerProperty());
+    return propertyList;
+}
+
 /*!
 \brief removes a property from this node
 \param name name of the property
@@ -775,6 +787,19 @@ const QList<ModelNode> ModelNode::directSubModelNodes() const
     return toModelNodeList(internalNode()->allDirectSubNodes(), view());
 }
 
+const QList<ModelNode> ModelNode::directSubModelNodesOfType(const TypeName &typeName) const
+{
+    return Utils::filtered(directSubModelNodes(), [typeName](const ModelNode &node){
+        return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
+    });
+}
+
+const QList<ModelNode> ModelNode::subModelNodesOfType(const TypeName &typeName) const
+{
+    return Utils::filtered(allSubModelNodes(), [typeName](const ModelNode &node){
+        return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
+    });
+}
 
 /*!
 \brief returns all ModelNodes that are direct or indirect children of this ModelNode
@@ -991,7 +1016,7 @@ QVariant ModelNode::toVariant() const
     return QVariant::fromValue(*this);
 }
 
-QVariant ModelNode::auxiliaryData(const PropertyName &name) const
+const QVariant ModelNode::auxiliaryData(const PropertyName &name) const
 {
     if (!isValid())
         throw InvalidModelNodeException(__LINE__, __FUNCTION__, __FILE__);

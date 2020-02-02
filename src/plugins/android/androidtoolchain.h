@@ -31,21 +31,17 @@ namespace Android {
 namespace Internal {
 
 using ToolChainList = QList<ProjectExplorer::ToolChain *>;
-using CToolChainList = const QList<ProjectExplorer::ToolChain *>;
 
 class AndroidToolChain : public ProjectExplorer::ClangToolChain
 {
 public:
     ~AndroidToolChain() override;
 
-    QString typeDisplayName() const override;
     bool isValid() const override;
     void addToEnvironment(Utils::Environment &env) const override;
 
-    Utils::FileName suggestedDebugger() const override;
-    Utils::FileName suggestedGdbServer() const;
-    Utils::FileNameList suggestedMkspecList() const override;
-    QString makeCommand(const Utils::Environment &environment) const override;
+    QStringList suggestedMkspecList() const override;
+    Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
     bool fromMap(const QVariantMap &data) override;
 
 protected:
@@ -53,7 +49,6 @@ protected:
 
 private:
     explicit AndroidToolChain();
-    AndroidToolChain(const QString &target, Core::Id languageId);
 
     friend class AndroidToolChainFactory;
 };
@@ -64,22 +59,19 @@ class AndroidToolChainFactory : public ProjectExplorer::ToolChainFactory
 
 public:
     AndroidToolChainFactory();
-    QSet<Core::Id> supportedLanguages() const override;
 
-    ToolChainList autoDetect(CToolChainList &alreadyKnown) override;
-    bool canRestore(const QVariantMap &data) override;
-    ProjectExplorer::ToolChain *restore(const QVariantMap &data) override;
+    ToolChainList autoDetect(const ToolChainList &alreadyKnown) override;
 
     class AndroidToolChainInformation
     {
     public:
         Core::Id language;
-        Utils::FileName compilerCommand;
+        Utils::FilePath compilerCommand;
         ProjectExplorer::Abi abi;
         QString version;
     };
 
-    static ToolChainList autodetectToolChainsForNdk(CToolChainList &alreadyKnown);
+    static ToolChainList autodetectToolChainsForNdk(const ToolChainList &alreadyKnown);
 };
 
 } // namespace Internal

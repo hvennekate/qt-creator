@@ -8,17 +8,21 @@ Project {
     QtcPlugin {
         Depends { name: "Qt"; submodules: ["widgets", "xml"]; }
         Depends { name: "Utils" }
+        Depends { name: "app_version_header" }
 
         Depends { name: "Core" }
         Depends { name: "ProParser" }
         Depends { name: "ProjectExplorer" }
         Depends { name: "ResourceEditor" }
-        Depends { name: "CppTools" }
 
         cpp.defines: base.concat([
             "QMAKE_LIBRARY",
             "QMAKE_BUILTIN_PRFS",
         ])
+        Properties {
+            condition: qbs.targetOS.contains("windows")
+            cpp.dynamicLibraries: "advapi32"
+        }
 
         Export {
             Depends { name: "ProParser" }
@@ -48,6 +52,8 @@ Project {
                 "qmakeparser.h",
                 "qmakevfs.cpp",
                 "qmakevfs.h",
+                "registry.cpp",
+                "registry_p.h",
             ]
         }
 
@@ -61,8 +67,12 @@ Project {
             "codegensettingspage.cpp",
             "codegensettingspage.h",
             "codegensettingspagewidget.ui",
+            "qtbuildaspects.cpp",
+            "qtbuildaspects.h",
             "qtconfigwidget.cpp",
             "qtconfigwidget.h",
+            "qtcppkitinfo.cpp",
+            "qtcppkitinfo.h",
             "qtprojectimporter.cpp",
             "qtprojectimporter.h",
             "qtsupport.qrc",
@@ -74,8 +84,6 @@ Project {
             "qmldumptool.h",
             "qscxmlcgenerator.cpp",
             "qscxmlcgenerator.h",
-            "qtkitconfigwidget.cpp",
-            "qtkitconfigwidget.h",
             "qtkitinformation.cpp",
             "qtkitinformation.h",
             "qtoptionspage.cpp",
@@ -88,7 +96,8 @@ Project {
             "qtsupportconstants.h",
             "qtsupportplugin.cpp",
             "qtsupportplugin.h",
-            "qtversionfactory.cpp",
+            "qttestparser.cpp",
+            "qttestparser.h",
             "qtversionfactory.h",
             "qtversioninfo.ui",
             "qtversionmanager.cpp",
@@ -97,6 +106,8 @@ Project {
             "screenshotcropper.cpp",
             "screenshotcropper.h",
             "showbuildlog.ui",
+            "translationwizardpage.cpp",
+            "translationwizardpage.h",
             "uicgenerator.cpp",
             "uicgenerator.h",
         ]
@@ -104,8 +115,8 @@ Project {
         Group {
             name: "QtVersion"
             files: [
-                "desktopqtversion.cpp", "desktopqtversion.h",
-                "desktopqtversionfactory.cpp", "desktopqtversionfactory.h",
+                "qtversions.cpp",
+                "qtversions.h",
             ]
         }
 

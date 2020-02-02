@@ -376,7 +376,7 @@ void DesignModeWidget::setup()
     m_mainSplitter->setSizes({150, 300, 150});
 
     QLayout *mainLayout = new QBoxLayout(QBoxLayout::RightToLeft, this);
-    mainLayout->setMargin(0);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
     mainLayout->addWidget(m_mainSplitter);
 
@@ -435,7 +435,7 @@ void DesignModeWidget::setupNavigatorHistory(Core::IEditor *editor)
     m_toolBar->setCurrentEditor(editor);
 }
 
-void DesignModeWidget::addNavigatorHistoryEntry(const Utils::FileName &fileName)
+void DesignModeWidget::addNavigatorHistoryEntry(const Utils::FilePath &fileName)
 {
     if (m_navigatorHistoryCounter > 0)
         m_navigatorHistory.insert(m_navigatorHistoryCounter + 1, fileName.toString());
@@ -514,7 +514,7 @@ QWidget *DesignModeWidget::createCenterWidget()
     QWidget *centerWidget = new QWidget;
 
     auto horizontalLayout = new QVBoxLayout(centerWidget);
-    horizontalLayout->setMargin(0);
+    horizontalLayout->setContentsMargins(0, 0, 0, 0);
     horizontalLayout->setSpacing(0);
 
     horizontalLayout->addWidget(m_toolBar);
@@ -537,7 +537,7 @@ QWidget *DesignModeWidget::createCrumbleBarFrame()
     auto frame = new Utils::StyledBar(this);
     frame->setSingleRow(false);
     auto layout = new QHBoxLayout(frame);
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(m_crumbleBar->crumblePath());
 
@@ -554,12 +554,12 @@ void DesignModeWidget::showInternalTextEditor()
     m_centralTabWidget->switchTo(viewManager().widget("TextEditor"));
 }
 
-void DesignModeWidget::contextHelpId(const Core::IContext::HelpIdCallback &callback) const
+void DesignModeWidget::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
     if (currentDesignDocument())
-        currentDesignDocument()->contextHelpId(callback);
+        currentDesignDocument()->contextHelp(callback);
     else
-        callback(QString());
+        callback({});
 }
 
 void DesignModeWidget::initialize()

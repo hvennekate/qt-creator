@@ -52,7 +52,7 @@ using ClangBackEnd::RemoveProjectPartsMessage;
 using ClangBackEnd::UpdateProjectPartsMessage;
 using ClangBackEnd::UpdateGeneratedFilesMessage;
 using ClangBackEnd::V2::FileContainer;
-using ClangBackEnd::V2::ProjectPartContainer;
+using ClangBackEnd::ProjectPartContainer;
 
 class RefactoringClientServerInProcess : public ::testing::Test
 {
@@ -88,32 +88,6 @@ TEST_F(RefactoringClientServerInProcess, SendAliveMessage)
 
     clientProxy.alive();
     scheduleClientMessages();
-}
-
-TEST_F(RefactoringClientServerInProcess, SendSourceLocationsForRenamingMessage)
-{
-    ClangBackEnd::SourceLocationsContainer container;
-    ClangBackEnd::SourceLocationsForRenamingMessage message("symbolName", std::move(container), 1);
-
-    EXPECT_CALL(mockRefactoringClient, sourceLocationsForRenamingMessage(message));
-
-    clientProxy.sourceLocationsForRenamingMessage(message.clone());
-    scheduleClientMessages();
-}
-
-TEST_F(RefactoringClientServerInProcess, SendRequestSourceLocationsForRenamingMessage)
-{
-    RequestSourceLocationsForRenamingMessage message{{TESTDATA_DIR, "renamevariable.cpp"},
-                                                     1,
-                                                     5,
-                                                     "int v;\n\nint x = v + 3;\n",
-                                                     {"cc", "renamevariable.cpp"},
-                                                     1};
-
-    EXPECT_CALL(mockRefactoringServer, requestSourceLocationsForRenamingMessage(message));
-
-    serverProxy.requestSourceLocationsForRenamingMessage(message.clone());
-    scheduleServerMessages();
 }
 
 TEST_F(RefactoringClientServerInProcess, SourceRangesAndDiagnosticsForQueryMessage)
@@ -153,15 +127,10 @@ TEST_F(RefactoringClientServerInProcess, SendProgressMessage)
 
 TEST_F(RefactoringClientServerInProcess, RequestSourceRangesAndDiagnosticsForQueryMessage)
 {
-    RequestSourceRangesForQueryMessage message{"functionDecl()",
-                                               {{{TESTDATA_DIR, "query_simplefunction.cpp"},
-                                                  "void f();",
-                                                 {"cc", "query_simplefunction.cpp"},
-                                                 1}},
-                                               {{{TESTDATA_DIR, "query_simplefunction.h"},
-                                                  "void f();",
-                                                 {},
-                                                 1}}};
+    RequestSourceRangesForQueryMessage message{
+        "functionDecl()",
+        {{{TESTDATA_DIR, "query_simplefunction.cpp"}, 1, "void f();", {"cc"}, 1}},
+        {{{TESTDATA_DIR, "query_simplefunction.h"}, 2, "void f();", {}, 1}}};
 
     EXPECT_CALL(mockRefactoringServer, requestSourceRangesForQueryMessage(message));
 
@@ -171,15 +140,16 @@ TEST_F(RefactoringClientServerInProcess, RequestSourceRangesAndDiagnosticsForQue
 
 TEST_F(RefactoringClientServerInProcess, RequestSourceRangesForQueryMessage)
 {
-    RequestSourceRangesForQueryMessage message{"functionDecl()",
-                                               {{{TESTDATA_DIR, "query_simplefunction.cpp"},
-                                                  "void f();",
-                                                 {"cc", "query_simplefunction.cpp"},
-                                                 1}},
-                                               {{{TESTDATA_DIR, "query_simplefunction.h"},
-                                                  "void f();",
-                                                 {},
-                                                 1}}};
+    RequestSourceRangesForQueryMessage message{
+        "functionDecl()",
+        {{{TESTDATA_DIR, "query_simplefunction.cpp"},
+          1,
+          "void f();",
+          {
+              "cc",
+          },
+          1}},
+        {{{TESTDATA_DIR, "query_simplefunction.h"}, 2, "void f();", {}, 1}}};
 
     EXPECT_CALL(mockRefactoringServer, requestSourceRangesForQueryMessage(message));
 
@@ -189,13 +159,21 @@ TEST_F(RefactoringClientServerInProcess, RequestSourceRangesForQueryMessage)
 
 TEST_F(RefactoringClientServerInProcess, SendUpdateProjectPartsMessage)
 {
-    ProjectPartContainer projectPart2{"projectPartId",
-                                      {"-x", "c++-header", "-Wno-pragma-once-outside-header"},
-                                      {{"DEFINE", "1"}},
-                                      {"/includes"},
-                                      {{1, 1}},
-                                      {{1, 2}}};
-    UpdateProjectPartsMessage message{{projectPart2}};
+    ProjectPartContainer projectPart2{
+        1,
+        {"-x", "c++-header", "-Wno-pragma-once-outside-header"},
+        {{"DEFINE", "1", 1}},
+        {IncludeSearchPath{"/system/path", 2, IncludeSearchPathType::System},
+         IncludeSearchPath{"/builtin/path", 3, IncludeSearchPathType::BuiltIn},
+         IncludeSearchPath{"/framework/path", 1, IncludeSearchPathType::System}},
+        {IncludeSearchPath{"/to/path1", 1, IncludeSearchPathType::User},
+         IncludeSearchPath{"/to/path2", 2, IncludeSearchPathType::User}},
+        {{1, 1}},
+        {{1, 2}},
+        Utils::Language::C,
+        Utils::LanguageVersion::C11,
+        Utils::LanguageExtension::All};
+    UpdateProjectPartsMessage message{{projectPart2}, {"toolChainArgument"}};
 
     EXPECT_CALL(mockRefactoringServer, updateProjectParts(message));
 
@@ -205,7 +183,7 @@ TEST_F(RefactoringClientServerInProcess, SendUpdateProjectPartsMessage)
 
 TEST_F(RefactoringClientServerInProcess, SendUpdateGeneratedFilesMessage)
 {
-    FileContainer fileContainer{{"/path/to/", "file"}, "content", {}};
+    FileContainer fileContainer{{"/path/to/", "file"}, 1, "content", {}};
     UpdateGeneratedFilesMessage message{{fileContainer}};
 
     EXPECT_CALL(mockRefactoringServer, updateGeneratedFiles(message));
@@ -216,7 +194,7 @@ TEST_F(RefactoringClientServerInProcess, SendUpdateGeneratedFilesMessage)
 
 TEST_F(RefactoringClientServerInProcess, SendRemoveProjectPartsMessage)
 {
-    RemoveProjectPartsMessage message{{"projectPartId1", "projectPartId2"}};
+    RemoveProjectPartsMessage message{{1, 2}};
 
     EXPECT_CALL(mockRefactoringServer, removeProjectParts(message));
 

@@ -79,16 +79,16 @@ def registerCommand(name, func):
 #
 #######################################################################
 
-# Just convienience for 'python print ...'
+# For CLI dumper use, see README.txt
 class PPCommand(gdb.Command):
     def __init__(self):
         super(PPCommand, self).__init__('pp', gdb.COMMAND_OBSCURE)
     def invoke(self, args, from_tty):
-        print(eval(args))
+        print(theCliDumper.fetchVariable(args))
 
 PPCommand()
 
-# Just convienience for 'python print gdb.parse_and_eval(...)'
+# Just convenience for 'python print gdb.parse_and_eval(...)'
 class PPPCommand(gdb.Command):
     def __init__(self):
         super(PPPCommand, self).__init__('ppp', gdb.COMMAND_OBSCURE)
@@ -136,23 +136,31 @@ class PlainDumper:
             printer = self.printer.gen_printer(value.nativeValue)
         except:
             printer = self.printer.invoke(value.nativeValue)
-        lister = getattr(printer, 'children', None)
-        children = [] if lister is None else list(lister())
         d.putType(value.nativeValue.type.name)
         val = printer.to_string()
         if isinstance(val, str):
-            d.putValue(val)
+            # encode and avoid extra quotes ('"') at beginning and end
+            d.putValue(d.hexencode(val), 'utf8:1:0')
         elif sys.version_info[0] <= 2 and isinstance(val, unicode):
             d.putValue(val)
-        else: # Assuming LazyString
+        elif val is not None: # Assuming LazyString
             d.putCharArrayValue(val.address, val.length,
                                 val.type.target().sizeof)
 
-        d.putNumChild(len(children))
-        if d.isExpanded():
-            with Children(d):
-                for child in children:
-                    d.putSubItem(child[0], d.fromNativeValue(child[1]))
+        lister = getattr(printer, 'children', None)
+        if lister is None:
+            d.putNumChild(0)
+        else:
+            if d.isExpanded():
+                children = lister()
+                with Children(d):
+                    i = 0
+                    for (name, child) in children:
+                        d.putSubItem(name, d.fromNativeValue(child))
+                        i += 1
+                        if i > 1000:
+                            break
+            d.putNumChild(1)
 
 def importPlainDumpers(args):
     if args == 'off':
@@ -168,7 +176,7 @@ registerCommand('importPlainDumpers', importPlainDumpers)
 
 
 
-class OutputSafer:
+class OutputSaver:
     def __init__(self, d):
         self.d = d
 
@@ -178,7 +186,7 @@ class OutputSafer:
 
     def __exit__(self, exType, exValue, exTraceBack):
         if self.d.passExceptions and not exType is None:
-            showException('OUTPUTSAFER', exType, exValue, exTraceBack)
+            showException('OUTPUTSAVER', exType, exValue, exTraceBack)
             self.d.output = self.savedOutput
         else:
             self.savedOutput += self.d.output
@@ -235,6 +243,10 @@ class Dumper(DumperBase):
                 nativeTargetValue = None
             targetType = self.fromNativeType(nativeType.target().unqualified())
             val = self.createPointerValue(toInteger(nativeValue), targetType)
+            # The nativeValue is needed in case of multiple inheritance, see
+            # QTCREATORBUG-17823. Using it triggers nativeValueDereferencePointer()
+            # later which
+            # is surprisingly expensive.
             val.nativeValue = nativeValue
             #warn('CREATED PTR 1: %s' % val)
             if not nativeValue.address is None:
@@ -246,17 +258,19 @@ class Dumper(DumperBase):
             #warn('TARGET TYPE: %s' % targetType)
             if targetType.code == gdb.TYPE_CODE_ARRAY:
                 val = self.Value(self)
-                val.laddress = toInteger(nativeValue.address)
-                val.nativeValue = nativeValue
             else:
-                # Cast may fail (e.g for arrays, see test for Bug5799)
-                val = self.fromNativeValue(nativeValue.cast(targetType))
-            val.type = self.fromNativeType(nativeType)
-            val.nativeValue = nativeValue
+                try:
+                    # Cast may fail for arrays, for typedefs to __uint128_t with
+                    # gdb.error: That operation is not available on integers
+                    # of more than 8 bytes.
+                    # See test for Bug5799, QTCREATORBUG-18450.
+                    val = self.fromNativeValue(nativeValue.cast(targetType))
+                except:
+                    val = self.Value(self)
             #warn('CREATED TYPEDEF: %s' % val)
-            return val
+        else:
+            val = self.Value(self)
 
-        val = self.Value(self)
         val.nativeValue = nativeValue
         if not nativeValue.address is None:
             val.laddress = toInteger(nativeValue.address)
@@ -306,6 +320,12 @@ class Dumper(DumperBase):
             #warn('REF')
             targetType = self.fromNativeType(nativeType.target().unqualified())
             return self.createReferenceType(targetType)
+
+        if hasattr(gdb, "TYPE_CODE_RVALUE_REF"):
+            if code == gdb.TYPE_CODE_RVALUE_REF:
+                #warn('RVALUEREF')
+                targetType = self.fromNativeType(nativeType.target())
+                return self.createRValueReferenceType(targetType)
 
         if code == gdb.TYPE_CODE_ARRAY:
             #warn('ARRAY')
@@ -409,7 +429,7 @@ class Dumper(DumperBase):
             if not found or v != 0:
                 # Leftover value
                 flags.append('unknown: %d' % v)
-            return " | ".join(flags) + ' (' + (form % intval) + ')'
+            return '(' + " | ".join(flags) + ') (' + (form % intval) + ')'
         except:
             pass
         return form % intval
@@ -431,7 +451,6 @@ class Dumper(DumperBase):
         return typeId
 
     def nativeStructAlignment(self, nativeType):
-        self.preping('align ' + str(nativeType))
         #warn('NATIVE ALIGN FOR %s' % nativeType.name)
         def handleItem(nativeFieldType, align):
             a = self.fromNativeType(nativeFieldType).alignment()
@@ -439,7 +458,6 @@ class Dumper(DumperBase):
         align = 1
         for f in nativeType.fields():
             align = handleItem(f.type, align)
-        self.ping('align ' + str(nativeType))
         return align
 
 
@@ -652,9 +670,7 @@ class Dumper(DumperBase):
         self.resetStats()
         self.prepare(args)
 
-        self.preping('endian')
         self.isBigEndian = gdb.execute('show endian', to_string = True).find('big endian') > 0
-        self.ping('endian')
         self.packCode = '>' if self.isBigEndian else '<'
 
         (ok, res) = self.tryFetchInterpreterVariables(args)
@@ -811,9 +827,7 @@ class Dumper(DumperBase):
         #warn('READ: %s FROM 0x%x' % (size, address))
         if address == 0 or size == 0:
             return bytes()
-        self.preping('readMem')
         res = self.selectedInferior().read_memory(address, size)
-        self.ping('readMem')
         return res
 
     def findStaticMetaObject(self, type):
@@ -883,16 +897,33 @@ class Dumper(DumperBase):
     def createSpecialBreakpoints(self, args):
         self.specialBreakpoints = []
         def newSpecial(spec):
-            class SpecialBreakpoint(gdb.Breakpoint):
+            # GDB < 8.1 does not have the 'qualified' parameter here,
+            # GDB >= 8.1 applies some generous pattern matching, hitting
+            # e.g. also Foo::abort() when asking for '::abort'
+            class Pre81SpecialBreakpoint(gdb.Breakpoint):
                 def __init__(self, spec):
-                    super(SpecialBreakpoint, self).\
-                        __init__(spec, gdb.BP_BREAKPOINT, internal=True)
+                    super(Pre81SpecialBreakpoint, self).__init__(spec,
+                        gdb.BP_BREAKPOINT, internal=True)
                     self.spec = spec
 
                 def stop(self):
                     print("Breakpoint on '%s' hit." % self.spec)
                     return True
-            return SpecialBreakpoint(spec)
+
+            class SpecialBreakpoint(gdb.Breakpoint):
+                def __init__(self, spec):
+                    super(SpecialBreakpoint, self).__init__(spec,
+                        gdb.BP_BREAKPOINT, internal=True, qualified=True)
+                    self.spec = spec
+
+                def stop(self):
+                    print("Breakpoint on '%s' hit." % self.spec)
+                    return True
+
+            try:
+                return SpecialBreakpoint(spec)
+            except:
+                return Pre81SpecialBreakpoint(spec)
 
         # FIXME: ns is accessed too early. gdb.Breakpoint() has no
         # 'rbreak' replacement, and breakpoints created with
@@ -1104,6 +1135,7 @@ class Dumper(DumperBase):
         self.reportResult('selected="0x%x",expr="(%s*)0x%x"' % (p, n, p), args)
 
     def nativeValueDereferencePointer(self, value):
+        # This is actually pretty expensive, up to 100ms.
         deref = value.nativeValue.dereference()
         return self.fromNativeValue(deref.cast(deref.dynamic_type))
 
@@ -1270,7 +1302,7 @@ class Dumper(DumperBase):
             frame = gdb.newest_frame()
             ns = self.qtNamespace()
             needle = self.qtNamespace() + 'QV4::ExecutionEngine'
-            pat = '%sqt_v4StackTrace(((%sQV4::ExecutionEngine *)0x%x)->currentContext)'
+            pat = '%sqt_v4StackTraceForEngine((void*)0x%x)'
             done = False
             while i < limit and frame and not done:
                 block = None
@@ -1287,7 +1319,7 @@ class Dumper(DumperBase):
                                dereftype = typeobj.target().unqualified()
                                if dereftype.name == needle:
                                     addr = toInteger(value)
-                                    expr = pat % (ns, ns, addr)
+                                    expr = pat % (ns, addr)
                                     res = str(gdb.parse_and_eval(expr))
                                     pos = res.find('"stack=[')
                                     if pos != -1:
@@ -1303,7 +1335,7 @@ class Dumper(DumperBase):
         frame = gdb.newest_frame()
         self.currentCallContext = None
         while i < limit and frame:
-            with OutputSafer(self):
+            with OutputSaver(self):
                 name = frame.name()
                 functionName = '??' if name is None else name
                 fileName = ''
@@ -1399,7 +1431,7 @@ class CliDumper(Dumper):
         self.chidrenSuffix = '] '
         self.indent = 0
         self.isCli = True
-
+        self.setupDumpers({})
 
     def put(self, line):
         if self.output.endswith('\n'):
@@ -1412,26 +1444,25 @@ class CliDumper(Dumper):
     def putOriginalAddress(self, address):
         pass
 
-    def fetchVariables(self, args):
+    def fetchVariable(self, name):
+        args = {}
         args['fancy'] = 1
         args['passexception'] = 1
         args['autoderef'] = 1
         args['qobjectnames'] = 1
-        name = args['varlist']
+        args['varlist'] = name
         self.prepare(args)
         self.output = name + ' = '
-        frame = gdb.selected_frame()
-        value = frame.read_var(name)
+        value = self.parseAndEvaluate(name)
         with TopLevelItem(self, name):
             self.putItem(value)
         return self.output
 
-# Global instance.
-#if gdb.parameter('height') is None:
+
+# Global instances.
 theDumper = Dumper()
-#else:
-#    import codecs
-#    theDumper = CliDumper()
+theCliDumper = CliDumper()
+
 
 ######################################################################
 #

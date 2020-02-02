@@ -25,58 +25,23 @@
 
 #pragma once
 
-#include "qtsupport_global.h"
+#include <projectexplorer/runcontrol.h>
 
-#include <utils/outputformatter.h>
-
-QT_FORWARD_DECLARE_CLASS(QTextCursor)
-
-namespace ProjectExplorer { class Project; }
+// "file" or "qrc", colon, optional '//', '/' and further characters
+#define QT_QML_URL_REGEXP "(?:file|qrc):(?://)?/.+?"
+#define QT_ASSERT_REGEXP "ASSERT: .* in file (.+, line \\d+)"
+#define QT_ASSERT_X_REGEXP "ASSERT failure in .*: \".*\", file (.+, line \\d+)"
+#define QT_TEST_FAIL_UNIX_REGEXP "^   Loc: \\[((?<file>.+)(?|\\((?<line>\\d+)\\)|:(?<line>\\d+)))\\]$"
+#define QT_TEST_FAIL_WIN_REGEXP "^((?<file>.+)\\((?<line>\\d+)\\)) : failure location\\s*$"
 
 namespace QtSupport {
-
-struct LinkResult
-{
-    int start;
-    int end;
-    QString href;
-};
-
 namespace Internal {
-class QtOutputFormatterPrivate;
-class QtSupportPlugin;
-}
 
-class QTSUPPORT_EXPORT QtOutputFormatter : public Utils::OutputFormatter
+class QtOutputFormatterFactory : public ProjectExplorer::OutputFormatterFactory
 {
-    Q_OBJECT
 public:
-    explicit QtOutputFormatter(ProjectExplorer::Project *project);
-    ~QtOutputFormatter() override;
-
-    void appendMessage(const QString &text, Utils::OutputFormat format) override;
-    void appendMessage(const QString &text, const QTextCharFormat &format) override;
-    void handleLink(const QString &href) override;
-    void setPlainTextEdit(QPlainTextEdit *plainText) override;
-
-protected:
-    void clearLastLine() override;
-    virtual void openEditor(const QString &fileName, int line, int column = -1);
-
-private:
-    void updateProjectFileList();
-    LinkResult matchLine(const QString &line) const;
-    void appendMessagePart(QTextCursor &cursor, const QString &txt, const QTextCharFormat &format);
-    void appendLine(QTextCursor &cursor, const LinkResult &lr, const QString &line,
-                    Utils::OutputFormat);
-    void appendLine(QTextCursor &cursor, const LinkResult &lr, const QString &line,
-                    const QTextCharFormat &format);
-
-    Internal::QtOutputFormatterPrivate *d;
-
-    // for testing
-    friend class Internal::QtSupportPlugin;
+    QtOutputFormatterFactory();
 };
 
-
+} // namespace Internal
 } // namespace QtSupport

@@ -34,14 +34,15 @@ namespace RemoteLinux {
 namespace Internal {
 
 LinuxDeviceDebugSupport::LinuxDeviceDebugSupport(RunControl *runControl)
-    : DebuggerRunTool(runControl)
+    : DebuggerRunTool(runControl, DebuggerRunTool::DoNotAllowTerminal)
 {
     setId("LinuxDeviceDebugSupport");
 
     setUsePortsGatherer(isCppDebugging(), isQmlDebugging());
     addQmlServerInferiorCommandLineArgumentIfNeeded();
 
-    auto gdbServer = new GdbServerRunner(runControl, portsGatherer());
+    auto gdbServer = new DebugServerRunner(runControl, portsGatherer());
+    gdbServer->setEssential(true);
 
     addStartDependency(gdbServer);
 

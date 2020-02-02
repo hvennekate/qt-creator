@@ -25,6 +25,7 @@
 
 #include "qmlprofilerdetailsrewriter_test.h"
 
+#include <projectexplorer/buildinfo.h>
 #include <projectexplorer/customexecutablerunconfiguration.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/target.h>
@@ -37,31 +38,27 @@
 #include <QLibraryInfo>
 #include <QTest>
 
+using namespace ProjectExplorer;
+using namespace Utils;
+
 namespace QmlProfiler {
 namespace Internal {
-
-class DummyProjectNode : public ProjectExplorer::ProjectNode
-{
-public:
-    DummyProjectNode(const Utils::FileName &file) : ProjectExplorer::ProjectNode(file)
-    {}
-};
 
 class DummyProject : public ProjectExplorer::Project
 {
     Q_OBJECT
 public:
-    DummyProject(const Utils::FileName &file) :
-        ProjectExplorer::Project(QString(), file, {})
+    DummyProject(const Utils::FilePath &file)
+        : ProjectExplorer::Project(QString(), file)
     {
         auto fileNode
-                = std::make_unique<ProjectExplorer::FileNode>(file, ProjectExplorer::FileType::Source, false);
-        auto root = std::make_unique<DummyProjectNode>(file);
+                = std::make_unique<ProjectExplorer::FileNode>(file, ProjectExplorer::FileType::Source);
+        auto root = std::make_unique<ProjectExplorer::ProjectNode>(file);
         root->addNode(std::move(fileNode));
         fileNode = std::make_unique<ProjectExplorer::FileNode>(
-                    Utils::FileName::fromLatin1(
+                    Utils::FilePath::fromString(
                         ":/qmlprofiler/tests/qmlprofilerdetailsrewriter_test.cpp"),
-                    ProjectExplorer::FileType::Source, false);
+                    ProjectExplorer::FileType::Source);
         root->addNode(std::move(fileNode));
         setRootProjectNode(std::move(root));
         setDisplayName(file.toString());
@@ -71,23 +68,12 @@ public:
     bool needsConfiguration() const final { return false; }
 };
 
-class DummyBuildConfigurationFactory : public ProjectExplorer::IBuildConfigurationFactory
+class DummyBuildConfigurationFactory : public BuildConfigurationFactory
 {
 public:
-    QList<ProjectExplorer::BuildInfo *> availableBuilds(const ProjectExplorer::Target *) const final
+    DummyBuildConfigurationFactory()
     {
-        return QList<ProjectExplorer::BuildInfo *>();
-    }
-
-    QList<ProjectExplorer::BuildInfo *> availableSetups(const ProjectExplorer::Kit *,
-                                                        const QString &) const final
-    {
-        return QList<ProjectExplorer::BuildInfo *>();
-    }
-
-    int priority(const ProjectExplorer::Kit *, const QString &) const final
-    {
-        return 0;
+        setBuildGenerator([](const Kit *, const FilePath &, bool) { return QList<BuildInfo>{}; });
     }
 };
 
@@ -102,7 +88,7 @@ QmlProfilerDetailsRewriterTest::QmlProfilerDetailsRewriterTest(QObject *parent) 
 void QmlProfilerDetailsRewriterTest::testMissingModelManager()
 {
     DummyBuildConfigurationFactory factory;
-    Q_UNUSED(factory);
+    Q_UNUSED(factory)
 
     seedRewriter();
     delete m_modelManager;
@@ -112,8 +98,8 @@ void QmlProfilerDetailsRewriterTest::testMissingModelManager()
     QVERIFY(!m_rewriterDone);
     auto rewriteConnection = connect(&m_rewriter, &QmlProfilerDetailsRewriter::rewriteDetailsString,
             this, [&](int typeId, const QString &string) {
-        Q_UNUSED(typeId);
-        Q_UNUSED(string);
+        Q_UNUSED(typeId)
+        Q_UNUSED(string)
         QFAIL("found nonexisting file in nonexisting model manager");
     });
     m_rewriter.requestDetailsForLocation(44, QmlEventLocation("Test.qml", 12, 12));
@@ -126,7 +112,7 @@ void QmlProfilerDetailsRewriterTest::testMissingModelManager()
 void QmlProfilerDetailsRewriterTest::testRequestDetailsForLocation()
 {
     DummyBuildConfigurationFactory factory;
-    Q_UNUSED(factory);
+    Q_UNUSED(factory)
 
     seedRewriter();
     QVERIFY(!m_rewriterDone);
@@ -177,7 +163,7 @@ void QmlProfilerDetailsRewriterTest::testRequestDetailsForLocation()
 void QmlProfilerDetailsRewriterTest::testGetLocalFile()
 {
     DummyBuildConfigurationFactory factory;
-    Q_UNUSED(factory);
+    Q_UNUSED(factory)
 
     seedRewriter();
     QCOMPARE(m_rewriter.getLocalFile("notthere.qml"), QString());
@@ -192,10 +178,10 @@ void QmlProfilerDetailsRewriterTest::testPopulateFileFinder()
     QCOMPARE(m_rewriter.getLocalFile("Test.qml"), QString());
 
     // Test that the rewriter will populate from available projects if given nullptr as parameter.
-    DummyProject *project1 = new DummyProject(Utils::FileName::fromString(":/nix.nix"));
+    DummyProject *project1 = new DummyProject(Utils::FilePath::fromString(":/nix.nix"));
     ProjectExplorer::SessionManager::addProject(project1);
     DummyProject *project2 = new DummyProject(
-                Utils::FileName::fromString(":/qmlprofiler/tests/Test.qml"));
+                Utils::FilePath::fromString(":/qmlprofiler/tests/Test.qml"));
     ProjectExplorer::SessionManager::addProject(project2);
     m_rewriter.populateFileFinder(nullptr);
     QCOMPARE(m_rewriter.getLocalFile("Test.qml"),
@@ -214,7 +200,7 @@ void QmlProfilerDetailsRewriterTest::seedRewriter()
     QFutureInterface<void> result;
     QmlJS::PathsAndLanguages lPaths;
     lPaths.maybeInsert(
-                Utils::FileName::fromString(QLibraryInfo::location(QLibraryInfo::Qml2ImportsPath)),
+                Utils::FilePath::fromString(QLibraryInfo::location(QLibraryInfo::Qml2ImportsPath)),
                 QmlJS::Dialect::Qml);
     QmlJS::ModelManagerInterface::importScan(result, QmlJS::ModelManagerInterface::workingCopy(),
                                              lPaths, m_modelManager, false);
@@ -230,19 +216,13 @@ void QmlProfilerDetailsRewriterTest::seedRewriter()
     QVERIFY(!doc->source().isEmpty());
 
     auto kit = std::make_unique<ProjectExplorer::Kit>();
-    ProjectExplorer::SysRootKitInformation::setSysRoot(
-                kit.get(), Utils::FileName::fromLatin1("/nowhere"));
+    ProjectExplorer::SysRootKitAspect::setSysRoot(
+                kit.get(), Utils::FilePath::fromString("/nowhere"));
 
-    DummyProject *project = new DummyProject(Utils::FileName::fromString(filename));
+    DummyProject *project = new DummyProject(Utils::FilePath::fromString(filename));
     ProjectExplorer::SessionManager::addProject(project);
 
-    {
-        // Make sure the uniqe_ptr gets deleted before the project.
-        // Otherwise we'll get a double free because the target is also parented to the project
-        // and unique_ptr doesn't know anything about QObject parent/child relationships.
-        std::unique_ptr<ProjectExplorer::Target> target = project->createTarget(kit.get());
-        m_rewriter.populateFileFinder(target.get());
-    }
+    m_rewriter.populateFileFinder(project->addTargetForKit(kit.get()));
 
     ProjectExplorer::SessionManager::removeProject(project);
 }

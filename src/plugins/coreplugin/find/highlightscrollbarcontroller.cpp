@@ -92,7 +92,7 @@ void HighlightScrollBarOverlay::scheduleUpdate()
         return;
 
     m_isCacheUpdateScheduled = true;
-    QTimer::singleShot(0, this, static_cast<void (QWidget::*)()>(&QWidget::update));
+    QTimer::singleShot(0, this, QOverload<>::of(&QWidget::update));
 }
 
 void HighlightScrollBarOverlay::paintEvent(QPaintEvent *paintEvent)
@@ -295,7 +295,7 @@ void HighlightScrollBarOverlay::updateCache()
     m_highlightCache.clear();
 
     const QHash<Id, QVector<Highlight>> highlightsForId = m_highlightController->highlights();
-    for (QVector<Highlight> highlights : highlightsForId) {
+    for (const QVector<Highlight> &highlights : highlightsForId) {
         for (const auto &highlight : highlights) {
             auto &highlightMap = m_highlightCache[highlight.priority][highlight.color];
             insertPosition(&highlightMap, highlight.position);

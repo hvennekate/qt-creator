@@ -26,58 +26,12 @@
 #include "projectinfo.h"
 
 #include <projectexplorer/abi.h>
-#include <projectexplorer/toolchain.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/rawprojectpart.h>
+#include <projectexplorer/toolchain.h>
 
 namespace CppTools {
-
-ToolChainInfo::ToolChainInfo(const ProjectExplorer::ToolChain *toolChain,
-                             const ProjectExplorer::Kit *kit)
-{
-    if (toolChain) {
-        // Keep the following cheap/non-blocking for the ui thread...
-        type = toolChain->typeId();
-        isMsvc2015ToolChain
-                = toolChain->targetAbi().osFlavor() == ProjectExplorer::Abi::WindowsMsvc2015Flavor;
-        wordWidth = toolChain->targetAbi().wordWidth();
-        targetTriple = toolChain->originalTargetTriple();
-        extraCodeModelFlags = toolChain->extraCodeModelFlags();
-
-        // ...and save the potentially expensive operations for later so that
-        // they can be run from a worker thread.
-        sysRootPath = ProjectExplorer::SysRootKitInformation::sysRoot(kit).toString();
-        headerPathsRunner = toolChain->createBuiltInHeaderPathsRunner();
-        macroInspectionRunner = toolChain->createMacroInspectionRunner();
-    }
-}
-
-ProjectUpdateInfo::ProjectUpdateInfo(ProjectExplorer::Project *project,
-                                     const ProjectExplorer::ToolChain *cToolChain,
-                                     const ProjectExplorer::ToolChain *cxxToolChain,
-                                     const ProjectExplorer::Kit *kit,
-                                     const RawProjectParts &rawProjectParts)
-    : project(project)
-    , rawProjectParts(rawProjectParts)
-    , cToolChain(cToolChain)
-    , cxxToolChain(cxxToolChain)
-    , cToolChainInfo(ToolChainInfo(cToolChain, kit))
-    , cxxToolChainInfo(ToolChainInfo(cxxToolChain, kit))
-{
-}
-
-ProjectUpdateInfo::ProjectUpdateInfo(ProjectExplorer::Project *project,
-                  const ToolChainInfo &cToolChainInfo,
-                  const ToolChainInfo &cxxToolChainInfo,
-                  const RawProjectParts &rawProjectParts)
-    : project(project)
-    , rawProjectParts(rawProjectParts)
-    , cToolChain(nullptr)
-    , cxxToolChain(nullptr)
-    , cToolChainInfo(cToolChainInfo)
-    , cxxToolChainInfo(cxxToolChainInfo)
-{
-}
 
 ProjectInfo::ProjectInfo(QPointer<ProjectExplorer::Project> project)
     : m_project(project)

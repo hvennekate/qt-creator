@@ -29,7 +29,7 @@
 
 #include <coreplugin/documentmanager.h>
 #include <coreplugin/vcsmanager.h>
-#include <cpptools/cppmodelmanager.h>
+#include <utils/globalfilechangeblocker.h>
 #include <utils/synchronousprocess.h>
 
 #include <QProcessEnvironment>
@@ -61,34 +61,28 @@ VcsCommand::VcsCommand(const QString &workingDirectory,
         return proxy;
     });
     connect(this, &VcsCommand::started, this, [this] {
-        if (flags() & ExpectRepoChanges) {
-            Core::DocumentManager::setAutoReloadPostponed(true);
-            CppTools::CppModelManager::instance()->setBackendJobsPostponed(true);
-        }
+        if (flags() & ExpectRepoChanges)
+            Utils::GlobalFileChangeBlocker::instance()->forceBlocked(true);
     });
     connect(this, &VcsCommand::finished, this, [this] {
-        if (flags() & ExpectRepoChanges) {
-            Core::DocumentManager::setAutoReloadPostponed(false);
-            CppTools::CppModelManager::instance()->setBackendJobsPostponed(false);
-        }
+        if (flags() & ExpectRepoChanges)
+            Utils::GlobalFileChangeBlocker::instance()->forceBlocked(false);
     });
 }
 
 const QProcessEnvironment VcsCommand::processEnvironment() const
 {
     QProcessEnvironment env = Core::ShellCommand::processEnvironment();
-    VcsBasePlugin::setProcessEnvironment(&env, flags() & ForceCLocale, VcsBasePlugin::sshPrompt());
+    VcsBase::setProcessEnvironment(&env, flags() & ForceCLocale, VcsBase::sshPrompt());
     return env;
 }
 
-SynchronousProcessResponse VcsCommand::runCommand(const FileName &binary,
-                                                         const QStringList &arguments, int timeoutS,
-                                                         const QString &workingDirectory,
-                                                         const ExitCodeInterpreter &interpreter)
+SynchronousProcessResponse VcsCommand::runCommand(const CommandLine &command, int timeoutS,
+                                                  const QString &workingDirectory,
+                                                  const ExitCodeInterpreter &interpreter)
 {
     SynchronousProcessResponse response
-            = Core::ShellCommand::runCommand(binary, arguments, timeoutS, workingDirectory,
-                                             interpreter);
+            = Core::ShellCommand::runCommand(command, timeoutS, workingDirectory, interpreter);
     emitRepositoryChanged(workingDirectory);
     return response;
 }
@@ -105,7 +99,7 @@ void VcsCommand::emitRepositoryChanged(const QString &workingDirectory)
 unsigned VcsCommand::processFlags() const
 {
     unsigned processFlags = 0;
-    if (!VcsBasePlugin::sshPrompt().isEmpty() && (flags() & SshPasswordPrompt))
+    if (!VcsBase::sshPrompt().isEmpty() && (flags() & SshPasswordPrompt))
         processFlags |= SynchronousProcess::UnixTerminalDisabled;
     return processFlags;
 }

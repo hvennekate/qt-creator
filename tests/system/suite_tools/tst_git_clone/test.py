@@ -55,7 +55,7 @@ def verifyCloneLog(targetDir, canceled):
         if canceled:
             test.warning("Could not find resultLabel",
                          "Cloning might have failed before clicking 'Cancel'")
-            return object.exists(":New Text File_ProjectExplorer::JsonWizard")
+            return object.exists(":New_ProjectExplorer::JsonWizard")
         else:
             test.fail("Could not find resultLabel")
     return True
@@ -65,11 +65,10 @@ def verifyVersionControlView(targetDir, canceled):
     vcsLog = str(waitForObject("{type='Core::OutputWindow' unnamed='1' visible='1' "
                                "window=':Qt Creator_Core::Internal::MainWindow'}").plainText)
     test.log("Clone log is: %s" % vcsLog)
-    if not JIRA.isBugStillOpen(20813):
-        test.verify("Running in " + targetDir + ":" in vcsLog,
-                    "Searching for target directory in clone log")
-        test.verify(" ".join(["clone", "--progress", cloneUrl, cloneDir]) in vcsLog,
-                    "Searching for git parameters in clone log")
+    test.verify("Running in " + targetDir + ":" in vcsLog,
+                "Searching for target directory in clone log")
+    test.verify(" ".join(["clone", "--progress", cloneUrl, cloneDir]) in vcsLog,
+                "Searching for git parameters in clone log")
     test.verify(canceled == (" terminated abnormally" in vcsLog),
                 "Searching for result in clone log")
     clickButton(waitForObject(":*Qt Creator.Clear_QToolButton"))

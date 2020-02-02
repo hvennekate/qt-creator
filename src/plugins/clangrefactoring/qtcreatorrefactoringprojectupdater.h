@@ -34,7 +34,9 @@ class QtCreatorRefactoringProjectUpdater final : public RefactoringProjectUpdate
 public:
     QtCreatorRefactoringProjectUpdater(ClangBackEnd::ProjectManagementServerInterface &server,
                                        ClangPchManager::PchManagerClient &pchManagerClient,
-                                       ClangBackEnd::FilePathCachingInterface &filePathCache);
+                                       ClangBackEnd::FilePathCachingInterface &filePathCache,
+                                       ClangBackEnd::ProjectPartsStorageInterface &projectPartsStorage,
+                                       ClangPchManager::ClangIndexingSettingsManager &settingsManager);
 
 private:
     void abstractEditorUpdated(const QString &filePath, const QByteArray &contents);

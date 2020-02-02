@@ -39,12 +39,11 @@
 #include <QStackedWidget>
 
 QT_BEGIN_NAMESPACE
-class QWidget;
 class QPlainTextEdit;
 QT_END_NAMESPACE
 
 namespace ProjectExplorer {
-class Kit;
+class Target;
 }
 
 namespace QmlDesigner {
@@ -77,7 +76,7 @@ public:
     Model *currentModel() const;
     Model *documentModel() const;
 
-    void contextHelpId(const Core::IContext::HelpIdCallback &callback) const;
+    void contextHelp(const Core::IContext::HelpCallback &callback) const;
     QList<DocumentMessage> qmlParseWarnings() const;
     bool hasQmlParseWarnings() const;
     QList<DocumentMessage> qmlParseErrors() const;
@@ -90,8 +89,8 @@ public:
 
     TextEditor::BaseTextEditor *textEditor() const;
     QPlainTextEdit *plainTextEdit() const;
-    Utils::FileName fileName() const;
-    ProjectExplorer::Kit *currentKit() const;
+    Utils::FilePath fileName() const;
+    ProjectExplorer::Target *currentTarget() const;
     bool isDocumentLoaded() const;
 
     void resetToDocumentModel();
@@ -115,13 +114,12 @@ public:
     void selectAll();
     void undo();
     void redo();
-    void updateActiveQtVersion();
-    void updateCurrentProject();
+    void updateActiveTarget();
     void changeToSubComponent(const ModelNode &componentNode);
     void changeToMaster();
 
 private: // functions
-    void updateFileName(const Utils::FileName &oldFileName, const Utils::FileName &newFileName);
+    void updateFileName(const Utils::FilePath &oldFileName, const Utils::FilePath &newFileName);
 
     void changeToInFileComponentModel(ComponentTextModifier *textModifer);
 
@@ -152,7 +150,7 @@ private: // variables
     QScopedPointer<RewriterView> m_rewriterView;
 
     bool m_documentLoaded;
-    ProjectExplorer::Kit *m_currentKit;
+    ProjectExplorer::Target *m_currentTarget;
 };
 
 } // namespace QmlDesigner

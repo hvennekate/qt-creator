@@ -76,7 +76,7 @@ public:
         : QDialog(parent)
     {
         setWindowTitle(title);
-        QFormLayout *layout = new QFormLayout(this);
+        auto layout = new QFormLayout(this);
         m_prefixLineEdit = new QLineEdit(this);
         m_prefixLineEdit->setText(prefix);
         layout->addRow(tr("Prefix:"), m_prefixLineEdit);
@@ -111,11 +111,7 @@ private:
     QLineEdit *m_langLineEdit;
 };
 
-ResourceEditorPlugin::ResourceEditorPlugin() :
-    m_redoAction(0),
-    m_undoAction(0)
-{
-}
+ResourceEditorPlugin::ResourceEditorPlugin() = default;
 
 bool ResourceEditorPlugin::initialize(const QStringList &arguments, QString *errorMessage)
 {
@@ -141,7 +137,7 @@ bool ResourceEditorPlugin::initialize(const QStringList &arguments, QString *err
             Core::ActionManager::actionContainer(ProjectExplorer::Constants::M_FOLDERCONTEXT);
     Core::ActionContainer *fileContextMenu =
             Core::ActionManager::actionContainer(ProjectExplorer::Constants::M_FILECONTEXT);
-    Core::Command *command = 0;
+    Core::Command *command = nullptr;
 
     m_addPrefix = new QAction(tr("Add Prefix..."), this);
     command = Core::ActionManager::registerAction(m_addPrefix, Constants::C_ADD_PREFIX, projectTreeContext);
@@ -220,9 +216,10 @@ void ResourceEditorPlugin::extensionsInitialized()
         for (FileNode *file : toReplace) {
             FolderNode *const pn = file->parentFolderNode();
             QTC_ASSERT(pn, continue);
-            const Utils::FileName path = file->filePath();
-            pn->replaceSubtree(file, std::make_unique<ResourceTopLevelNode>(path, file->isGenerated(),
-                                                                            QString(), pn));
+            const Utils::FilePath path = file->filePath();
+            auto topLevel = std::make_unique<ResourceTopLevelNode>(path, pn->filePath());
+            topLevel->setIsGenerated(file->isGenerated());
+            pn->replaceSubtree(file, std::move(topLevel));
         }
     });
 }
@@ -244,7 +241,7 @@ void ResourceEditorPlugin::onRefresh()
 
 void ResourceEditorPlugin::addPrefixContextMenu()
 {
-    auto topLevel = dynamic_cast<ResourceTopLevelNode *>(ProjectTree::findCurrentNode());
+    auto topLevel = dynamic_cast<ResourceTopLevelNode *>(ProjectTree::currentNode());
     QTC_ASSERT(topLevel, return);
     PrefixLangDialog dialog(tr("Add Prefix"), QString(), QString(), Core::ICore::mainWindow());
     if (dialog.exec() != QDialog::Accepted)
@@ -257,7 +254,7 @@ void ResourceEditorPlugin::addPrefixContextMenu()
 
 void ResourceEditorPlugin::removePrefixContextMenu()
 {
-    auto rfn = dynamic_cast<ResourceFolderNode *>(ProjectTree::findCurrentNode());
+    auto rfn = dynamic_cast<ResourceFolderNode *>(ProjectTree::currentNode());
     QTC_ASSERT(rfn, return);
     if (QMessageBox::question(Core::ICore::mainWindow(),
                               tr("Remove Prefix"),
@@ -270,7 +267,7 @@ void ResourceEditorPlugin::removePrefixContextMenu()
 
 void ResourceEditorPlugin::removeNonExisting()
 {
-    auto topLevel = dynamic_cast<ResourceTopLevelNode *>(ProjectTree::findCurrentNode());
+    auto topLevel = dynamic_cast<ResourceTopLevelNode *>(ProjectTree::currentNode());
     QTC_ASSERT(topLevel, return);
     topLevel->removeNonExistingFiles();
 }
@@ -282,12 +279,12 @@ void ResourceEditorPlugin::renameFileContextMenu()
 
 void ResourceEditorPlugin::removeFileContextMenu()
 {
-    auto rfn = dynamic_cast<ResourceTopLevelNode *>(ProjectTree::findCurrentNode());
+    auto rfn = dynamic_cast<ResourceTopLevelNode *>(ProjectTree::currentNode());
     QTC_ASSERT(rfn, return);
     QString path = rfn->filePath().toString();
     FolderNode *parent = rfn->parentFolderNode();
     QTC_ASSERT(parent, return);
-    if (!parent->removeFiles(QStringList() << path))
+    if (parent->removeFiles(QStringList() << path) != RemovedFilesFromProject::Ok)
         QMessageBox::warning(Core::ICore::mainWindow(),
                              tr("File Removal Failed"),
                              tr("Removing file %1 from the project failed.").arg(path));
@@ -295,26 +292,26 @@ void ResourceEditorPlugin::removeFileContextMenu()
 
 void ResourceEditorPlugin::openEditorContextMenu()
 {
-    Core::EditorManager::openEditor(ProjectTree::findCurrentNode()->filePath().toString());
+    Core::EditorManager::openEditor(ProjectTree::currentNode()->filePath().toString());
 }
 
 void ResourceEditorPlugin::copyPathContextMenu()
 {
-    auto node = dynamic_cast<ResourceFileNode *>(ProjectTree::findCurrentNode());
+    auto node = dynamic_cast<ResourceFileNode *>(ProjectTree::currentNode());
     QTC_ASSERT(node, return);
     QApplication::clipboard()->setText(QLatin1String(resourcePrefix) + node->qrcPath());
 }
 
 void ResourceEditorPlugin::copyUrlContextMenu()
 {
-    auto node = dynamic_cast<ResourceFileNode *>(ProjectTree::findCurrentNode());
+    auto node = dynamic_cast<ResourceFileNode *>(ProjectTree::currentNode());
     QTC_ASSERT(node, return);
     QApplication::clipboard()->setText(QLatin1String(urlPrefix) + node->qrcPath());
 }
 
 void ResourceEditorPlugin::renamePrefixContextMenu()
 {
-    auto node = dynamic_cast<ResourceFolderNode *>(ProjectTree::findCurrentNode());
+    auto node = dynamic_cast<ResourceFolderNode *>(ProjectTree::currentNode());
     QTC_ASSERT(node, return);
 
     PrefixLangDialog dialog(tr("Rename Prefix"), node->prefix(), node->lang(), Core::ICore::mainWindow());
@@ -329,7 +326,7 @@ void ResourceEditorPlugin::renamePrefixContextMenu()
 
 void ResourceEditorPlugin::updateContextActions()
 {
-    const Node *node = ProjectTree::findCurrentNode();
+    const Node *node = ProjectTree::currentNode();
     const bool isResourceNode = dynamic_cast<const ResourceTopLevelNode *>(node);
     m_addPrefix->setEnabled(isResourceNode);
     m_addPrefix->setVisible(isResourceNode);
@@ -338,7 +335,7 @@ void ResourceEditorPlugin::updateContextActions()
     bool enableRemove = false;
 
     if (isResourceNode) {
-        FolderNode *parent = node ? node->parentFolderNode() : 0;
+        FolderNode *parent = node ? node->parentFolderNode() : nullptr;
         enableRename = parent && parent->supportsAction(Rename, node);
         enableRemove = parent && parent->supportsAction(RemoveFile, node);
     }
@@ -392,9 +389,8 @@ void ResourceEditorPlugin::onUndoStackChanged(ResourceEditorW const *editor,
 
 ResourceEditorW * ResourceEditorPlugin::currentEditor() const
 {
-    ResourceEditorW * const focusEditor = qobject_cast<ResourceEditorW *>(
-            Core::EditorManager::currentEditor());
-    QTC_ASSERT(focusEditor, return 0);
+    auto const focusEditor = qobject_cast<ResourceEditorW *>(Core::EditorManager::currentEditor());
+    QTC_ASSERT(focusEditor, return nullptr);
     return focusEditor;
 }
 

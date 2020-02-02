@@ -55,7 +55,7 @@ source("../../shared/welcome.py")
 source("../../shared/workarounds.py") # include this at last
 
 # additionalParameters must be a list or tuple of strings or None
-def startQC(additionalParameters=None, withPreparedSettingsPath=True):
+def startQC(additionalParameters=None, withPreparedSettingsPath=True, closeLinkToQt=True, cancelTour=True):
     global SettingsPath
     appWithOptions = ['"Qt Creator"' if platform.system() == 'Darwin' else "qtcreator"]
     if withPreparedSettingsPath:
@@ -65,7 +65,12 @@ def startQC(additionalParameters=None, withPreparedSettingsPath=True):
     if platform.system() in ('Microsoft', 'Windows'): # for hooking into native file dialog
         appWithOptions.extend(('-platform', 'windows:dialogs=none'))
     test.log("Starting now: %s" % ' '.join(appWithOptions))
-    return startApplication(' '.join(appWithOptions))
+    appContext = startApplication(' '.join(appWithOptions))
+    if closeLinkToQt:
+        clickButton(waitForObject(":*Qt Creator.Do Not Show Again_QToolButton"))
+    if cancelTour:
+        clickButton(waitForObject(":*Qt Creator.Do Not Show Again_QToolButton"))
+    return appContext;
 
 def startedWithoutPluginError():
     try:
@@ -289,7 +294,7 @@ def copySettingsToTmpDir(destination=None, omitFiles=[]):
             if not os.path.exists(folder):
                 os.makedirs(folder)
         for ff in f:
-            if not ff in omitFiles:
+            if ff not in omitFiles:
                 shutil.copy(os.path.join(r, ff), currentPath)
     if platform.system() in ('Linux', 'Darwin'):
         substituteTildeWithinToolchains(tmpSettingsDir)

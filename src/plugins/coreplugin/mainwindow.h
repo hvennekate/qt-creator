@@ -46,6 +46,7 @@ namespace Core {
 class EditorManager;
 class ExternalToolManager;
 class IDocument;
+class InfoBar;
 class JsExpander;
 class MessageManager;
 class ModeManager;
@@ -93,6 +94,7 @@ public:
     virtual QPrinter *printer() const;
     IContext * currentContextObject() const;
     QStatusBar *statusBar() const;
+    InfoBar *infoBar() const;
 
     void updateAdditionalContexts(const Context &remove, const Context &add,
                                   ICore::ContextPriority priority);
@@ -106,12 +108,15 @@ public:
 
     void saveSettings();
 
+    void restart();
+
 public slots:
     void openFileWith();
     void exit();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private:
     void openFile();
@@ -190,6 +195,7 @@ private:
     QToolButton *m_toggleRightSideBarButton = nullptr;
     QColor m_overrideColor;
     QList<std::function<bool()>> m_preCloseListeners;
+    Qt::WindowStates m_previousWindowStates = Qt::WindowNoState;
 };
 
 } // namespace Internal

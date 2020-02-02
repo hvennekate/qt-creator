@@ -150,7 +150,7 @@ public:
     };
 
 private:
-    Status _status;
+    Status _status = NotScanned;
     QList<QmlDirParser::Component> _components;
     QList<QmlDirParser::Plugin> _plugins;
     QList<QmlDirParser::TypeInfo> _typeinfos;
@@ -160,14 +160,16 @@ private:
     QStringList _dependencies;
     QByteArray _fingerprint;
 
-    PluginTypeInfoStatus _dumpStatus;
+    PluginTypeInfoStatus _dumpStatus = NoTypeInfo;
     QString _dumpError;
 
 public:
     LibraryInfo();
     explicit LibraryInfo(Status status);
+    explicit LibraryInfo(const QmlDirParser::TypeInfo &typeInfo);
     explicit LibraryInfo(const QmlDirParser &parser, const QByteArray &fingerprint = QByteArray());
-    ~LibraryInfo();
+    ~LibraryInfo() = default;
+    LibraryInfo(const LibraryInfo &other) = default;
 
     QByteArray calculateFingerprint() const;
     void updateFingerprint();
@@ -230,7 +232,6 @@ class QMLJS_EXPORT Snapshot
 
 public:
     Snapshot();
-    Snapshot(const Snapshot &o);
     ~Snapshot();
 
     typedef Base::iterator iterator;

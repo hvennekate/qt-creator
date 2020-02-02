@@ -63,8 +63,7 @@ IAssistProposal::IAssistProposal(int basePosition)
     : m_basePosition(basePosition)
 {}
 
-IAssistProposal::~IAssistProposal()
-{}
+IAssistProposal::~IAssistProposal() = default;
 
 /*!
     \fn bool TextEditor::IAssistProposal::isFragile() const
@@ -105,7 +104,7 @@ bool IAssistProposal::supportsPrefix() const
 
 bool IAssistProposal::isCorrective(TextEditorWidget *editorWidget) const
 {
-    Q_UNUSED(editorWidget);
+    Q_UNUSED(editorWidget)
     return false;
 }
 
@@ -117,7 +116,7 @@ bool IAssistProposal::isCorrective(TextEditorWidget *editorWidget) const
 
 void IAssistProposal::makeCorrection(TextEditorWidget *editorWidget)
 {
-    Q_UNUSED(editorWidget);
+    Q_UNUSED(editorWidget)
 }
 
 void IAssistProposal::setFragile(bool fragile)

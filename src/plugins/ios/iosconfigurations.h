@@ -51,7 +51,6 @@ class ProvisioningProfile
 {
     Q_DECLARE_TR_FUNCTIONS(ProvisioningProfile)
 public:
-    ProvisioningProfile() {}
     std::shared_ptr<DevelopmentTeam> developmentTeam() { return m_team; }
     QString identifier() const;
     QString displayName() const;
@@ -75,7 +74,6 @@ class DevelopmentTeam
 {
     Q_DECLARE_TR_FUNCTIONS(DevelopmentTeam)
 public:
-    DevelopmentTeam() {}
     QString identifier() const;
     QString displayName() const;
     QString details() const;
@@ -100,7 +98,8 @@ class IosToolChainFactory : public ProjectExplorer::ToolChainFactory
     Q_OBJECT
 
 public:
-    QSet<Core::Id> supportedLanguages() const override;
+    IosToolChainFactory();
+
     QList<ProjectExplorer::ToolChain *> autoDetect(const QList<ProjectExplorer::ToolChain *> &existingToolChains) override;
 };
 
@@ -113,11 +112,11 @@ public:
     static void initialize();
     static bool ignoreAllDevices();
     static void setIgnoreAllDevices(bool ignoreDevices);
-    static void setScreenshotDir(const Utils::FileName &path);
-    static Utils::FileName screenshotDir();
-    static Utils::FileName developerPath();
+    static void setScreenshotDir(const Utils::FilePath &path);
+    static Utils::FilePath screenshotDir();
+    static Utils::FilePath developerPath();
     static QVersionNumber xcodeVersion();
-    static Utils::FileName lldbPath();
+    static Utils::FilePath lldbPath();
     static void updateAutomaticKitList();
     static const DevelopmentTeams &developmentTeams();
     static DevelopmentTeamPtr developmentTeam(const QString &teamID);
@@ -131,13 +130,14 @@ private:
     IosConfigurations(QObject *parent);
     void load();
     void save();
+    void kitsRestored();
     void updateSimulators();
-    static void setDeveloperPath(const Utils::FileName &devPath);
+    static void setDeveloperPath(const Utils::FilePath &devPath);
     void initializeProvisioningData();
     void loadProvisioningData(bool notify = true);
 
-    Utils::FileName m_developerPath;
-    Utils::FileName m_screenshotDir;
+    Utils::FilePath m_developerPath;
+    Utils::FilePath m_screenshotDir;
     QVersionNumber m_xcodeVersion;
     bool m_ignoreAllDevices;
     QFileSystemWatcher *m_provisioningDataWatcher = nullptr;

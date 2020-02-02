@@ -74,7 +74,7 @@ class CPPTOOLS_EXPORT TestCase
     Q_DISABLE_COPY(TestCase)
 
 public:
-    TestCase(bool runGarbageCollector = true);
+    explicit TestCase(bool runGarbageCollector = true);
     ~TestCase();
 
     bool succeededSoFar() const;
@@ -92,9 +92,8 @@ public:
     static bool waitForProcessedEditorDocument(const QString &filePath, int timeOutInMs = 5000);
 
     enum { defaultTimeOutInMs = 30 * 1000 /*= 30 secs*/ };
-    static bool waitUntilCppModelManagerIsAwareOf(
-            ProjectExplorer::Project *project,
-            int timeOutInMs = defaultTimeOutInMs);
+    static bool waitUntilProjectIsFullyOpened(ProjectExplorer::Project *project,
+                                              int timeOutInMs = defaultTimeOutInMs);
     static CPlusPlus::Document::Ptr waitForFileInGlobalSnapshot(
             const QString &filePath,
             int timeOutInMs = defaultTimeOutInMs);
@@ -145,7 +144,7 @@ protected:
 class CPPTOOLS_EXPORT TemporaryCopiedDir : public TemporaryDir
 {
 public:
-    TemporaryCopiedDir(const QString &sourceDirPath);
+    explicit TemporaryCopiedDir(const QString &sourceDirPath);
     QString absolutePath(const QByteArray &relativePath) const;
 
 private:

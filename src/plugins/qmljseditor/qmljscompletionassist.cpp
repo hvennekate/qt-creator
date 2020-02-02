@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "qmljscompletionassist.h"
+#include "qmljseditor.h"
 #include "qmljseditorconstants.h"
 #include "qmljsreuse.h"
 #include "qmlexpressionundercursor.h"
@@ -137,7 +138,7 @@ public:
         if (const FunctionValue *func = value->asFunctionValue()) {
             // constructors usually also have other interesting members,
             // don't consider them pure functions and complete the '()'
-            if (!func->lookupMember(QLatin1String("prototype"), 0, 0, false))
+            if (!func->lookupMember(QLatin1String("prototype"), nullptr, nullptr, false))
                 data = QVariant::fromValue(CompleteFunctionCall(func->namedArgumentCount() || func->isVariadic()));
         }
         addCompletion(completions, name, icon, order, data);
@@ -184,21 +185,16 @@ public:
 class ProcessProperties: private MemberProcessor
 {
     QSet<const ObjectValue *> _processed;
-    bool _globalCompletion;
-    bool _enumerateGeneratedSlots;
-    bool _enumerateSlots;
+    bool _globalCompletion = false;
+    bool _enumerateGeneratedSlots = false;
+    bool _enumerateSlots = true;
     const ScopeChain *_scopeChain;
-    const ObjectValue *_currentObject;
-    PropertyProcessor *_propertyProcessor;
+    const ObjectValue *_currentObject = nullptr;
+    PropertyProcessor *_propertyProcessor = nullptr;
 
 public:
     ProcessProperties(const ScopeChain *scopeChain)
-        : _globalCompletion(false),
-          _enumerateGeneratedSlots(false),
-          _enumerateSlots(true),
-          _scopeChain(scopeChain),
-          _currentObject(0),
-          _propertyProcessor(0)
+        : _scopeChain(scopeChain)
     {
     }
 
@@ -294,7 +290,7 @@ private:
 
         _currentObject = object;
         object->processMembers(this);
-        _currentObject = 0;
+        _currentObject = nullptr;
     }
 };
 
@@ -303,16 +299,16 @@ const Value *getPropertyValue(const ObjectValue *object,
                                            const ContextPtr &context)
 {
     if (propertyNames.isEmpty() || !object)
-        return 0;
+        return nullptr;
 
     const Value *value = object;
     foreach (const QString &name, propertyNames) {
         if (const ObjectValue *objectValue = value->asObjectValue()) {
             value = objectValue->lookupMember(name, context);
             if (!value)
-                return 0;
+                return nullptr;
         } else {
-            return 0;
+            return nullptr;
         }
     }
     return value;
@@ -470,7 +466,7 @@ QString FunctionHintProposalModel::text(int index) const
         prettyMethod += arg;
     }
     if (m_isVariadic) {
-        if (m_namedArguments.size())
+        if (!m_namedArguments.isEmpty())
             prettyMethod += QLatin1String(", ");
         prettyMethod += QLatin1String("...");
     }
@@ -486,8 +482,7 @@ int FunctionHintProposalModel::activeArgument(const QString &prefix) const
     int parcount = 0;
     Scanner tokenize;
     const QList<Token> tokens = tokenize(prefix);
-    for (int i = 0; i < tokens.count(); ++i) {
-        const Token &tk = tokens.at(i);
+    for (auto &tk : tokens) {
         if (tk.is(Token::LeftParenthesis))
             ++parcount;
         else if (tk.is(Token::RightParenthesis))
@@ -533,8 +528,7 @@ QmlJSCompletionAssistProcessor::QmlJSCompletionAssistProcessor()
     , m_snippetCollector(QLatin1String(Constants::QML_SNIPPETS_GROUP_ID), iconForColor(Qt::red), SnippetOrder)
 {}
 
-QmlJSCompletionAssistProcessor::~QmlJSCompletionAssistProcessor()
-{}
+QmlJSCompletionAssistProcessor::~QmlJSCompletionAssistProcessor() = default;
 
 IAssistProposal *QmlJSCompletionAssistProcessor::createContentProposal() const
 {
@@ -556,7 +550,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
     m_interface.reset(static_cast<const QmlJSCompletionAssistInterface *>(assistInterface));
 
     if (assistInterface->reason() == IdleEditor && !acceptsIdleEditor())
-        return 0;
+        return nullptr;
 
     const QString &fileName = m_interface->fileName();
 
@@ -567,11 +561,10 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
 
     m_completions.clear();
 
-    const QmlJSCompletionAssistInterface *qmlInterface =
-            static_cast<const QmlJSCompletionAssistInterface *>(assistInterface);
+    auto qmlInterface = static_cast<const QmlJSCompletionAssistInterface *>(assistInterface);
     const SemanticInfo &semanticInfo = qmlInterface->semanticInfo();
     if (!semanticInfo.isValid())
-        return 0;
+        return nullptr;
 
     const Document::Ptr document = semanticInfo.document;
     const QFileInfo currentFileInfo(fileName);
@@ -597,7 +590,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
     startPositionCursor.setPosition(m_startPosition);
     CompletionContextFinder contextFinder(startPositionCursor);
 
-    const ObjectValue *qmlScopeType = 0;
+    const ObjectValue *qmlScopeType = nullptr;
     if (contextFinder.isInQmlContext()) {
         // find the enclosing qml object
         // ### this should use semanticInfo.declaringMember instead, but that may also return functions
@@ -612,13 +605,13 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
         }
         // grouped property bindings change the scope type
         for (i++; i < path.size(); ++i) {
-            AST::UiObjectDefinition *objDef = AST::cast<AST::UiObjectDefinition *>(path[i]);
+            auto objDef = AST::cast<AST::UiObjectDefinition *>(path[i]);
             if (!objDef || !document->bind()->isGroupedPropertyBinding(objDef))
                 break;
             const ObjectValue *newScopeType = qmlScopeType;
             for (AST::UiQualifiedId *it = objDef->qualifiedTypeNameId; it; it = it->next) {
                 if (!newScopeType || it->name.isEmpty()) {
-                    newScopeType = 0;
+                    newScopeType = nullptr;
                     break;
                 }
                 const Value *v = newScopeType->lookupMember(it->name.toString(), context);
@@ -648,7 +641,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
         if (!literalText.isEmpty()
                 && literalText.at(0) != QLatin1Char('"')
                 && literalText.at(0) != QLatin1Char('\'')) {
-            return 0;
+            return nullptr;
         }
 
         literalText = literalText.mid(1);
@@ -658,7 +651,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
             patterns << QLatin1String("*.qml") << QLatin1String("*.js");
             if (completeFileName(document->path(), literalText, patterns))
                 return createContentProposal();
-            return 0;
+            return nullptr;
         }
 
         const Value *value =
@@ -672,7 +665,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
 
         // ### enum completion?
 
-        return 0;
+        return nullptr;
     }
 
     // currently path-in-stringliteral is the only completion available in imports
@@ -705,7 +698,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
                 return createContentProposal();
             }
         }
-        return 0;
+        return nullptr;
     }
 
     // member "a.bc<complete>" or function "foo(<complete>" completion
@@ -719,7 +712,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
         QmlExpressionUnderCursor expressionUnderCursor;
         AST::ExpressionNode *expression = expressionUnderCursor(tc);
 
-        if (expression != 0 && ! isLiteral(expression)) {
+        if (expression && ! isLiteral(expression)) {
             // Evaluate the expression under cursor.
             ValueOwner *interp = context->valueOwner();
             const Value *value =
@@ -759,7 +752,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
 
         if (! m_completions.isEmpty())
             return createContentProposal();
-        return 0;
+        return nullptr;
     }
 
     // global completion
@@ -796,7 +789,7 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
             if (ScopeBuilder::isPropertyChangesObject(context, qmlScopeType)
                     && scopeChain.qmlScopeObjects().size() == 2) {
                 CompletionAdder completionAdder(&m_completions, QmlJSCompletionAssistInterface::symbolIcon(), SymbolOrder);
-                processProperties(scopeChain.qmlScopeObjects().first(), &completionAdder);
+                processProperties(scopeChain.qmlScopeObjects().constFirst(), &completionAdder);
             }
         }
 
@@ -866,10 +859,10 @@ IAssistProposal *QmlJSCompletionAssistProcessor::perform(const AssistInterface *
 
         if (! m_completions.isEmpty())
             return createContentProposal();
-        return 0;
+        return nullptr;
     }
 
-    return 0;
+    return nullptr;
 }
 
 bool QmlJSCompletionAssistProcessor::acceptsIdleEditor() const
@@ -1034,8 +1027,6 @@ public:
             return true;
         else if (b->text().isEmpty())
             return false;
-        else if (a->isValid() != b->isValid())
-            return a->isValid();
         else if (a->text().at(0).isUpper() && b->text().at(0).isLower())
             return false;
         else if (a->text().at(0).isLower() && b->text().at(0).isUpper())

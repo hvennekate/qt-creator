@@ -52,6 +52,16 @@ const char OBSOLETE_VERSION_KEY[] = "ProjectExplorer.Project.Updater.FileVersion
 const char SHARED_SETTINGS[] = "SharedSettings";
 const char USER_STICKY_KEYS_KEY[] = "UserStickyKeys";
 
+#ifdef PROJECT_USER_FILE_EXTENSION
+#define STRINGIFY_INTERNAL(x) #x
+#define STRINGIFY(x) STRINGIFY_INTERNAL(x)
+
+const char FILE_EXTENSION_STR[] = STRINGIFY(PROJECT_USER_FILE_EXTENSION);
+#else
+const char FILE_EXTENSION_STR[] = ".user";
+
+#endif
+
 // Version 14 Move builddir into BuildConfiguration
 class UserFileVersion14Upgrader : public VersionUpgrader
 {
@@ -131,6 +141,30 @@ public:
     QVariantMap upgrade(const QVariantMap &map) final;
 
     static QVariant process(const QVariant &entry, const QStringList &path);
+};
+
+// Version 20 renames "Qbs.Deploy" to "ProjectExplorer.DefaultDeployConfiguration"
+// to account for the merging of the respective factories
+// run configuration fields use the same key in the settings file.
+class UserFileVersion20Upgrader : public VersionUpgrader
+{
+public:
+    UserFileVersion20Upgrader() : VersionUpgrader(20, "4.9-pre1") { }
+    QVariantMap upgrade(const QVariantMap &map) final;
+
+    static QVariant process(const QVariant &entry);
+};
+
+// Version 21 adds a "make install" step to an existing RemoteLinux deploy configuration
+// if and only if such a step would be added when creating a new one.
+// See QTCREATORBUG-22689.
+class UserFileVersion21Upgrader : public VersionUpgrader
+{
+public:
+    UserFileVersion21Upgrader() : VersionUpgrader(21, "4.10-pre1") { }
+    QVariantMap upgrade(const QVariantMap &map) final;
+
+    static QVariant process(const QVariant &entry);
 };
 
 } // namespace
@@ -218,19 +252,18 @@ static QString makeRelative(QString path)
 }
 
 // Return complete file path of the .user file.
-static FileName externalUserFilePath(const Utils::FileName &projectFilePath, const QString &suffix)
+static FilePath externalUserFilePath(const Utils::FilePath &projectFilePath, const QString &suffix)
 {
-    FileName result;
     static const optional<QString> externalUserFileDir = defineExternalUserFileDir();
 
     if (externalUserFileDir) {
         // Recreate the relative project file hierarchy under the shared directory.
         // PersistentSettingsWriter::write() takes care of creating the path.
-        result = FileName::fromString(externalUserFileDir.value());
-        result.appendString('/' + makeRelative(projectFilePath.toString()));
-        result.appendString(suffix);
+        return FilePath::fromString(externalUserFileDir.value()
+                                    + '/' + makeRelative(projectFilePath.toString())
+                                    + suffix);
     }
-    return result;
+    return {};
 }
 
 } // namespace
@@ -245,18 +278,18 @@ public:
     UserFileBackUpStrategy(UserFileAccessor *accessor) : Utils::VersionedBackUpStrategy(accessor)
     { }
 
-    FileNameList readFileCandidates(const Utils::FileName &baseFileName) const final;
+    FilePaths readFileCandidates(const Utils::FilePath &baseFileName) const final;
 };
 
-FileNameList UserFileBackUpStrategy::readFileCandidates(const FileName &baseFileName) const
+FilePaths UserFileBackUpStrategy::readFileCandidates(const FilePath &baseFileName) const
 {
     const auto *const ac = static_cast<const UserFileAccessor *>(accessor());
-    const FileName externalUser = ac->externalUserFile();
-    const FileName projectUser = ac->projectUserFile();
+    const FilePath externalUser = ac->externalUserFile();
+    const FilePath projectUser = ac->projectUserFile();
     QTC_CHECK(!baseFileName.isEmpty());
     QTC_CHECK(baseFileName == externalUser || baseFileName == projectUser);
 
-    FileNameList result = Utils::VersionedBackUpStrategy::readFileCandidates(projectUser);
+    FilePaths result = Utils::VersionedBackUpStrategy::readFileCandidates(projectUser);
     if (!externalUser.isEmpty())
         result.append(Utils::VersionedBackUpStrategy::readFileCandidates(externalUser));
 
@@ -274,8 +307,8 @@ UserFileAccessor::UserFileAccessor(Project *project) :
     m_project(project)
 {
     // Setup:
-    const FileName externalUser = externalUserFile();
-    const FileName projectUser = projectUserFile();
+    const FilePath externalUser = externalUserFile();
+    const FilePath projectUser = projectUserFile();
     setBaseFilePath(externalUser.isEmpty() ? projectUser : externalUser);
 
     auto secondary
@@ -293,6 +326,8 @@ UserFileAccessor::UserFileAccessor(Project *project) :
     addVersionUpgrader(std::make_unique<UserFileVersion17Upgrader>());
     addVersionUpgrader(std::make_unique<UserFileVersion18Upgrader>());
     addVersionUpgrader(std::make_unique<UserFileVersion19Upgrader>());
+    addVersionUpgrader(std::make_unique<UserFileVersion20Upgrader>());
+    addVersionUpgrader(std::make_unique<UserFileVersion21Upgrader>());
 }
 
 Project *UserFileAccessor::project() const
@@ -362,27 +397,25 @@ QVariant UserFileAccessor::retrieveSharedSettings() const
     return project()->property(SHARED_SETTINGS);
 }
 
-FileName UserFileAccessor::projectUserFile() const
+FilePath UserFileAccessor::projectUserFile() const
 {
-    static const QString qtcExt = QLatin1String(qgetenv("QTC_SHARED_EXTENSION"));
-    FileName projectUserFile = m_project->projectFilePath();
-    projectUserFile.appendString(generateSuffix(qtcExt.isEmpty() ? ".user" : qtcExt));
-    return projectUserFile;
+    static const QString qtcExt = QLatin1String(qgetenv("QTC_EXTENSION"));
+    return m_project->projectFilePath()
+            .stringAppended(generateSuffix(qtcExt.isEmpty() ? FILE_EXTENSION_STR : qtcExt));
 }
 
-FileName UserFileAccessor::externalUserFile() const
+FilePath UserFileAccessor::externalUserFile() const
 {
     static const QString qtcExt = QFile::decodeName(qgetenv("QTC_EXTENSION"));
     return externalUserFilePath(m_project->projectFilePath(),
-                                generateSuffix(qtcExt.isEmpty() ? ".user" : qtcExt));
+                                generateSuffix(qtcExt.isEmpty() ? FILE_EXTENSION_STR : qtcExt));
 }
 
-FileName UserFileAccessor::sharedFile() const
+FilePath UserFileAccessor::sharedFile() const
 {
     static const QString qtcExt = QLatin1String(qgetenv("QTC_SHARED_EXTENSION"));
-    FileName sharedFile = m_project->projectFilePath();
-    sharedFile.appendString(generateSuffix(qtcExt.isEmpty() ? ".shared" : qtcExt));
-    return sharedFile;
+    return m_project->projectFilePath()
+            .stringAppended(generateSuffix(qtcExt.isEmpty() ? ".shared" : qtcExt));
 }
 
 QVariantMap UserFileAccessor::postprocessMerge(const QVariantMap &main,
@@ -436,9 +469,7 @@ QVariantMap UserFileAccessor::prepareToWriteSettings(const QVariantMap &data) co
 QVariantMap UserFileVersion14Upgrader::upgrade(const QVariantMap &map)
 {
     QVariantMap result;
-    QMapIterator<QString, QVariant> it(map);
-    while (it.hasNext()) {
-        it.next();
+    for (auto it = map.cbegin(), end = map.cend(); it != end; ++it) {
         if (it.value().type() == QVariant::Map)
             result.insert(it.key(), upgrade(it.value().toMap()));
         else if (it.key() == "AutotoolsProjectManager.AutotoolsBuildConfiguration.BuildDirectory"
@@ -768,7 +799,7 @@ QVariant UserFileVersion19Upgrader::process(const QVariant &entry, const QString
                                        "ProjectExplorer.CustomExecutableRunConfiguration.WorkingDirectory",
                                        "Qbs.RunConfiguration.WorkingDirectory",
                                        "Qt4ProjectManager.Qt4RunConfiguration.UserWorkingDirectory",
-                                       "RemoteLinux.CustomRunConfig.WorkingDirectory"
+                                       "RemoteLinux.CustomRunConfig.WorkingDirectory",
                                        "RemoteLinux.RunConfig.WorkingDirectory",
                                        "WorkingDir"};
     static const QStringList termKeys = {"CMakeProjectManager.CMakeRunConfiguration.UseTerminal",
@@ -809,6 +840,59 @@ QVariant UserFileVersion19Upgrader::process(const QVariant &entry, const QString
     }
 }
 
+QVariantMap UserFileVersion20Upgrader::upgrade(const QVariantMap &map)
+{
+    return process(map).toMap();
+}
+
+QVariant UserFileVersion20Upgrader::process(const QVariant &entry)
+{
+    switch (entry.type()) {
+    case QVariant::List:
+        return Utils::transform(entry.toList(), &UserFileVersion20Upgrader::process);
+    case QVariant::Map:
+        return Utils::transform<QMap<QString, QVariant>>(
+            entry.toMap().toStdMap(), [](const std::pair<const QString, QVariant> &item) {
+                auto res = qMakePair(item.first, item.second);
+                if (item.first == "ProjectExplorer.ProjectConfiguration.Id"
+                        && item.second == "Qbs.Deploy")
+                    res.second = QVariant("ProjectExplorer.DefaultDeployConfiguration");
+                else
+                    res.second = UserFileVersion20Upgrader::process(item.second);
+                return res;
+            });
+    default:
+        return entry;
+    }
+}
+
+QVariantMap UserFileVersion21Upgrader::upgrade(const QVariantMap &map)
+{
+    return process(map).toMap();
+}
+
+QVariant UserFileVersion21Upgrader::process(const QVariant &entry)
+{
+    switch (entry.type()) {
+    case QVariant::List:
+        return Utils::transform(entry.toList(), &UserFileVersion21Upgrader::process);
+    case QVariant::Map: {
+        QVariantMap entryMap = entry.toMap();
+        if (entryMap.value("ProjectExplorer.ProjectConfiguration.Id").toString()
+                == "DeployToGenericLinux") {
+            entryMap.insert("_checkMakeInstall", true);
+            return entryMap;
+        }
+        return Utils::transform<QVariantMap>(
+            entryMap.toStdMap(), [](const std::pair<const QString, QVariant> &item) {
+                return qMakePair(item.first, UserFileVersion21Upgrader::process(item.second));
+            });
+    }
+    default:
+        return entry;
+    }
+}
+
 #if defined(WITH_TESTS)
 
 #include <QTest>
@@ -838,7 +922,7 @@ private:
 class TestProject : public Project
 {
 public:
-    TestProject() : Project("x-test/testproject", Utils::FileName::fromString("/test/project")) {
+    TestProject() : Project("x-test/testproject", Utils::FilePath::fromString("/test/project")) {
         setDisplayName("Test Project");
     }
 
@@ -935,7 +1019,7 @@ void ProjectExplorerPlugin::testUserFileAccessor_mergeSettings()
     sharedData.insert("shared1", "bar");
     sharedData.insert("shared2", "baz");
     sharedData.insert("shared3", "foooo");
-    TestUserFileAccessor::RestoreData shared(FileName::fromString("/shared/data"), sharedData);
+    TestUserFileAccessor::RestoreData shared(FilePath::fromString("/shared/data"), sharedData);
 
     QVariantMap data;
     data.insert("Version", accessor.currentVersion());
@@ -944,7 +1028,7 @@ void ProjectExplorerPlugin::testUserFileAccessor_mergeSettings()
     data.insert("shared1", "bar1");
     data.insert("unique1", 1234);
     data.insert("shared3", "foo");
-    TestUserFileAccessor::RestoreData user(FileName::fromString("/user/data"), data);
+    TestUserFileAccessor::RestoreData user(FilePath::fromString("/user/data"), data);
     TestUserFileAccessor::RestoreData result = accessor.mergeSettings(user, shared);
 
     QVERIFY(!result.hasIssue());
@@ -970,10 +1054,10 @@ void ProjectExplorerPlugin::testUserFileAccessor_mergeSettingsEmptyUser()
     sharedData.insert("shared1", "bar");
     sharedData.insert("shared2", "baz");
     sharedData.insert("shared3", "foooo");
-    TestUserFileAccessor::RestoreData shared(FileName::fromString("/shared/data"), sharedData);
+    TestUserFileAccessor::RestoreData shared(FilePath::fromString("/shared/data"), sharedData);
 
     QVariantMap data;
-    TestUserFileAccessor::RestoreData user(FileName::fromString("/shared/data"), data);
+    TestUserFileAccessor::RestoreData user(FilePath::fromString("/shared/data"), data);
 
     TestUserFileAccessor::RestoreData result = accessor.mergeSettings(user, shared);
 
@@ -987,7 +1071,7 @@ void ProjectExplorerPlugin::testUserFileAccessor_mergeSettingsEmptyShared()
     TestUserFileAccessor accessor(&project);
 
     QVariantMap sharedData;
-    TestUserFileAccessor::RestoreData shared(FileName::fromString("/shared/data"), sharedData);
+    TestUserFileAccessor::RestoreData shared(FilePath::fromString("/shared/data"), sharedData);
 
     QVariantMap data;
     data.insert("Version", accessor.currentVersion());
@@ -997,7 +1081,7 @@ void ProjectExplorerPlugin::testUserFileAccessor_mergeSettingsEmptyShared()
     data.insert("shared1", "bar1");
     data.insert("unique1", 1234);
     data.insert("shared3", "foo");
-    TestUserFileAccessor::RestoreData user(FileName::fromString("/shared/data"), data);
+    TestUserFileAccessor::RestoreData user(FilePath::fromString("/shared/data"), data);
 
     TestUserFileAccessor::RestoreData result = accessor.mergeSettings(user, shared);
 

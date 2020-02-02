@@ -24,7 +24,8 @@
 ****************************************************************************/
 
 #include "propertyparser.h"
-#include "enumeration.h"
+
+#include <enumeration.h>
 #include <modelnode.h>
 #include <metainfo.h>
 
@@ -199,7 +200,7 @@ QVariant read(const QString &typeStr, const QString &str)
 {
     int type = QMetaType::type(typeStr.toUtf8().constData());
     if (type == 0) {
-        if (typeStr != QStringLiteral("binding")) {
+        if (typeStr != QStringLiteral("binding") && typeStr != QStringLiteral("enum")) {
             qWarning() << "Type " << typeStr
                     << " is unknown to QMetaType system. Cannot create properly typed QVariant for value "
                     << str;

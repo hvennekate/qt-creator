@@ -52,9 +52,7 @@ class QmlJSEditorDocument;
 class QuickToolBar;
 class FindReferences;
 
-namespace Internal {
-
-class QmlJSEditorWidget : public TextEditor::TextEditorWidget
+class QMLJSEDITOR_EXPORT QmlJSEditorWidget : public TextEditor::TextEditorWidget
 {
     Q_OBJECT
 
@@ -74,7 +72,7 @@ public:
 
     void inspectElementUnderCursor() const;
 
-    void findUsages();
+    void findUsages() override;
     void renameUsages();
     void showContextPane();
 
@@ -108,7 +106,6 @@ protected:
                     bool resolveTarget = true,
                     bool inNextSplit = false) override;
     QString foldReplacementText(const QTextBlock &block) const override;
-    void onRefactorMarkerClicked(const TextEditor::RefactorMarker &marker) override;
 
 private:
     void setSelectedElements();
@@ -132,25 +129,26 @@ private:
 };
 
 
-class QmlJSEditor : public TextEditor::BaseTextEditor
+class QMLJSEDITOR_EXPORT QmlJSEditor : public TextEditor::BaseTextEditor
 {
     Q_OBJECT
 
 public:
     QmlJSEditor();
 
+    QmlJSEditorDocument *qmlJSDocument() const;
     bool isDesignModePreferred() const override;
 };
 
-class QmlJSEditorFactory : public TextEditor::TextEditorFactory
+class QMLJSEDITOR_EXPORT QmlJSEditorFactory : public TextEditor::TextEditorFactory
 {
     Q_OBJECT
 
 public:
     QmlJSEditorFactory();
+    QmlJSEditorFactory(Core::Id id);
 
     static void decorateEditor(TextEditor::TextEditorWidget *editor);
 };
 
-} // namespace Internal
 } // namespace QmlJSEditor

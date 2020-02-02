@@ -50,6 +50,7 @@ public:
     void setAddPlaceHolderPositions(bool addPlaceHolderPositions);
     void setAddResultType(bool addResultType);
     void setAddSpaces(bool addSpaces);
+    void setHonorVerticalSpace(bool honor);
     void setAddExtraVerticalSpaceBetweenBraces(bool addExtraVerticalSpaceBetweenBraces);
     void setEmphasizeOptional(bool emphasizeOptional); // Only for Html format
     void setAddOptional(bool addOptional);
@@ -74,7 +75,7 @@ public:
 
 private:
     void parse(const ClangBackEnd::CodeCompletionChunk &codeCompletionChunk);
-    void parseDependendOnTheOptionalState(const ClangBackEnd::CodeCompletionChunk &codeCompletionChunk);
+    void parseDependentOnTheOptionalState(const ClangBackEnd::CodeCompletionChunk &codeCompletionChunk);
     void parseResultType(const Utf8String &text);
     void parseText(const Utf8String &text);
     void wrapInCursiveTagIfOptional(const ClangBackEnd::CodeCompletionChunk &codeCompletionChunk);
@@ -103,6 +104,7 @@ private:
     bool m_addPlaceHolderPositions = false;
     bool m_addResultType = false;
     bool m_addSpaces = false;
+    bool m_honorVerticalSpace = true;
     bool m_addExtraVerticalSpaceBetweenBraces = false;
     bool m_emphasizeOptional = false;
     bool m_addOptional = false;

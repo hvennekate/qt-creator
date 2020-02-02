@@ -31,9 +31,12 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/documentmanager.h>
 #include <utils/qtcassert.h>
+#include <utils/tooltip/tooltip.h>
 
+#include <QAction>
 #include <QGridLayout>
 #include <QPainter>
+#include <QToolButton>
 
 using namespace Core;
 using namespace Utils;
@@ -55,7 +58,7 @@ private:
     void documentRenamed(Core::IDocument *document, const QString &oldName, const QString &newName);
     void allDocumentsRenamed(const QString &oldName, const QString &newName);
 
-    QHash<Utils::FileName, QSet<TextMark *> > m_marks;
+    QHash<Utils::FilePath, QSet<TextMark *> > m_marks;
 };
 
 class AnnotationColors
@@ -75,7 +78,7 @@ private:
 
 TextMarkRegistry *m_instance = nullptr;
 
-TextMark::TextMark(const FileName &fileName, int lineNumber, Id category, double widthFactor)
+TextMark::TextMark(const FilePath &fileName, int lineNumber, Id category, double widthFactor)
     : m_fileName(fileName)
     , m_lineNumber(lineNumber)
     , m_visible(true)
@@ -88,6 +91,8 @@ TextMark::TextMark(const FileName &fileName, int lineNumber, Id category, double
 
 TextMark::~TextMark()
 {
+    qDeleteAll(m_actions);
+    m_actions.clear();
     if (!m_fileName.isEmpty())
         TextMarkRegistry::remove(this);
     if (m_baseTextDocument)
@@ -95,12 +100,12 @@ TextMark::~TextMark()
     m_baseTextDocument = nullptr;
 }
 
-FileName TextMark::fileName() const
+FilePath TextMark::fileName() const
 {
     return m_fileName;
 }
 
-void TextMark::updateFileName(const FileName &fileName)
+void TextMark::updateFileName(const FilePath &fileName)
 {
     if (fileName == m_fileName)
         return;
@@ -131,8 +136,9 @@ void TextMark::paintAnnotation(QPainter &painter, QRectF *annotationRect,
 
     const AnnotationRects &rects = annotationRects(*annotationRect, painter.fontMetrics(),
                                                    fadeInOffset, fadeOutOffset);
-    const QColor &markColor = m_hasColor ? Utils::creatorTheme()->color(m_color).toHsl()
-                                         : painter.pen().color();
+    const QColor &markColor = m_color.has_value()
+                                  ? Utils::creatorTheme()->color(m_color.value()).toHsl()
+                                  : painter.pen().color();
     const AnnotationColors &colors = AnnotationColors::getAnnotationColors(
                 markColor, painter.background().color());
 
@@ -177,7 +183,7 @@ TextMark::AnnotationRects TextMark::annotationRects(const QRectF &boundingRect,
     if (drawIcon)
         rects.iconRect.setWidth(rects.iconRect.height() * m_widthFactor);
     rects.textRect = QRectF(rects.iconRect.right() + margin, boundingRect.top(),
-                            qreal(fm.width(rects.text)), boundingRect.height());
+                            qreal(fm.horizontalAdvance(rects.text)), boundingRect.height());
     rects.annotationRect.setRight(rects.textRect.right() + margin);
     if (rects.annotationRect.right() > boundingRect.right()) {
         rects.textRect.setRight(boundingRect.right() - margin);
@@ -262,21 +268,44 @@ bool TextMark::isDraggable() const
 
 void TextMark::dragToLine(int lineNumber)
 {
-    Q_UNUSED(lineNumber);
+    Q_UNUSED(lineNumber)
 }
 
 void TextMark::addToToolTipLayout(QGridLayout *target) const
 {
     auto contentLayout = new QVBoxLayout;
     addToolTipContent(contentLayout);
-    if (contentLayout->count() > 0) {
-        const int row = target->rowCount();
-        if (!m_icon.isNull()) {
-            auto iconLabel = new QLabel;
-            iconLabel->setPixmap(m_icon.pixmap(16, 16));
-            target->addWidget(iconLabel, row, 0, Qt::AlignTop | Qt::AlignHCenter);
+    if (contentLayout->count() <= 0)
+        return;
+
+    // Left column: text mark icon
+    const int row = target->rowCount();
+    if (!m_icon.isNull()) {
+        auto iconLabel = new QLabel;
+        iconLabel->setPixmap(m_icon.pixmap(16, 16));
+        target->addWidget(iconLabel, row, 0, Qt::AlignTop | Qt::AlignHCenter);
+    }
+
+    // Middle column: tooltip content
+    target->addLayout(contentLayout, row, 1);
+
+    // Right column: action icons/button
+    if (!m_actions.isEmpty()) {
+        auto actionsLayout = new QHBoxLayout;
+        QMargins margins = actionsLayout->contentsMargins();
+        margins.setLeft(margins.left() + 5);
+        actionsLayout->setContentsMargins(margins);
+        for (QAction *action : m_actions) {
+            QTC_ASSERT(!action->icon().isNull(), continue);
+            auto button = new QToolButton;
+            button->setIcon(action->icon());
+            QObject::connect(button, &QToolButton::clicked, action, &QAction::triggered);
+            QObject::connect(button, &QToolButton::clicked, []() {
+                Utils::ToolTip::hideImmediately();
+            });
+            actionsLayout->addWidget(button, 0, Qt::AlignTop | Qt::AlignRight);
         }
-        target->addLayout(contentLayout, row, 1);
+        target->addLayout(actionsLayout, row, 2);
     }
 }
 
@@ -299,16 +328,24 @@ bool TextMark::addToolTipContent(QLayout *target) const
     return true;
 }
 
-Theme::Color TextMark::color() const
+Utils::optional<Theme::Color> TextMark::color() const
 {
-    QTC_CHECK(m_hasColor);
     return m_color;
 }
 
 void TextMark::setColor(const Theme::Color &color)
 {
-    m_hasColor = true;
     m_color = color;
+}
+
+QVector<QAction *> TextMark::actions() const
+{
+    return m_actions;
+}
+
+void TextMark::setActions(const QVector<QAction *> &actions)
+{
+    m_actions = actions;
 }
 
 TextMarkRegistry::TextMarkRegistry(QObject *parent)
@@ -326,11 +363,8 @@ TextMarkRegistry::TextMarkRegistry(QObject *parent)
 void TextMarkRegistry::add(TextMark *mark)
 {
     instance()->m_marks[mark->fileName()].insert(mark);
-    auto document = qobject_cast<TextDocument *>(
-        DocumentModel::documentForFilePath(mark->fileName().toString()));
-    if (!document)
-        return;
-    document->addMark(mark);
+    if (TextDocument *document = TextDocument::textDocumentForFilePath(mark->fileName()))
+        document->addMark(mark);
 }
 
 bool TextMarkRegistry::remove(TextMark *mark)
@@ -363,8 +397,8 @@ void TextMarkRegistry::documentRenamed(IDocument *document, const
     auto baseTextDocument = qobject_cast<TextDocument *>(document);
     if (!baseTextDocument)
         return;
-    FileName oldFileName = FileName::fromString(oldName);
-    FileName newFileName = FileName::fromString(newName);
+    FilePath oldFileName = FilePath::fromString(oldName);
+    FilePath newFileName = FilePath::fromString(newName);
     if (!m_marks.contains(oldFileName))
         return;
 
@@ -381,8 +415,8 @@ void TextMarkRegistry::documentRenamed(IDocument *document, const
 
 void TextMarkRegistry::allDocumentsRenamed(const QString &oldName, const QString &newName)
 {
-    FileName oldFileName = FileName::fromString(oldName);
-    FileName newFileName = FileName::fromString(newName);
+    FilePath oldFileName = FilePath::fromString(oldName);
+    FilePath newFileName = FilePath::fromString(newName);
     if (!m_marks.contains(oldFileName))
         return;
 

@@ -57,7 +57,6 @@ namespace Internal { class GerritPlugin; }
 namespace Git {
 namespace Internal {
 
-class GitVersionControl;
 class GitClient;
 class CommitData;
 class StashDialog;
@@ -67,21 +66,50 @@ class RemoteDialog;
 
 using GitClientMemberFunc = void (GitClient::*)(const QString &);
 
-class GitPlugin : public VcsBase::VcsBasePlugin
+class GitPluginPrivate final : public VcsBase::VcsBasePluginPrivate
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Git.json")
 
 public:
-    GitPlugin();
-    ~GitPlugin() override;
+    GitPluginPrivate();
+    ~GitPluginPrivate() final;
 
-    static GitPlugin *instance();
+    // IVersionControl
+    QString displayName() const final;
+    Core::Id id() const final;
+
+    bool isVcsFileOrDirectory(const Utils::FilePath &fileName) const final;
+
+    bool managesDirectory(const QString &directory, QString *topLevel) const final;
+    bool managesFile(const QString &workingDirectory, const QString &fileName) const final;
+    QStringList unmanagedFiles(const QString &workingDir, const QStringList &filePaths) const final;
+
+    bool isConfigured() const final;
+    bool supportsOperation(Operation operation) const final;
+    bool vcsOpen(const QString &fileName) final;
+    bool vcsAdd(const QString &fileName) final;
+    bool vcsDelete(const QString &filename) final;
+    bool vcsMove(const QString &from, const QString &to) final;
+    bool vcsCreateRepository(const QString &directory) final;
+
+    bool vcsAnnotate(const QString &file, int line) final;
+    QString vcsTopic(const QString &directory) final;
+
+    Core::ShellCommand *createInitialCheckoutCommand(const QString &url,
+                                                     const Utils::FilePath &baseDirectory,
+                                                     const QString &localName,
+                                                     const QStringList &extraArgs) final;
+
+    RepoUrl getRepoUrl(const QString &location) const override;
+
+    QStringList additionalToolsPath() const final;
+
+    void emitFilesChanged(const QStringList &);
+    void emitRepositoryChanged(const QString &);
+
+    ///
+    static GitPluginPrivate *instance();
     static GitClient *client();
-
-    bool initialize(const QStringList &arguments, QString *errorMessage) override;
-
-    GitVersionControl *gitVersionControl() const;
 
     Gerrit::Internal::GerritPlugin *gerritPlugin() const;
     bool isCommitEditorOpen() const;
@@ -89,26 +117,15 @@ public:
     static QString invalidBranchAndRemoteNamePattern();
     void startCommit(CommitType commitType = SimpleCommit);
     void updateBranches(const QString &repository);
+    void updateCurrentBranch();
 
-    QObject *remoteCommand(const QStringList &options, const QString &workingDirectory,
-                           const QStringList &args) override;
     void manageRemotes();
     void initRepository();
+    void startRebaseFromCommit(const QString &workingDirectory, QString commit);
 
 protected:
-    void updateActions(VcsBase::VcsBasePlugin::ActionState) override;
+    void updateActions(VcsBase::VcsBasePluginPrivate::ActionState) override;
     bool submitEditorAboutToClose() override;
-
-#ifdef WITH_TESTS
-private slots:
-    void testStatusParsing_data();
-    void testStatusParsing();
-    void testDiffFileResolving_data();
-    void testDiffFileResolving();
-    void testLogResolving();
-    void testGitRemote_data();
-    void testGitRemote();
-#endif
 
 private:
     void diffCurrentFile();
@@ -167,7 +184,7 @@ private:
     QAction *createProjectAction(Core::ActionContainer *ac,
                                  const QString &defaultText, const QString &parameterText,
                                  Core::Id id, const Core::Context &context, bool addToLocator,
-                                 void (GitPlugin::*func)(),
+                                 void (GitPluginPrivate::*func)(),
                                  const QKeySequence &keys = QKeySequence());
 
     QAction *createRepositoryAction(Core::ActionContainer *ac, const QString &text, Core::Id id,
@@ -211,6 +228,7 @@ private:
     Utils::ParameterAction *m_applyCurrentFilePatchAction = nullptr;
     Gerrit::Internal::GerritPlugin *m_gerritPlugin = nullptr;
 
+    GitSettings m_settings;
     GitClient *m_gitClient = nullptr;
     QPointer<StashDialog> m_stashDialog;
     QPointer<BranchViewFactory> m_branchViewFactory;
@@ -218,6 +236,33 @@ private:
     QString m_submitRepository;
     QString m_commitMessageFileName;
     bool m_submitActionTriggered = false;
+};
+
+class GitPlugin final : public ExtensionSystem::IPlugin
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "Git.json")
+
+public:
+    ~GitPlugin() final;
+
+    bool initialize(const QStringList &arguments, QString *errorMessage) final;
+    void extensionsInitialized() final;
+
+    QObject *remoteCommand(const QStringList &options, const QString &workingDirectory,
+                           const QStringList &args) final;
+
+#ifdef WITH_TESTS
+private slots:
+    void testStatusParsing_data();
+    void testStatusParsing();
+    void testDiffFileResolving_data();
+    void testDiffFileResolving();
+    void testLogResolving();
+    void testGitRemote_data();
+    void testGitRemote();
+#endif
+
 };
 
 } // namespace Internal

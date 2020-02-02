@@ -70,7 +70,7 @@ QList<Core::LocatorFilterEntry> CppCurrentDocumentFilter::matchesFor(
         return goodEntries;
 
     const QList<IndexItem::Ptr> items = itemsOfCurrentDocument();
-    for (IndexItem::Ptr info : items) {
+    for (const IndexItem::Ptr &info : items) {
         if (future.isCanceled())
             break;
 
@@ -83,7 +83,7 @@ QList<Core::LocatorFilterEntry> CppCurrentDocumentFilter::matchesFor(
         QRegularExpressionMatch match = regexp.match(matchString);
         if (match.hasMatch()) {
             const bool betterMatch = match.capturedStart() == 0;
-            QVariant id = qVariantFromValue(info);
+            QVariant id = QVariant::fromValue(info);
             QString name = matchString;
             QString extraInfo = info->symbolScope();
             if (info->type() == IndexItem::Function) {

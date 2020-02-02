@@ -26,12 +26,15 @@
 
 #include "androidextralibrarylistmodel.h"
 
-#include <android/androidqtsupport.h>
+#include <android/androidconstants.h>
 #include <android/androidmanager.h>
 
 #include <projectexplorer/project.h>
+#include <projectexplorer/projectnodes.h>
 #include <projectexplorer/runconfiguration.h>
 #include <projectexplorer/target.h>
+
+using namespace ProjectExplorer;
 
 namespace Android {
 
@@ -42,11 +45,11 @@ AndroidExtraLibraryListModel::AndroidExtraLibraryListModel(ProjectExplorer::Targ
 {
     updateModel();
 
-    connect(target->project(), &ProjectExplorer::Project::parsingStarted,
+    connect(target, &Target::parsingStarted,
             this, &AndroidExtraLibraryListModel::updateModel);
-    connect(target->project(), &ProjectExplorer::Project::parsingFinished,
+    connect(target, &Target::parsingFinished,
             this, &AndroidExtraLibraryListModel::updateModel);
-    connect(target, &ProjectExplorer::Target::activeRunConfigurationChanged,
+    connect(target, &Target::activeRunConfigurationChanged,
             this, &AndroidExtraLibraryListModel::updateModel);
 }
 
@@ -73,30 +76,31 @@ int AndroidExtraLibraryListModel::columnCount(const QModelIndex &) const
 QVariant AndroidExtraLibraryListModel::data(const QModelIndex &index, int role) const
 {
     Q_ASSERT(index.row() >= 0 && index.row() < m_entries.size());
-    const QString &entry = QDir::cleanPath(m_entries.at(index.row()));
-    switch (role) {
-    case Qt::DisplayRole: return entry;
-    default: return QVariant();
-    };
+    if (role == Qt::DisplayRole)
+        return QDir::cleanPath(m_entries.at(index.row()));
+    return {};
 }
 
 void AndroidExtraLibraryListModel::updateModel()
 {
-    AndroidQtSupport *qtSupport = Android::AndroidManager::androidQtSupport(m_target);
-    QTC_ASSERT(qtSupport, return);
+    RunConfiguration *rc = m_target->activeRunConfiguration();
+    QTC_ASSERT(rc, return);
 
-    if (qtSupport->parseInProgress(m_target)) {
+    const ProjectNode *node = m_target->project()->findNodeForBuildKey(rc->buildKey());
+    QTC_ASSERT(node, return);
+
+    if (node->parseInProgress()) {
         emit enabledChanged(false);
         return;
     }
 
     bool enabled;
     beginResetModel();
-    if (qtSupport->validParse(m_target)) {
-        m_entries = qtSupport->targetData(Constants::AndroidExtraLibs, m_target).toStringList();
+    if (node->validParse()) {
+        m_entries = node->data(Constants::AndroidExtraLibs).toStringList();
         enabled = true;
     } else {
-        // parsing error or not a application template
+        // parsing error
         m_entries.clear();
         enabled = false;
     }
@@ -107,17 +111,19 @@ void AndroidExtraLibraryListModel::updateModel()
 
 void AndroidExtraLibraryListModel::addEntries(const QStringList &list)
 {
-    AndroidQtSupport *qtSupport = Android::AndroidManager::androidQtSupport(m_target);
-    QTC_ASSERT(qtSupport, return);
-    Utils::FileName projectFilePath = qtSupport->projectFilePath(m_target);
+    RunConfiguration *rc = m_target->activeRunConfiguration();
+    QTC_ASSERT(rc, return);
+
+    const ProjectNode *node = m_target->project()->findNodeForBuildKey(rc->buildKey());
+    QTC_ASSERT(node, return);
 
     beginInsertRows(QModelIndex(), m_entries.size(), m_entries.size() + list.size());
 
-    const QDir dir = qtSupport->projectFilePath(m_target).toFileInfo().absoluteDir();
+    const QDir dir = node->filePath().toFileInfo().absoluteDir();
     for (const QString &path : list)
         m_entries += "$$PWD/" + dir.relativeFilePath(path);
 
-    qtSupport->setTargetData(Constants::AndroidExtraLibs, m_entries, m_target);
+    node->setData(Constants::AndroidExtraLibs, m_entries);
     endInsertRows();
 }
 
@@ -147,9 +153,11 @@ void AndroidExtraLibraryListModel::removeEntries(QModelIndexList list)
         endRemoveRows();
     }
 
-    AndroidQtSupport *qtSupport = AndroidManager::androidQtSupport(m_target);
-    QTC_ASSERT(qtSupport, return);
-    qtSupport->setTargetData(Constants::AndroidExtraLibs, m_entries, m_target);
+    RunConfiguration *rc = m_target->activeRunConfiguration();
+    QTC_ASSERT(rc, return);
+    const ProjectNode *node = m_target->project()->findNodeForBuildKey(rc->buildKey());
+    QTC_ASSERT(node, return);
+    node->setData(Constants::AndroidExtraLibs, m_entries);
 }
 
 } // Android

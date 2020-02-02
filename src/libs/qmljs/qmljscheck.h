@@ -65,6 +65,7 @@ protected:
     void postVisit(AST::Node *ast) override;
 
     bool visit(AST::UiProgram *ast) override;
+    bool visit(AST::UiImport *ast) override;
     bool visit(AST::UiObjectDefinition *ast) override;
     bool visit(AST::UiObjectBinding *ast) override;
     bool visit(AST::UiScriptBinding *ast) override;
@@ -84,7 +85,6 @@ protected:
     bool visit(AST::ExpressionStatement *ast) override;
     bool visit(AST::IfStatement *ast) override;
     bool visit(AST::ForStatement *ast) override;
-    bool visit(AST::LocalForStatement *ast) override;
     bool visit(AST::WhileStatement *ast) override;
     bool visit(AST::DoWhileStatement *ast) override;
     bool visit(AST::CaseBlock *ast) override;
@@ -136,6 +136,9 @@ private:
     QStack<StringSet> m_idStack;
     QStack<StringSet> m_propertyStack;
     QStack<QString> m_typeStack;
+
+    using ShortImportInfo = QPair<QString, LanguageUtils::ComponentVersion>;
+    QList<ShortImportInfo> m_importInfo;
 
     class MessageTypeAndSuppression
     {

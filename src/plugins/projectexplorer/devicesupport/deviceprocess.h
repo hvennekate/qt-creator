@@ -26,7 +26,6 @@
 #pragma once
 
 #include "../projectexplorer_export.h"
-#include "../runconfiguration.h"
 
 #include <QObject>
 #include <QProcess>
@@ -57,6 +56,9 @@ public:
 
     virtual qint64 write(const QByteArray &data) = 0;
 
+    void setRunInTerminal(bool term) { m_runInTerminal = term; }
+    bool runInTerminal() const { return m_runInTerminal; }
+
 signals:
     void started();
     void finished();
@@ -71,6 +73,7 @@ protected:
 
 private:
     const QSharedPointer<const IDevice> m_device;
+    bool m_runInTerminal = false;
 };
 
 } // namespace ProjectExplorer

@@ -37,6 +37,8 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/messagebox.h>
 
+#include <QWidget>
+
 enum {
     debug = false
 };
@@ -181,10 +183,14 @@ void StatesEditorModel::renameState(int internalNodeId, const QString &newName)
         return;
 
     if (newName.isEmpty() ||! m_statesEditorView->validStateName(newName)) {
-        Core::AsynchronousMessageBox::warning(tr("Invalid state name"),
-                                               newName.isEmpty() ?
-                                                   tr("The empty string as a name is reserved for the base state.") :
-                                                   tr("Name already used in another state"));
+        QTimer::singleShot(0, [newName]{
+            Core::AsynchronousMessageBox::warning(
+                        tr("Invalid state name"),
+                        newName.isEmpty() ?
+                            tr("The empty string as a name is reserved for the base state.") :
+                            tr("Name already used in another state"));
+        });
+        reset();
     } else {
         m_statesEditorView->renameState(internalNodeId, newName);
     }
@@ -208,6 +214,11 @@ QStringList StatesEditorModel::autoComplete(const QString &text, int pos, bool e
         return model->rewriterView()->autoComplete(text, pos, explicitComplete);
 
     return QStringList();
+}
+
+QVariant StatesEditorModel::stateModelNode()
+{
+    return QVariant::fromValue(m_statesEditorView->currentStateNode());
 }
 
 } // namespace QmlDesigner

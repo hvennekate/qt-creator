@@ -52,7 +52,7 @@ public:
     void setDocumentSelector(const LanguageClientArray<DocumentFilter> &documentSelector)
     { insert(documentSelectorKey, documentSelector.toJson()); }
 
-    bool filterApplies(const Utils::FileName &fileName,
+    bool filterApplies(const Utils::FilePath &fileName,
                        const Utils::MimeType &mimeType = Utils::MimeType()) const;
 
     bool isValid(QStringList *error) const override
@@ -118,6 +118,19 @@ enum class TextDocumentSyncKind
     // Documents are synced by sending the full content on open.
     // After that only incremental updates to the document are send.
     Incremental = 2
+};
+
+class LANGUAGESERVERPROTOCOL_EXPORT CodeActionOptions : public JsonObject
+{
+public:
+    using JsonObject::JsonObject;
+
+    QList<QString> codeActionKinds() const { return array<QString>(codeActionKindsKey); }
+    void setCodeActionKinds(const QList<QString> &codeActionKinds)
+    { insertArray(codeActionKindsKey, codeActionKinds); }
+
+    bool isValid(QStringList *error) const override
+    { return checkArray<QString>(error, codeActionKindsKey); }
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT ServerCapabilities : public JsonObject
@@ -210,6 +223,17 @@ public:
         void clearId() { remove(idKey); }
     };
 
+    class LANGUAGESERVERPROTOCOL_EXPORT SemanticHighlightingServerCapabilities : public JsonObject
+    {
+    public:
+        using JsonObject::JsonObject;
+
+        Utils::optional<QList<QList<QString>>> scopes() const;
+        void setScopes(const QList<QList<QString>> &scopes);
+
+        bool isValid(QStringList *) const override;
+    };
+
     // Defines how text documents are synced. Is either a detailed structure defining each
     // notification or for backwards compatibility the TextDocumentSyncKind number.
     using TextDocumentSync = Utils::variant<TextDocumentSyncOptions, int>;
@@ -255,7 +279,7 @@ public:
         void setDocumentSelector(const LanguageClientArray<DocumentFilter> &documentSelector)
         { insert(documentSelectorKey, documentSelector.toJson()); }
 
-        bool filterApplies(const Utils::FileName &fileName,
+        bool filterApplies(const Utils::FilePath &fileName,
                            const Utils::MimeType &mimeType = Utils::MimeType()) const;
 
         // The id used to register the request. The id can be used to deregister
@@ -279,9 +303,9 @@ public:
     void clearImplementationProvider() { remove(implementationProviderKey); }
 
     // The server provides find references support.
-    Utils::optional<bool> referenceProvider() const { return optionalValue<bool>(referenceProviderKey); }
-    void setReferenceProvider(bool referenceProvider) { insert(referenceProviderKey, referenceProvider); }
-    void clearReferenceProvider() { remove(referenceProviderKey); }
+    Utils::optional<bool> referencesProvider() const { return optionalValue<bool>(referencesProviderKey); }
+    void setReferencesProvider(bool referenceProvider) { insert(referencesProviderKey, referenceProvider); }
+    void clearReferencesProvider() { remove(referencesProviderKey); }
 
     // The server provides document highlight support.
     Utils::optional<bool> documentHighlightProvider() const
@@ -305,10 +329,11 @@ public:
     void clearWorkspaceSymbolProvider() { remove(workspaceSymbolProviderKey); }
 
     // The server provides code actions.
-    Utils::optional<bool> codeActionProvider() const
-    { return optionalValue<bool>(codeActionProviderKey); }
+    Utils::optional<Utils::variant<bool, CodeActionOptions>> codeActionProvider() const;
     void setCodeActionProvider(bool codeActionProvider)
     { insert(codeActionProviderKey, codeActionProvider); }
+    void setCodeActionProvider(CodeActionOptions options)
+    { insert(codeActionProviderKey, options); }
     void clearCodeActionProvider() { remove(codeActionProviderKey); }
 
     // The server provides code lens.
@@ -332,9 +357,23 @@ public:
     { insert(documentRangeFormattingProviderKey, documentRangeFormattingProvider); }
     void clearDocumentRangeFormattingProvider() { remove(documentRangeFormattingProviderKey); }
 
+    class RenameOptions : public JsonObject
+    {
+    public:
+        using JsonObject::JsonObject;
+
+        // Renames should be checked and tested before being executed.
+        Utils::optional<bool> prepareProvider() const { return optionalValue<bool>(prepareProviderKey); }
+        void setPrepareProvider(bool prepareProvider) { insert(prepareProviderKey, prepareProvider); }
+        void clearPrepareProvider() { remove(prepareProviderKey); }
+
+        bool isValid(QStringList * error) const override
+        { return checkOptional<bool>(error, prepareProviderKey); }
+    };
+
     // The server provides rename support.
-    Utils::optional<bool> renameProvider() const { return optionalValue<bool>(renameProviderKey); }
-    void setRenameProvider(bool renameProvider) { insert(renameProviderKey, renameProvider); }
+    Utils::optional<Utils::variant<RenameOptions, bool>> renameProvider() const;
+    void setRenameProvider(Utils::variant<RenameOptions,bool> renameProvider);
     void clearRenameProvider() { remove(renameProviderKey); }
 
     // The server provides document link support.
@@ -345,10 +384,8 @@ public:
     void clearDocumentLinkProvider() { remove(documentLinkProviderKey); }
 
     // The server provides color provider support.
-    Utils::optional<TextDocumentRegistrationOptions> colorProvider() const
-    { return optionalValue<TextDocumentRegistrationOptions>(colorProviderKey); }
-    void setColorProvider(TextDocumentRegistrationOptions colorProvider)
-    { insert(colorProviderKey, colorProvider); }
+    Utils::optional<Utils::variant<bool, JsonObject>> colorProvider() const;
+    void setColorProvider(Utils::variant<bool, JsonObject> colorProvider);
     void clearColorProvider() { remove(colorProviderKey); }
 
     // The server provides execute command support.
@@ -396,6 +433,12 @@ public:
     Utils::optional<JsonObject> experimental() const { return optionalValue<JsonObject>(experimentalKey); }
     void setExperimental(const JsonObject &experimental) { insert(experimentalKey, experimental); }
     void clearExperimental() { remove(experimentalKey); }
+
+    Utils::optional<SemanticHighlightingServerCapabilities> semanticHighlighting() const
+    { return optionalValue<SemanticHighlightingServerCapabilities>(semanticHighlightingKey); }
+    void setSemanticHighlighting(const SemanticHighlightingServerCapabilities &semanticHighlighting)
+    { insert(semanticHighlightingKey, semanticHighlighting); }
+    void clearSemanticHighlighting() { remove(semanticHighlightingKey); }
 
     bool isValid(QStringList *error) const override;
 };

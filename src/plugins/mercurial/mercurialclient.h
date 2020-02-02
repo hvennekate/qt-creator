@@ -26,7 +26,12 @@
 #pragma once
 
 #include "mercurialsettings.h"
+#include <coreplugin/editormanager/ieditor.h>
 #include <vcsbase/vcsbaseclient.h>
+
+namespace DiffEditor {
+class DiffEditorController;
+}
 
 namespace Mercurial {
 namespace Internal {
@@ -35,7 +40,7 @@ class MercurialClient : public VcsBase::VcsBaseClient
 {
     Q_OBJECT
 public:
-    MercurialClient();
+    explicit MercurialClient(MercurialSettings *settings);
 
     bool synchronousClone(const QString &workingDir,
                           const QString &srcLocation,
@@ -69,7 +74,7 @@ public:
     void revertAll(const QString &workingDir, const QString &revision = QString(),
                    const QStringList &extraOptions = QStringList()) override;
 
-    bool isVcsDirectory(const Utils::FileName &fileName) const;
+    bool isVcsDirectory(const Utils::FilePath &fileName) const;
     QString findTopLevelForFile(const QFileInfo &file) const override;
 
     void view(const QString &source, const QString &id,
@@ -85,6 +90,8 @@ signals:
     void needMerge();
 
 private:
+    void requestReload(const QString &documentId, const QString &source, const QString &title,
+                       std::function<DiffEditor::DiffEditorController *(Core::IDocument *)> factory) const;
     void parsePullOutput(const QString &output);
 };
 

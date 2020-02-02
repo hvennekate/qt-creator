@@ -31,12 +31,14 @@
 #include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/gnumakeparser.h>
+#include <projectexplorer/kitinformation.h>
+#include <projectexplorer/processparameters.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/toolchain.h>
-#include <projectexplorer/kitinformation.h>
-#include <projectexplorer/gnumakeparser.h>
 
 #include <utils/hostosinfo.h>
+#include <utils/qtcprocess.h>
 
 #include <QDir>
 
@@ -46,8 +48,8 @@ using namespace Android::Internal;
 
 namespace Android {
 
-AndroidPackageInstallationStep::AndroidPackageInstallationStep(BuildStepList *bsl)
-    : AbstractProcessStep(bsl, Constants::ANDROID_PACKAGE_INSTALLATION_STEP_ID)
+AndroidPackageInstallationStep::AndroidPackageInstallationStep(BuildStepList *bsl, Core::Id id)
+    : AbstractProcessStep(bsl, id)
 {
     const QString name = tr("Copy application data");
     setDefaultDisplayName(name);
@@ -56,29 +58,31 @@ AndroidPackageInstallationStep::AndroidPackageInstallationStep(BuildStepList *bs
     setImmutable(true);
 }
 
-bool AndroidPackageInstallationStep::init(QList<const BuildStep *> &earlierSteps)
+bool AndroidPackageInstallationStep::init()
 {
     BuildConfiguration *bc = buildConfiguration();
-    QString dirPath = bc->buildDirectory().appendPath(Constants::ANDROID_BUILDDIRECTORY).toString();
+    QString dirPath = bc->buildDirectory().pathAppended(Constants::ANDROID_BUILDDIRECTORY).toString();
     if (HostOsInfo::isWindowsHost())
         if (bc->environment().searchInPath("sh.exe").isEmpty())
             dirPath = QDir::toNativeSeparators(dirPath);
 
-    ToolChain *tc = ToolChainKitInformation::toolChain(target()->kit(),
+    ToolChain *tc = ToolChainKitAspect::toolChain(target()->kit(),
                                                        ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    QTC_ASSERT(tc, return false);
+
+    CommandLine cmd{tc->makeCommand(bc->environment())};
+    const QString innerQuoted = QtcProcess::quoteArg(dirPath);
+    const QString outerQuoted = QtcProcess::quoteArg("INSTALL_ROOT=" + innerQuoted);
+    cmd.addArgs(outerQuoted + " install", CommandLine::Raw);
 
     ProcessParameters *pp = processParameters();
     pp->setMacroExpander(bc->macroExpander());
-    pp->setWorkingDirectory(bc->buildDirectory().toString());
-    pp->setCommand(tc->makeCommand(bc->environment()));
+    pp->setWorkingDirectory(bc->buildDirectory());
     Environment env = bc->environment();
     Environment::setupEnglishOutput(&env);
     pp->setEnvironment(env);
-    const QString innerQuoted = QtcProcess::quoteArg(dirPath);
-    const QString outerQuoted = QtcProcess::quoteArg("INSTALL_ROOT=" + innerQuoted);
-    pp->setArguments(outerQuoted + " install");
+    pp->setCommandLine(cmd);
 
-    pp->resolveAll();
     setOutputParser(new GnuMakeParser());
     IOutputParser *parser = target()->kit()->createOutputParser();
     if (parser)
@@ -90,24 +94,24 @@ bool AndroidPackageInstallationStep::init(QList<const BuildStep *> &earlierSteps
     m_androidDirsToClean << dirPath + "/assets";
     m_androidDirsToClean << dirPath + "/libs";
 
-    return AbstractProcessStep::init(earlierSteps);
+    return AbstractProcessStep::init();
 }
 
-void AndroidPackageInstallationStep::run(QFutureInterface<bool> &fi)
+void AndroidPackageInstallationStep::doRun()
 {
     QString error;
     foreach (const QString &dir, m_androidDirsToClean) {
-        FileName androidDir = FileName::fromString(dir);
+        FilePath androidDir = FilePath::fromString(dir);
         if (!dir.isEmpty() && androidDir.exists()) {
             emit addOutput(tr("Removing directory %1").arg(dir), OutputFormat::NormalMessage);
             if (!FileUtils::removeRecursively(androidDir, &error)) {
                 emit addOutput(error, OutputFormat::Stderr);
-                reportRunResult(fi, false);
+                emit finished(false);
                 return;
             }
         }
     }
-    AbstractProcessStep::run(fi);
+    AbstractProcessStep::doRun();
 }
 
 BuildStepConfigWidget *AndroidPackageInstallationStep::createConfigWidget()

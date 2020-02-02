@@ -25,11 +25,11 @@
 
 #include "clangtoolsplugin.h"
 
-#include "clangtoolsconfigwidget.h"
+#include "clangtool.h"
 #include "clangtoolsconstants.h"
-#include "clangtoolsprojectsettingswidget.h"
-#include "clangtidyclazytool.h"
 #include "clangtoolsprojectsettings.h"
+#include "clangtoolsprojectsettingswidget.h"
+#include "settingswidget.h"
 
 #ifdef WITH_TESTS
 #include "clangtoolspreconfiguredsessiontests.h"
@@ -61,54 +61,40 @@
 #include <QMessageBox>
 #include <QMenu>
 
-#include <QtPlugin>
-
+using namespace Core;
 using namespace ProjectExplorer;
 
 namespace ClangTools {
 namespace Internal {
 
-class ClangToolsOptionsPage : public Core::IOptionsPage
+static ProjectPanelFactory *m_projectPanelFactoryInstance = nullptr;
+
+ProjectPanelFactory *projectPanelFactory()
+{
+    return m_projectPanelFactoryInstance;
+}
+
+class ClangToolsOptionsPage : public IOptionsPage
 {
 public:
-    explicit ClangToolsOptionsPage()
+    ClangToolsOptionsPage()
     {
-        setId("Analyzer.ClangTools.Settings");
+        setId(Constants::SETTINGS_PAGE_ID);
         setDisplayName(QCoreApplication::translate(
                            "ClangTools::Internal::ClangToolsOptionsPage",
                            "Clang Tools"));
         setCategory("T.Analyzer");
         setDisplayCategory(QCoreApplication::translate("Analyzer", "Analyzer"));
-        setCategoryIcon(Analyzer::Icons::SETTINGSCATEGORY_ANALYZER);
+        setCategoryIconPath(Analyzer::Icons::SETTINGSCATEGORY_ANALYZER);
+        setWidgetCreator([] { return new SettingsWidget; });
     }
-
-    QWidget *widget() override
-    {
-        if (!m_widget)
-            m_widget = new ClangToolsConfigWidget(ClangToolsSettings::instance());
-        return m_widget;
-    }
-
-    void apply() override
-    {
-        ClangToolsSettings::instance()->writeSettings();
-    }
-
-    void finish() override
-    {
-        delete m_widget;
-    }
-
-private:
-    QPointer<QWidget> m_widget;
 };
 
 class ClangToolsPluginPrivate
 {
 public:
-    ClangTidyClazyTool clangTidyClazyTool;
+    ClangTool clangTool;
     ClangToolsOptionsPage optionsPage;
-    ClangToolsProjectSettingsManager settingsManager;
 };
 
 ClangToolsPlugin::~ClangToolsPlugin()
@@ -118,13 +104,22 @@ ClangToolsPlugin::~ClangToolsPlugin()
 
 bool ClangToolsPlugin::initialize(const QStringList &arguments, QString *errorString)
 {
-    Q_UNUSED(arguments);
-    Q_UNUSED(errorString);
+    Q_UNUSED(arguments)
+    Q_UNUSED(errorString)
+
+    // Import tidy/clazy diagnostic configs from CppTools now
+    // instead of at opening time of the settings page
+    ClangToolsSettings::instance();
 
     d = new ClangToolsPluginPrivate;
 
-    auto panelFactory = new ProjectPanelFactory();
+    ActionManager::registerAction(d->clangTool.startAction(), Constants::RUN_ON_PROJECT);
+    ActionManager::registerAction(d->clangTool.startOnCurrentFileAction(),
+                                  Constants::RUN_ON_CURRENT_FILE);
+
+    auto panelFactory = m_projectPanelFactoryInstance = new ProjectPanelFactory;
     panelFactory->setPriority(100);
+    panelFactory->setId(Constants::PROJECT_PANEL_ID);
     panelFactory->setDisplayName(tr("Clang Tools"));
     panelFactory->setCreateWidgetFunction([](Project *project) { return new ProjectSettingsWidget(project); });
     ProjectPanelFactory::registerFactory(panelFactory);
@@ -132,9 +127,9 @@ bool ClangToolsPlugin::initialize(const QStringList &arguments, QString *errorSt
     return true;
 }
 
-QList<QObject *> ClangToolsPlugin::createTestObjects() const
+QVector<QObject *> ClangToolsPlugin::createTestObjects() const
 {
-    QList<QObject *> tests;
+    QVector<QObject *> tests;
 #ifdef WITH_TESTS
     tests << new PreconfiguredSessionTests;
     tests << new ClangToolsUnitTests;

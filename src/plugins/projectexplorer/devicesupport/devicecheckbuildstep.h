@@ -30,17 +30,15 @@
 
 namespace ProjectExplorer {
 
-class BuildStepList;
-
 class PROJECTEXPLORER_EXPORT DeviceCheckBuildStep : public BuildStep
 {
     Q_OBJECT
+
 public:
-    explicit DeviceCheckBuildStep(BuildStepList *bsl);
+    DeviceCheckBuildStep(BuildStepList *bsl, Core::Id id);
 
-    bool init(QList<const BuildStep *> &earlierSteps) override;
-
-    void run(QFutureInterface<bool> &fi) override;
+    bool init() override;
+    void doRun() override;
 
     static Core::Id stepId();
     static QString displayName();

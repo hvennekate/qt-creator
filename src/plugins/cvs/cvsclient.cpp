@@ -73,16 +73,11 @@ QStringList CvsDiffConfig::arguments() const
     return args;
 }
 
-CvsClient::CvsClient() : VcsBaseClient(new CvsSettings)
+CvsClient::CvsClient(CvsSettings *settings) : VcsBaseClient(settings)
 {
-    setDiffConfigCreator([this](QToolBar *toolBar) {
-        return new CvsDiffConfig(settings(), toolBar);
+    setDiffConfigCreator([settings](QToolBar *toolBar) {
+        return new CvsDiffConfig(*settings, toolBar);
     });
-}
-
-CvsSettings &CvsClient::settings() const
-{
-    return static_cast<CvsSettings &>(VcsBaseClient::settings());
 }
 
 Core::Id CvsClient::vcsEditorKind(VcsCommandTag cmd) const

@@ -67,9 +67,10 @@ void SshKeyDeployer::deployPublicKey(const SshConnectionParameters &sshParams,
             this, &SshKeyDeployer::handleConnectionFailure);
     connect(&d->deployProcess, &SshRemoteProcessRunner::processClosed,
             this, &SshKeyDeployer::handleKeyUploadFinished);
-    const QByteArray command = "test -d .ssh "
-        "|| mkdir .ssh && chmod 0700 .ssh && echo '"
-        + reader.data() + "' >> .ssh/authorized_keys && chmod 0600 .ssh/authorized_keys";
+    const QString command = "test -d .ssh "
+        "|| mkdir -p ~/.ssh && chmod 0700 .ssh && echo '"
+            + QString::fromLocal8Bit(reader.data())
+            + "' >> .ssh/authorized_keys && chmod 0600 .ssh/authorized_keys";
     d->deployProcess.run(command, sshParams);
 }
 
@@ -79,19 +80,18 @@ void SshKeyDeployer::handleConnectionFailure()
     emit error(tr("Connection failed: %1").arg(d->deployProcess.lastConnectionErrorString()));
 }
 
-void SshKeyDeployer::handleKeyUploadFinished(int exitStatus)
+void SshKeyDeployer::handleKeyUploadFinished()
 {
-    Q_ASSERT(exitStatus == SshRemoteProcess::FailedToStart
-        || exitStatus == SshRemoteProcess::CrashExit
-        || exitStatus == SshRemoteProcess::NormalExit);
-
     const int exitCode = d->deployProcess.processExitCode();
     const QString errorMsg = d->deployProcess.processErrorString();
     cleanup();
-    if (exitStatus == SshRemoteProcess::NormalExit && exitCode == 0)
+    if (errorMsg.isEmpty() && exitCode == 0) {
         emit finishedSuccessfully();
-    else
-        emit error(tr("Key deployment failed: %1.").arg(errorMsg));
+    } else {
+        emit error(tr("Key deployment failed: %1.").arg(errorMsg.isEmpty()
+                        ? QString::fromUtf8(d->deployProcess.readAllStandardError())
+                        : errorMsg));
+    }
 }
 
 void SshKeyDeployer::stopDeployment()
@@ -101,7 +101,7 @@ void SshKeyDeployer::stopDeployment()
 
 void SshKeyDeployer::cleanup()
 {
-    disconnect(&d->deployProcess, 0, this, 0);
+    disconnect(&d->deployProcess, nullptr, this, nullptr);
 }
 
 } // namespace RemoteLinux

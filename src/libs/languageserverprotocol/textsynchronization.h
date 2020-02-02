@@ -83,7 +83,7 @@ public:
     void setTextDocument(const VersionedTextDocumentIdentifier &textDocument)
     { insert(textDocumentKey, textDocument); }
 
-    class TextDocumentContentChangeEvent : public JsonObject
+    class LANGUAGESERVERPROTOCOL_EXPORT TextDocumentContentChangeEvent : public JsonObject
     {
         /*
          * An event describing a change to a text document. If range and rangeLength are omitted
@@ -165,7 +165,7 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT WillSaveWaitUntilTextDocumentRequest : public Request<
-        LanguageClientArray<TextEdit>, LanguageClientNull, WillSaveTextDocumentParams>
+        LanguageClientArray<TextEdit>, std::nullptr_t, WillSaveTextDocumentParams>
 {
 public:
     WillSaveWaitUntilTextDocumentRequest(

@@ -23,11 +23,15 @@
 #
 ############################################################################
 
+firstStart = True
+
 def startCreatorVerifyingClang(useClang):
+    global firstStart
     try:
         # start Qt Creator with / without enabled ClangCodeModel plugin (without modifying settings)
         loadOrNoLoad = '-load' if useClang else '-noload'
-        startQC([loadOrNoLoad, 'ClangCodeModel'])
+        startQC([loadOrNoLoad, 'ClangCodeModel'], closeLinkToQt=firstStart, cancelTour=firstStart)
+        firstStart = False
     except RuntimeError:
         t, v = sys.exc_info()[:2]
         strv = str(v)
@@ -49,8 +53,7 @@ def startCreatorVerifyingClang(useClang):
 
 def __openCodeModelOptions__():
     invokeMenuItem("Tools", "Options...")
-    waitForObjectItem(":Options_QListView", "C++")
-    clickItem(":Options_QListView", "C++", 14, 15, 0, Qt.LeftButton)
+    mouseClick(waitForObjectItem(":Options_QListView", "C++"))
     clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Code Model")
 
 def getCodeModelString(useClang):
@@ -61,6 +64,6 @@ def getCodeModelString(useClang):
 
 def checkCodeModelSettings(useClang):
     __openCodeModelOptions__()
-    test.verify(verifyChecked("{name='ignorePCHCheckBox' type='QCheckBox' visible='1'}"),
-                "Verifying whether 'Ignore pre-compiled headers' is checked by default.")
+    test.log("Verifying whether 'Ignore pre-compiled headers' is unchecked by default.")
+    verifyChecked("{name='ignorePCHCheckBox' type='QCheckBox' visible='1'}", False)
     clickButton(waitForObject(":Options.OK_QPushButton"))

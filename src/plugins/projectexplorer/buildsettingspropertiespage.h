@@ -52,7 +52,6 @@ public:
 
     void clearWidgets();
     void addSubWidget(NamedWidget *widget);
-    QList<NamedWidget *> subWidgets() const;
 
 private:
     void updateBuildSettings();
@@ -63,8 +62,8 @@ private:
 
     void updateActiveConfiguration();
 
-    void createConfiguration(BuildInfo *info);
-    void cloneConfiguration(BuildConfiguration *toClone);
+    void createConfiguration(const BuildInfo &info);
+    void cloneConfiguration();
     void deleteConfiguration(BuildConfiguration *toDelete);
     QString uniqueName(const QString &name);
 
@@ -74,13 +73,13 @@ private:
     QPushButton *m_addButton = nullptr;
     QPushButton *m_removeButton = nullptr;
     QPushButton *m_renameButton = nullptr;
+    QPushButton *m_cloneButton = nullptr;
     QPushButton *m_makeActiveButton = nullptr;
     QComboBox *m_buildConfigurationComboBox = nullptr;
     QMenu *m_addButtonMenu = nullptr;
 
     QList<NamedWidget *> m_subWidgets;
     QList<QLabel *> m_labels;
-    QList<BuildInfo *> m_buildInfoList;
 };
 
 } // namespace Internal

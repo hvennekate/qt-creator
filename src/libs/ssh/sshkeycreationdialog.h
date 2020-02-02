@@ -30,7 +30,6 @@
 #include <QDialog>
 
 namespace QSsh {
-class SshKeyGenerator;
 
 namespace Ui { class SshKeyCreationDialog; }
 
@@ -38,7 +37,7 @@ class QSSH_EXPORT SshKeyCreationDialog : public QDialog
 {
     Q_OBJECT
 public:
-    SshKeyCreationDialog(QWidget *parent = 0);
+    SshKeyCreationDialog(QWidget *parent = nullptr);
     ~SshKeyCreationDialog();
 
     QString privateKeyFilePath() const;
@@ -49,11 +48,9 @@ private:
     void generateKeys();
     void handleBrowseButtonClicked();
     void setPrivateKeyFile(const QString &filePath);
-    void saveKeys();
-    bool userForbidsOverwriting();
+    void showError(const QString &details);
 
 private:
-    SshKeyGenerator *m_keyGenerator;
     Ui::SshKeyCreationDialog *m_ui;
 };
 

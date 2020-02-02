@@ -31,8 +31,7 @@ def main():
         if not startedWithoutPluginError():
             return
         invokeMenuItem("Tools", "Options...")
-        waitForObjectItem(":Options_QListView", "Environment")
-        clickItem(":Options_QListView", "Environment", 14, 15, 0, Qt.LeftButton)
+        mouseClick(waitForObjectItem(":Options_QListView", "Environment"))
         clickOnTab(":Options.qt_tabwidget_tabbar_QTabBar", "Interface")
         languageName = testData.field(lang, "language")
         if "%1" in languageName:
@@ -46,7 +45,7 @@ def main():
         invokeMenuItem("File", "Exit")
         waitForCleanShutdown()
         snooze(4) # wait for complete unloading of Creator
-        startQC()
+        startQC(closeLinkToQt=False, cancelTour=False)
         try:
             # Use Locator for menu items which wouldn't work on macOS
             exitCommand = testData.field(lang, "Exit")

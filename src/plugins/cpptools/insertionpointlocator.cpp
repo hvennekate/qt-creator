@@ -58,17 +58,10 @@ static int ordering(InsertionPointLocator::AccessSpec xsSpec)
 
 struct AccessRange
 {
-    unsigned start;
-    unsigned end;
-    InsertionPointLocator::AccessSpec xsSpec;
-    unsigned colonToken;
-
-    AccessRange()
-        : start(0)
-        , end(0)
-        , xsSpec(InsertionPointLocator::Invalid)
-        , colonToken(0)
-    {}
+    int start = 0;
+    unsigned end = 0;
+    InsertionPointLocator::AccessSpec xsSpec = InsertionPointLocator::Invalid;
+    unsigned colonToken = 0;
 
     AccessRange(unsigned start, unsigned end, InsertionPointLocator::AccessSpec xsSpec, unsigned colonToken)
         : start(start)
@@ -107,7 +100,7 @@ public:
 protected:
     using ASTVisitor::visit;
 
-    bool visit(ClassSpecifierAST *ast)
+    bool visit(ClassSpecifierAST *ast) override
     {
         if (!ast->lbrace_token || !ast->rbrace_token)
             return true;
@@ -126,7 +119,7 @@ protected:
         bool needsSuffix = false;
         findMatch(ranges, _xsSpec, beforeToken, needsLeadingEmptyLine, needsPrefix, needsSuffix);
 
-        unsigned line = 0, column = 0;
+        int line = 0, column = 0;
         getTokenStartPosition(beforeToken, &line, &column);
 
         QString prefix;
@@ -255,15 +248,12 @@ private:
 
 } // end of anonymous namespace
 
-InsertionLocation::InsertionLocation()
-    : m_line(0)
-    , m_column(0)
-{}
+InsertionLocation::InsertionLocation() = default;
 
 InsertionLocation::InsertionLocation(const QString &fileName,
                                      const QString &prefix,
                                      const QString &suffix,
-                                     unsigned line, unsigned column)
+                                     int line, int column)
     : m_fileName(fileName)
     , m_prefix(prefix)
     , m_suffix(suffix)
@@ -323,11 +313,9 @@ class HighestValue
 {
     Key _key;
     Value _value;
-    bool _set;
+    bool _set = false;
 public:
-    HighestValue()
-        : _key(), _set(false)
-    {}
+    HighestValue() = default;
 
     HighestValue(const Key &initialKey, const Value &initialValue)
         : _key(initialKey)
@@ -358,11 +346,11 @@ class FindMethodDefinitionInsertPoint : protected ASTVisitor
     HighestValue<int, unsigned> _bestToken;
 
 public:
-    FindMethodDefinitionInsertPoint(TranslationUnit *translationUnit)
+    explicit FindMethodDefinitionInsertPoint(TranslationUnit *translationUnit)
         : ASTVisitor(translationUnit)
     {}
 
-    void operator()(Symbol *decl, unsigned *line, unsigned *column)
+    void operator()(Symbol *decl, int *line, int *column)
     {
         // default to end of file
         const unsigned lastToken = translationUnit()->ast()->lastToken();
@@ -388,12 +376,12 @@ public:
     }
 
 protected:
-    bool preVisit(AST *ast)
+    bool preVisit(AST *ast) override
     {
         return ast->asNamespace() || ast->asTranslationUnit() || ast->asLinkageBody();
     }
 
-    bool visit(NamespaceAST *ast)
+    bool visit(NamespaceAST *ast) override
     {
         if (_currentDepth >= _namespaceNames.size())
             return false;
@@ -420,15 +408,15 @@ protected:
 class FindFunctionDefinition : protected ASTVisitor
 {
     FunctionDefinitionAST *_result = nullptr;
-    unsigned _line = 0;
-    unsigned _column = 0;
+    int _line = 0;
+    int _column = 0;
 public:
-    FindFunctionDefinition(TranslationUnit *translationUnit)
+    explicit FindFunctionDefinition(TranslationUnit *translationUnit)
         : ASTVisitor(translationUnit)
     {
     }
 
-    FunctionDefinitionAST *operator()(unsigned line, unsigned column)
+    FunctionDefinitionAST *operator()(int line, int column)
     {
         _result = nullptr;
         _line = line;
@@ -438,11 +426,11 @@ public:
     }
 
 protected:
-    bool preVisit(AST *ast)
+    bool preVisit(AST *ast) override
     {
         if (_result)
             return false;
-        unsigned line, column;
+        int line, column;
         translationUnit()->getTokenStartPosition(ast->firstToken(), &line, &column);
         if (line > _line || (line == _line && column > _column))
             return false;
@@ -452,7 +440,7 @@ protected:
         return true;
     }
 
-    bool visit(FunctionDefinitionAST *ast)
+    bool visit(FunctionDefinitionAST *ast) override
     {
         _result = ast;
         return false;
@@ -464,13 +452,13 @@ protected:
 static Declaration *isNonVirtualFunctionDeclaration(Symbol *s)
 {
     if (!s)
-        return 0;
+        return nullptr;
     Declaration *declaration = s->asDeclaration();
     if (!declaration)
-        return 0;
+        return nullptr;
     Function *type = s->type()->asFunctionType();
     if (!type || type->isPureVirtual())
-        return 0;
+        return nullptr;
     return declaration;
 }
 
@@ -485,7 +473,7 @@ static InsertionLocation nextToSurroundingDefinitions(Symbol *declaration,
 
     // find the index of declaration
     int declIndex = -1;
-    for (unsigned i = 0; i < klass->memberCount(); ++i) {
+    for (int i = 0; i < klass->memberCount(); ++i) {
         Symbol *s = klass->memberAt(i);
         if (s == declaration) {
             declIndex = i;
@@ -497,9 +485,9 @@ static InsertionLocation nextToSurroundingDefinitions(Symbol *declaration,
 
     // scan preceding declarations for a function declaration (and see if it is defined)
     SymbolFinder symbolFinder;
-    Function *definitionFunction = 0;
+    Function *definitionFunction = nullptr;
     QString prefix, suffix;
-    Declaration *surroundingFunctionDecl = 0;
+    Declaration *surroundingFunctionDecl = nullptr;
     for (int i = declIndex - 1; i >= 0; --i) {
         Symbol *s = klass->memberAt(i);
         if (s->isGenerated() || !(surroundingFunctionDecl = isNonVirtualFunctionDeclaration(s)))
@@ -512,12 +500,12 @@ static InsertionLocation nextToSurroundingDefinitions(Symbol *declaration,
                 prefix = QLatin1String("\n\n");
                 break;
             }
-            definitionFunction = 0;
+            definitionFunction = nullptr;
         }
     }
     if (!definitionFunction) {
         // try to find one below
-        for (unsigned i = declIndex + 1; i < klass->memberCount(); ++i) {
+        for (int i = declIndex + 1; i < klass->memberCount(); ++i) {
             Symbol *s = klass->memberAt(i);
             surroundingFunctionDecl = isNonVirtualFunctionDeclaration(s);
             if (!surroundingFunctionDecl)
@@ -530,7 +518,7 @@ static InsertionLocation nextToSurroundingDefinitions(Symbol *declaration,
                     suffix = QLatin1String("\n\n");
                     break;
                 }
-                definitionFunction = 0;
+                definitionFunction = nullptr;
             }
         }
     }
@@ -538,7 +526,7 @@ static InsertionLocation nextToSurroundingDefinitions(Symbol *declaration,
     if (!definitionFunction)
         return noResult;
 
-    unsigned line, column;
+    int line, column;
     if (suffix.isEmpty()) {
         Document::Ptr targetDoc = changes.snapshot().document(QString::fromUtf8(definitionFunction->fileName()));
         if (!targetDoc)
@@ -598,7 +586,7 @@ QList<InsertionLocation> InsertionPointLocator::methodDefinition(Symbol *declara
     if (doc.isNull())
         return result;
 
-    unsigned line = 0, column = 0;
+    int line = 0, column = 0;
     FindMethodDefinitionInsertPoint finder(doc->translationUnit());
     finder(declaration, &line, &column);
 

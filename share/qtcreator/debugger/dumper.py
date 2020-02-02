@@ -120,7 +120,8 @@ TypeCodeMemberPointer, \
 TypeCodeFortranString, \
 TypeCodeUnresolvable, \
 TypeCodeBitfield, \
-    = range(0, 15)
+TypeCodeRValueReference, \
+    = range(0, 16)
 
 def isIntegralTypeName(name):
     return name in ('int', 'unsigned int', 'signed int',
@@ -171,6 +172,20 @@ def error(message):
 
 def showException(msg, exType, exValue, exTraceback):
     DumperBase.showException(msg, exType, exValue, exTraceback)
+
+
+class Timer:
+    def __init__(self, d, desc):
+        self.d = d
+        self.desc = desc + '-' + d.currentIName
+
+    def __enter__(self):
+        self.starttime = time.time()
+
+    def __exit__(self, exType, exValue, exTraceBack):
+        elapsed = int(1000 * (time.time() - self.starttime))
+        self.d.timings.append([self.desc, elapsed])
+
 
 class Children:
     def __init__(self, d, numChild = 1, childType = None, childNumChild = None,
@@ -260,6 +275,9 @@ class DumperBase:
         except:
             pass
 
+    def timer(self, desc):
+        return Timer(self, desc)
+
     def __init__(self):
         self.isCdb = False
         self.isGdb = False
@@ -269,6 +287,7 @@ class DumperBase:
         # Later set, or not set:
         self.stringCutOff = 10000
         self.displayStringLimit = 100
+        self.useTimeStamps = False
 
         self.typesReported = {}
         self.typesToReport = {}
@@ -328,6 +347,7 @@ class DumperBase:
         self.showQObjectNames = int(args.get('qobjectnames', '1'))
         self.nativeMixed = int(args.get('nativemixed', '0'))
         self.autoDerefPointers = int(args.get('autoderef', '0'))
+        self.useTimeStamps = int(args.get('timestamps', '0'))
         self.partialVariable = args.get('partialvar', '')
         self.uninitialized = args.get('uninitialized', [])
         self.uninitialized = list(map(lambda x: self.hexdecode(x), self.uninitialized))
@@ -369,12 +389,10 @@ class DumperBase:
 
         self.counts = {}
         self.structPatternCache = {}
-        self.pretimings = {}
         self.timings = []
 
     def resetStats(self):
         # Timing collection
-        self.pretimings = {}
         self.timings = []
         pass
 
@@ -389,21 +407,14 @@ class DumperBase:
         else:
             self.counts[key] = 1
 
-    def preping(self, key):
-        return
-        self.pretimings[key] = time.time()
-
-    def ping(self, key):
-        return
-        elapsed = int(1000 * (time.time() - self.pretimings[key]))
-        self.timings.append([key, elapsed])
-
     def childRange(self):
         if self.currentMaxNumChild is None:
             return xrange(0, self.currentNumChild)
         return xrange(min(self.currentMaxNumChild, self.currentNumChild))
 
     def enterSubItem(self, item):
+        if self.useTimeStamps:
+            item.startTime = time.time()
         if not item.iname:
             item.iname = '%s.%s' % (self.currentIName, item.name)
         if not self.isCli:
@@ -446,6 +457,8 @@ class DumperBase:
                     self.put('value="%s",' % self.currentValue.value)
             except:
                 pass
+            if self.useTimeStamps:
+                self.put('time="%s",' % (time.time() - item.startTime))
             self.put('},')
         else:
             self.indent -= 1
@@ -832,6 +845,14 @@ class DumperBase:
             self.putType('int')
             self.putNumChild(0)
 
+    def putEnumItem(self, name, ival, typish):
+        buf = bytearray(struct.pack('i', ival))
+        val = self.Value(self)
+        val.ldata = bytes(buf)
+        val.type = self.createType(typish)
+        with SubItem(self, name):
+            self.putItem(val)
+
     def putBoolItem(self, name, value):
         with SubItem(self, name):
             self.putValue(value)
@@ -854,8 +875,7 @@ class DumperBase:
             self.putField('keyencoded', key.encoding)
         self.putValue(value.value, value.encoding)
 
-    def putEnumValue(self, value, vals):
-        ival = value.integer()
+    def putEnumValue(self, ival, vals):
         nice = vals.get(ival, None)
         display = ('%d' % ival) if nice is None else ('%s (%d)' % (nice, ival))
         self.putValue(display)
@@ -1064,7 +1084,7 @@ class DumperBase:
 
         reslist = []
         for item in res.get('variables', {}):
-            if not 'iname' in item:
+            if 'iname' not in item:
                 item['iname'] = '.' + item.get('name')
             reslist.append(self.variablesToMi(item, 'local'))
 
@@ -1103,7 +1123,8 @@ class DumperBase:
     def putType(self, typish, priority = 0):
         # Higher priority values override lower ones.
         if priority >= self.currentType.priority:
-            if isinstance(typish, str):
+            types = (str) if sys.version_info[0] >= 3 else (str, unicode)
+            if isinstance(typish, types):
                 self.currentType.value = typish
             else:
                 self.currentType.value = typish.name
@@ -1215,12 +1236,28 @@ class DumperBase:
         ns = self.qtNamespace()
         if len(ns) > 0 and typeName.startswith(ns):
             typeName = typeName[len(ns):]
-        pos = typeName.find('<')
-        # FIXME: make it recognize  foo<A>::bar<B>::iterator?
-        while pos != -1:
-            pos1 = typeName.rfind('>', pos)
-            typeName = typeName[0:pos] + typeName[pos1+1:]
-            pos = typeName.find('<')
+        # warn( 'stripping %s' % typeName )
+        lvl = 0
+        pos = None
+        stripChunks = []
+        sz = len(typeName)
+        for index in range(0, sz):
+            s = typeName[index]
+            if s == '<':
+                lvl += 1
+                if lvl == 1:
+                    pos = index
+                continue
+            elif s == '>':
+                lvl -= 1
+                if lvl < 0 :
+                    error("Unbalanced '<' in type, @index %d" % index)
+                if lvl == 0:
+                    stripChunks.append((pos, index+1))
+        if lvl != 0:
+            error("unbalanced at end of type name")
+        for (f, l) in reversed(stripChunks):
+            typeName = typeName[:f] + typeName[l:]
         return typeName
 
     def tryPutPrettyItem(self, typeName, value):
@@ -1338,9 +1375,8 @@ class DumperBase:
         return False
 
     def putFormattedPointer(self, value):
-        self.preping('formattedPointer')
+        #with self.timer('formattedPointer'):
         self.putFormattedPointerX(value)
-        self.ping('formattedPointer')
 
     def putDerefedPointer(self, value):
         derefValue = value.dereference()
@@ -1704,15 +1740,13 @@ class DumperBase:
         metaObjectPtr = 0
         if not metaObjectPtr:
             # measured: 3 ms (example had one level of inheritance)
-            self.preping('metaObjectType-' + self.currentIName)
+            #with self.timer('metaObjectType-' + self.currentIName):
             metaObjectPtr = extractStaticMetaObjectPtrFromType(typeobj)
-            self.ping('metaObjectType-' + self.currentIName)
 
         if not metaObjectPtr:
             # measured: 200 ms (example had one level of inheritance)
-            self.preping('metaObjectCall-' + self.currentIName)
+            #with self.timer('metaObjectCall-' + self.currentIName):
             metaObjectPtr = extractMetaObjectPtrFromAddress()
-            self.ping('metaObjectCall-' + self.currentIName)
 
         #if metaObjectPtr:
         #    self.bump('foundMetaObject')
@@ -1880,10 +1914,14 @@ class DumperBase:
 
         if qobjectPtr:
             qobjectType = self.createType('QObject')
-            qobjectPtrType = self.createType('QObject') # FIXME.
             with SubItem(self, '[parent]'):
                 self.putField('sortgroup', 9)
-                self.putItem(self.createValue(parentPtr, qobjectPtrType))
+                if parentPtr:
+                    self.putItem(self.createValue(parentPtr, qobjectType))
+                else:
+                    self.putValue('0x0')
+                    self.putType('QObject *')
+                    self.putNumChild(0)
             with SubItem(self, '[children]'):
                 self.putField('sortgroup', 8)
                 base = self.extractPointer(dd + 3 * ptrSize) # It's a QList<QObject *>
@@ -1959,14 +1997,16 @@ class DumperBase:
                                 with Children(self):
                                     self.putQObjectGutsHelper(0, 0, -1, metaObjectPtr, 'QMetaObject')
 
-                        with SubItem(self, '[connections]'):
+                        if False:
+                          with SubItem(self, '[connections]'):
                             if connectionListsPtr:
                                 typeName = '@QObjectConnectionListVector'
                                 self.putItem(self.createValue(connectionListsPtr, typeName))
                             else:
                                 self.putItemCount(0)
 
-                        with SubItem(self, '[signals]'):
+                        if False:
+                          with SubItem(self, '[signals]'):
                             self.putItemCount(signalCount)
                             if self.isExpanded():
                                 with Children(self):
@@ -2355,7 +2395,7 @@ class DumperBase:
 
     def handleLocals(self, variables):
         #warn('VARIABLES: %s' % variables)
-        self.preping('locals')
+        #with self.timer('locals'):
         shadowed = {}
         for value in variables:
             if value.name == 'argv':
@@ -2375,20 +2415,17 @@ class DumperBase:
             # A 'normal' local variable or parameter.
             iname = value.iname if hasattr(value, 'iname') else 'local.' + name
             with TopLevelItem(self, iname):
-                self.preping('all-' + iname)
+                #with self.timer('all-' + iname):
                 self.putField('iname', iname)
                 self.putField('name', name)
                 self.putItem(value)
-                self.ping('all-' + iname)
-        self.ping('locals')
 
     def handleWatches(self, args):
-        self.preping('watches')
+        #with self.timer('watches'):
         for watcher in args.get('watchers', []):
             iname = watcher['iname']
             exp = self.hexdecode(watcher['exp'])
             self.handleWatch(exp, exp, iname)
-        self.ping('watches')
 
     def handleWatch(self, origexp, exp, iname):
         exp = str(exp).strip()
@@ -2697,9 +2734,8 @@ class DumperBase:
                     self.putSubItem(i, val)
 
     def putItem(self, value):
-        self.preping('putItem')
+        #with self.timer('putItem'):
         self.putItemX(value)
-        self.ping('putItem')
 
     def putItemX(self, value):
         #warn('PUT ITEM: %s' % value.stringify())
@@ -2783,7 +2819,7 @@ class DumperBase:
             self.putType(typeobj.name)
             return
 
-        if typeobj.code == TypeCodeReference:
+        if typeobj.code in (TypeCodeReference, TypeCodeRValueReference):
             #warn('REFERENCE VALUE: %s' % value)
             val = value.dereference()
             if val.laddress != 0:
@@ -2800,8 +2836,8 @@ class DumperBase:
             return
 
         if typeobj.code == TypeCodeFortranString:
-            data = self.value.data()
-            self.putValue(data, 'latin1', 1)
+            self.putValue(self.hexencode(value.data()), 'latin1')
+            self.putNumChild(0)
             self.putType(typeobj)
 
         if typeName.endswith('[]'):
@@ -2831,9 +2867,8 @@ class DumperBase:
         self.putEmptyValue()
         #warn('STRUCT GUTS: %s  ADDRESS: 0x%x ' % (value.name, value.address()))
         if self.showQObjectNames:
-            self.preping(self.currentIName)
+            #with self.timer(self.currentIName):
             self.putQObjectNameValue(value)
-            self.ping(self.currentIName)
         if self.isExpanded():
             self.putField('sortable', 1)
             with Children(self, 1, childType=None):
@@ -2930,8 +2965,8 @@ class DumperBase:
                     % (self.name, self.type.name, self.lbitsize, self.lbitpos,
                        self.dumper.hexencode(self.ldata), addr)
 
-        def displayEnum(self, form='%d'):
-            intval = self.integer()
+        def displayEnum(self, form='%d', bitsize=None):
+            intval = self.integer(bitsize)
             dd = self.type.typeData().enumDisplay
             if dd is None:
                 return str(intval)
@@ -2943,8 +2978,6 @@ class DumperBase:
                 return str(simple)
             if self.ldisplay is not None:
                 return self.ldisplay
-            if self.type.code == TypeCodeEnum:
-                return self.displayEnum()
             #if self.ldata is not None:
             #    if sys.version_info[0] == 2 and isinstance(self.ldata, buffer):
             #        return bytes(self.ldata).encode('hex')
@@ -2958,7 +2991,7 @@ class DumperBase:
                 return self.detypedef().pointer()
             return self.extractInteger(self.dumper.ptrSize() * 8, True)
 
-        def integer(self):
+        def integer(self, bitsize=None):
             if self.type.code == TypeCodeTypedef:
                 return self.detypedef().integer()
             elif self.type.code == TypeCodeBitfield:
@@ -2967,7 +3000,8 @@ class DumperBase:
             unsigned = self.type.name == 'unsigned' \
                     or self.type.name.startswith('unsigned ') \
                     or self.type.name.find(' unsigned ') != -1
-            bitsize = self.type.bitsize()
+            if bitsize is None:
+                bitsize = self.type.bitsize()
             return self.extractInteger(bitsize, unsigned)
 
         def floatingPoint(self):
@@ -3019,6 +3053,8 @@ class DumperBase:
 
         def value(self):
             if self.type is not None:
+                if self.type.code == TypeCodeEnum:
+                    return self.displayEnum()
                 if self.type.code == TypeCodeTypedef:
                     return self.detypedef().value()
                 if self.type.code == TypeCodeIntegral:
@@ -3027,8 +3063,6 @@ class DumperBase:
                     return self.integer()
                 if self.type.code == TypeCodeFloat:
                     return self.floatingPoint()
-                if self.type.code == TypeCodeTypedef:
-                    return self.cast(self.type.ltarget).value()
                 if self.type.code == TypeCodePointer:
                     return self.pointer()
             return None
@@ -3040,7 +3074,7 @@ class DumperBase:
             self.check()
             if self.type.code == TypeCodeTypedef:
                 return self.findMemberByName(self.detypedef())
-            if self.type.code in (TypeCodePointer, TypeCodeReference):
+            if self.type.code in (TypeCodePointer, TypeCodeReference, TypeCodeRValueReference):
                 res = self.dereference().findMemberByName(name)
                 if res is not None:
                     return res
@@ -3114,7 +3148,7 @@ class DumperBase:
 
             if self.type.code == TypeCodeTypedef:
                 return self.cast(self.type.ltarget).extractField(field)
-            if self.type.code == TypeCodeReference:
+            if self.type.code in (TypeCodeReference, TypeCodeRValueReference):
                 return self.dereference().extractField(field)
             #warn('FIELD: %s ' % field)
             val = self.dumper.Value(self.dumper)
@@ -3159,7 +3193,7 @@ class DumperBase:
             else:
                 self.dumper.check(False)
 
-            if fieldType.code == TypeCodeReference:
+            if fieldType.code in (TypeCodeReference, TypeCodeRValueReference):
                 if val.laddress is not None:
                     val = self.dumper.createReferenceValue(val.laddress, fieldType.ltarget)
                     val.name = field.name
@@ -3228,7 +3262,7 @@ class DumperBase:
             if self.type.code == TypeCodeTypedef:
                 return self.detypedef().dereference()
             val = self.dumper.Value(self.dumper)
-            if self.type.code == TypeCodeReference:
+            if self.type.code in (TypeCodeReference, TypeCodeRValueReference):
                 val.summary = self.summary
                 if self.nativeValue is None:
                     val.laddress = self.pointer()
@@ -3315,7 +3349,7 @@ class DumperBase:
             error('CANNOT CONVERT TO BYTES: %s' % self)
 
         def extractInteger(self, bitsize, unsigned):
-            self.dumper.preping('extractInt')
+            #with self.dumper.timer('extractInt'):
             self.check()
             if bitsize > 32:
                 size = 8
@@ -3333,23 +3367,21 @@ class DumperBase:
             res = struct.unpack_from(self.dumper.packCode + code, rawBytes, 0)[0]
             #warn('Extract: Code: %s Bytes: %s Bitsize: %s Size: %s'
             #    % (self.dumper.packCode + code, self.dumper.hexencode(rawBytes), bitsize, size))
-            self.dumper.ping('extractInt')
             return res
 
         def extractSomething(self, code, bitsize):
-            self.dumper.preping('extractSomething')
+            #with self.dumper.timer('extractSomething'):
             self.check()
             size = (bitsize + 7) >> 3
             rawBytes = self.data(size)
             res = struct.unpack_from(self.dumper.packCode + code, rawBytes, 0)[0]
-            self.dumper.ping('extractSomething')
             return res
 
         def to(self, pattern):
             return self.split(pattern)[0]
 
         def split(self, pattern):
-            self.dumper.preping('split')
+            #with self.dumper.timer('split'):
             #warn('EXTRACT STRUCT FROM: %s' % self.type)
             (pp, size, fields) = self.dumper.describeStruct(pattern)
             #warn('SIZE: %s ' % size)
@@ -3368,8 +3400,7 @@ class DumperBase:
                     return res
                 return thing
             if len(fields) != len(result):
-                error('STRUCT ERROR: %s %s' (fields, result))
-            self.dumper.ping('split')
+                error('STRUCT ERROR: %s %s' % (fields, result))
             return tuple(map(structFixer, fields, result))
 
     def checkPointer(self, p, align = 1):
@@ -3378,6 +3409,19 @@ class DumperBase:
 
     def type(self, typeId):
         return self.typeData.get(typeId)
+
+    def splitArrayType(self, type_name):
+        #  "foo[2][3][4]" ->  ("foo", "[3][4]", 2)
+        pos1 = len(type_name)
+        # In case there are more dimensions we need the inner one.
+        while True:
+            pos1 = type_name.rfind('[', 0, pos1 - 1)
+            pos2 = type_name.find(']', pos1)
+            if type_name[pos1 - 1] != ']':
+                break
+
+        item_count = type_name[pos1+1:pos2]
+        return (type_name[0:pos1].strip(), type_name[pos2+1:].strip(), int(item_count))
 
     def registerType(self, typeId, tdata):
         #warn('REGISTER TYPE: %s' % typeId)
@@ -3499,9 +3543,8 @@ class DumperBase:
             # FIXME: That buys some performance at the cost of a fail
             # of Gdb13393 dumper test.
             #return self
-            self.dumper.preping('dynamicType %s 0x%s' % (self.name, address))
+            #with self.dumper.timer('dynamicType %s 0x%s' % (self.name, address)):
             dynTypeName = self.dynamicTypeName(address)
-            self.dumper.ping('dynamicType %s 0x%s' % (self.name, address))
             if dynTypeName is not None:
                 return self.dumper.createType(dynTypeName)
             return self
@@ -3573,7 +3616,7 @@ class DumperBase:
                     # Crude approximation.
                     return 8 if self.dumper.isWindowsTarget() else self.dumper.ptrSize()
                 return self.size()
-            if tdata.code in (TypeCodePointer, TypeCodeReference):
+            if tdata.code in (TypeCodePointer, TypeCodeReference, TypeCodeRValueReference):
                 return self.dumper.ptrSize()
             if tdata.lalignment is not None:
                 #if isinstance(tdata.lalignment, function): # Does not work that way.
@@ -3584,16 +3627,6 @@ class DumperBase:
 
         def pointer(self):
             return self.dumper.createPointerType(self)
-
-        def splitArrayType(self):
-            # -> (inner type, count)
-            if not self.code == TypeCodeArray:
-                error('Not an array')
-            s = self.name
-            pos1 = s.rfind('[')
-            pos2 = s.find(']', pos1)
-            itemCount = s[pos1+1:pos2]
-            return (self.dumper.createType(s[0:pos1].strip()), int(s[pos1+1:pos2]))
 
         def target(self):
             return self.typeData().ltarget
@@ -3613,9 +3646,6 @@ class DumperBase:
         def bitsize(self):
             if self.lbitsize is not None:
                 return self.lbitsize
-            if self.code == TypeCodeArray:
-                (innerType, itemCount) = self.splitArrayType()
-                return itemCount * innerType.bitsize()
             error('DONT KNOW SIZE: %s' % self)
 
         def isMovableType(self):
@@ -3743,19 +3773,42 @@ class DumperBase:
         self.registerType(typeId, tdata)
         return self.Type(self, typeId)
 
+    def createRValueReferenceType(self, targetType):
+        if not isinstance(targetType, self.Type):
+            error('Expected type in createRValueReferenceType(), got %s'
+                % type(targetType))
+        typeId = targetType.typeId + ' &&'
+        tdata = self.TypeData(self)
+        tdata.name = targetType.name + ' &&'
+        tdata.typeId = typeId
+        tdata.code = TypeCodeRValueReference
+        tdata.ltarget = targetType
+        tdata.lbitsize = None
+        self.registerType(typeId, tdata)
+        return self.Type(self, typeId)
+
     def createArrayType(self, targetType, count):
         if not isinstance(targetType, self.Type):
             error('Expected type in createArrayType(), got %s'
                 % type(targetType))
         targetTypeId = targetType.typeId
-        typeId = '%s[%d]' % (targetTypeId, count)
+
+        if targetTypeId.endswith(']'):
+            (prefix, suffix, inner_count) = self.splitArrayType(targetTypeId)
+            type_id = '%s[%d][%d]%s' % (prefix, count, inner_count, suffix)
+            type_name = type_id
+        else:
+            type_id = '%s[%d]' % (targetTypeId, count)
+            type_name = '%s[%d]' % (targetType.name, count)
+
         tdata = self.TypeData(self)
-        tdata.name = '%s[%d]' % (targetType.name, count)
-        tdata.typeId = typeId
+        tdata.name = type_name
+        tdata.typeId = type_id
         tdata.code = TypeCodeArray
         tdata.ltarget = targetType
-        self.registerType(typeId, tdata)
-        return self.Type(self, typeId)
+        tdata.lbitsize = targetType.lbitsize * count
+        self.registerType(type_id, tdata)
+        return self.Type(self, type_id)
 
     def createBitfieldType(self, targetType, bitsize):
         if not isinstance(targetType, self.Type):
@@ -3796,13 +3849,6 @@ class DumperBase:
             #typish.check()
             return typish
         if isinstance(typish, str):
-            if typish.endswith(']') and not typish.endswith('[]'):
-                # Array fallback.
-                pos1 = typish.rfind('[')
-                itemType = self.createType(typish[0:pos1].strip())
-                itemCount = int(typish[pos1+1:-1])
-                return self.createArrayType(itemType, itemCount)
-
             def knownSize(tn):
                 if tn[0] == 'Q':
                     if tn in ('QByteArray', 'QString', 'QList', 'QStringList',

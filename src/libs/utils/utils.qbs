@@ -33,7 +33,8 @@ Project {
             cpp.frameworks: ["Foundation", "AppKit"]
         }
 
-        Depends { name: "Qt"; submodules: ["concurrent", "network", "qml", "widgets"] }
+        Depends { name: "Qt"; submodules: ["concurrent", "network", "qml", "widgets", "xml"] }
+        Depends { name: "Qt.macextras"; condition: qbs.targetOS.contains("macos") }
         Depends { name: "app_version_header" }
 
         files: [
@@ -49,6 +50,8 @@ Project {
             "benchmarker.h",
             "buildablehelperlibrary.cpp",
             "buildablehelperlibrary.h",
+            "camelcasecursor.cpp",
+            "camelcasecursor.h",
             "categorysortfiltermodel.cpp",
             "categorysortfiltermodel.h",
             "changeset.cpp",
@@ -65,7 +68,7 @@ Project {
             "completingtextedit.h",
             "consoleprocess.cpp",
             "consoleprocess.h",
-            "consoleprocess_p.h",
+            "cpplanguage_details.h",
             "crumblepath.cpp",
             "crumblepath.h",
             "declarationmacros.h",
@@ -77,6 +80,8 @@ Project {
             "detailswidget.h",
             "differ.cpp",
             "differ.h",
+            "displayname.cpp",
+            "displayname.h",
             "dropsupport.cpp",
             "dropsupport.h",
             "elfreader.cpp",
@@ -122,6 +127,8 @@ Project {
             "functiontraits.h",
             "fuzzymatcher.cpp",
             "fuzzymatcher.h",
+            "globalfilechangeblocker.cpp",
+            "globalfilechangeblocker.h",
             "guard.cpp",
             "guard.h",
             "highlightingitemdelegate.cpp",
@@ -134,23 +141,35 @@ Project {
             "htmldocextractor.h",
             "icon.cpp",
             "icon.h",
+            "infolabel.cpp",
+            "infolabel.h",
             "itemviews.cpp",
             "itemviews.h",
             "json.cpp",
             "json.h",
+            "jsontreeitem.cpp",
+            "jsontreeitem.h",
             "linecolumn.h",
             "link.h",
+            "listmodel.h",
             "listutils.h",
             "macroexpander.cpp",
             "macroexpander.h",
             "mapreduce.h",
+            "namevaluedictionary.cpp",
+            "namevaluedictionary.h",
+            "namevalueitem.cpp",
+            "namevalueitem.h",
+            "namevaluemodel.cpp",
+            "namevaluemodel.h",
+            "namevaluesdialog.cpp",
+            "namevaluesdialog.h",
+            "namevaluevalidator.cpp",
+            "namevaluevalidator.h",
             "navigationtreeview.cpp",
             "navigationtreeview.h",
             "networkaccessmanager.cpp",
             "networkaccessmanager.h",
-            "newclasswidget.cpp",
-            "newclasswidget.h",
-            "newclasswidget.ui",
             "optional.h",
             "../3rdparty/optional/optional.hpp",
             "osspecificaspects.h",
@@ -185,6 +204,8 @@ Project {
             "proxycredentialsdialog.cpp",
             "proxycredentialsdialog.h",
             "proxycredentialsdialog.ui",
+            "qrcparser.cpp",
+            "qrcparser.h",
             "qtcassert.cpp",
             "qtcassert.h",
             "qtcolorbutton.cpp",
@@ -193,7 +214,9 @@ Project {
             "qtcprocess.h",
             "reloadpromptutils.cpp",
             "reloadpromptutils.h",
-            "removefiledialog.cpp", "removefiledialog.h", "removefiledialog.ui",
+            "removefiledialog.cpp",
+            "removefiledialog.h",
+            "removefiledialog.ui",
             "runextensions.cpp",
             "runextensions.h",
             "savedaction.cpp",
@@ -284,27 +307,10 @@ Project {
             prefix: "tooltip/"
             files: [
                 "effects.h",
-                "reuse.h",
                 "tips.cpp",
                 "tips.h",
                 "tooltip.cpp",
                 "tooltip.h",
-            ]
-        }
-
-        Group {
-            name: "WindowsUtils"
-            condition: qbs.targetOS.contains("windows")
-            files: [
-                "consoleprocess_win.cpp",
-            ]
-        }
-
-        Group {
-            name: "ConsoleProcess_unix"
-            condition: qbs.targetOS.contains("unix")
-            files: [
-                "consoleprocess_unix.cpp",
             ]
         }
 
@@ -354,6 +360,27 @@ Project {
                 "mimetypeparser.cpp",
                 "mimetypeparser_p.h",
             ]
+        }
+
+        Group {
+            name: "TouchBar support"
+            prefix: "touchbar/"
+            files: "touchbar.h"
+            Group {
+                name: "TouchBar implementation"
+                condition: qbs.targetOS.contains("macos")
+                files: [
+                    "touchbar_appdelegate_mac_p.h",
+                    "touchbar_mac_p.h",
+                    "touchbar_mac.mm",
+                    "touchbar_appdelegate_mac.mm",
+                ]
+            }
+            Group {
+                name: "TouchBar stub"
+                condition: !qbs.targetOS.contains("macos")
+                files: "touchbar.cpp"
+            }
         }
 
         Export {

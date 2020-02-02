@@ -26,246 +26,140 @@
 #include "clangdiagnosticconfigswidget.h"
 
 #include "cppcodemodelsettings.h"
-#include "cpptools_clangtidychecks.h"
-#include "cpptoolsconstants.h"
-#include "cpptoolsreuse.h"
 #include "ui_clangdiagnosticconfigswidget.h"
 #include "ui_clangbasechecks.h"
-#include "ui_clazychecks.h"
-#include "ui_tidychecks.h"
 
-#include <projectexplorer/selectablefilesmodel.h>
+#include <utils/executeondestruction.h>
+#include <utils/treemodel.h>
 
-#include <utils/algorithm.h>
-#include <utils/qtcassert.h>
-#include <utils/utilsicons.h>
-
-#include <QDebug>
-#include <QDesktopServices>
-#include <QDialogButtonBox>
 #include <QInputDialog>
 #include <QPushButton>
-#include <QUuid>
 
 namespace CppTools {
 
-static constexpr const char CLANG_STATIC_ANALYZER_URL[]
-    = "https://clang-analyzer.llvm.org/available_checks.html";
-
-static void buildTree(ProjectExplorer::Tree *parent,
-                      ProjectExplorer::Tree *current,
-                      const Constants::TidyNode &node)
+class ConfigNode : public Utils::TreeItem
 {
-    current->name = QString::fromUtf8(node.name);
-    current->isDir = node.children.size();
-    if (parent) {
-        current->fullPath = parent->fullPath + current->name;
-        parent->childDirectories.push_back(current);
-    } else {
-        current->fullPath = Utils::FileName::fromString(current->name);
+public:
+    ConfigNode(const ClangDiagnosticConfig &config)
+        : config(config)
+    {}
+
+    QVariant data(int, int role) const override
+    {
+        if (role == Qt::DisplayRole)
+            return config.displayName();
+        return QVariant();
     }
-    current->parent = parent;
-    for (const Constants::TidyNode &nodeChild : node.children)
-        buildTree(current, new ProjectExplorer::Tree, nodeChild);
-}
 
-static bool needsLink(ProjectExplorer::Tree *node) {
-    if (node->name == "clang-analyzer-")
-        return true;
-    return !node->isDir && !node->fullPath.toString().startsWith("clang-analyzer-");
-}
+    ClangDiagnosticConfig config;
+};
 
-class TidyChecksTreeModel final : public ProjectExplorer::SelectableFilesModel
+class GroupNode : public Utils::StaticTreeItem
+{
+public:
+    GroupNode(const QString &text)
+        : Utils::StaticTreeItem(text)
+    {}
+
+    Qt::ItemFlags flags(int) const { return {}; }
+    QVariant data(int column, int role) const
+    {
+        if (role == Qt::ForegroundRole) {
+            // Avoid disabled color.
+            return QApplication::palette().color(QPalette::ColorGroup::Normal,
+                                                 QPalette::ColorRole::Text);
+        }
+        return Utils::StaticTreeItem::data(column, role);
+    }
+};
+
+class ConfigsModel : public Utils::TreeModel<Utils::TreeItem, GroupNode, ConfigNode>
 {
     Q_OBJECT
 
 public:
-    TidyChecksTreeModel()
-        : ProjectExplorer::SelectableFilesModel(nullptr)
+    ConfigsModel(const ClangDiagnosticConfigs &configs)
     {
-        buildTree(nullptr, m_root, Constants::CLANG_TIDY_CHECKS_ROOT);
-    }
+        m_builtinRoot = new GroupNode(tr("Built-in"));
+        m_customRoot = new GroupNode(tr("Custom"));
+        rootItem()->appendChild(m_builtinRoot);
+        rootItem()->appendChild(m_customRoot);
 
-    QString selectedChecks() const
-    {
-        QString checks;
-        collectChecks(m_root, checks);
-        return "-*" + checks;
-    }
-
-    void selectChecks(const QString &checks)
-    {
-        m_root->checked = Qt::Unchecked;
-        propagateDown(index(0, 0, QModelIndex()));
-
-        QStringList checksList = checks.simplified().remove(" ")
-                .split(",", QString::SkipEmptyParts);
-
-        for (QString &check : checksList) {
-            Qt::CheckState state;
-            if (check.startsWith("-")) {
-                check = check.right(check.length() - 1);
-                state = Qt::Unchecked;
-            } else {
-                state = Qt::Checked;
-            }
-            const QModelIndex index = indexForCheck(check);
-            if (!index.isValid())
-                continue;
-            auto *node = static_cast<ProjectExplorer::Tree *>(index.internalPointer());
-            node->checked = state;
-            propagateUp(index);
-            propagateDown(index);
+        for (const ClangDiagnosticConfig &config : configs) {
+            Utils::TreeItem *parent = config.isReadOnly() ? m_builtinRoot : m_customRoot;
+            parent->appendChild(new ConfigNode(config));
         }
     }
 
-    int columnCount(const QModelIndex &/*parent*/) const override
+    int customConfigsCount() const { return m_customRoot->childCount(); }
+    QModelIndex fallbackConfigIndex() const { return m_builtinRoot->lastChild()->index(); }
+
+    ClangDiagnosticConfigs configs() const
     {
-        return 2;
+        ClangDiagnosticConfigs configs;
+        forItemsAtLevel<2>([&configs](const ConfigNode *node) {
+            configs << node->config;
+        });
+        return configs;
     }
 
-    QVariant data(const QModelIndex &fullIndex, int role = Qt::DisplayRole) const final
+    void appendCustomConfig(const ClangDiagnosticConfig &config)
     {
-        if (!fullIndex.isValid() || role == Qt::DecorationRole)
-            return QVariant();
-        QModelIndex index = this->index(fullIndex.row(), 0, fullIndex.parent());
-        auto *node = static_cast<ProjectExplorer::Tree *>(index.internalPointer());
-
-        if (fullIndex.column() == 1) {
-            if (!needsLink(node))
-                return QVariant();
-            switch (role) {
-            case Qt::DisplayRole:
-                return tr("Web Page");
-            case Qt::FontRole: {
-                QFont font = QApplication::font();
-                font.setUnderline(true);
-                return font;
-            }
-            case Qt::ForegroundRole:
-                return QApplication::palette().link().color();
-            case Qt::UserRole: {
-                // 'clang-analyzer-' group
-                if (node->isDir)
-                    return QString::fromUtf8(CLANG_STATIC_ANALYZER_URL);
-                return QString::fromUtf8(Constants::TIDY_DOCUMENTATION_URL_TEMPLATE)
-                        .arg(node->fullPath.toString());
-            }
-            }
-            return QVariant();
-        }
-
-        if (role == Qt::DisplayRole)
-            return node->isDir ? (node->name + "*") : node->name;
-
-        return ProjectExplorer::SelectableFilesModel::data(index, role);
+        m_customRoot->appendChild(new ConfigNode(config));
     }
 
-    void setEnabled(bool enabled)
+    void removeConfig(const Core::Id &id)
     {
-        m_enabled = enabled;
+       ConfigNode *node = itemForConfigId(id);
+       node->parent()->removeChildAt(node->indexInParent());
     }
 
-    bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override
+    ConfigNode *itemForConfigId(const Core::Id &id) const
     {
-        if (role == Qt::CheckStateRole && !m_enabled)
-            return false;
-        return ProjectExplorer::SelectableFilesModel::setData(index, value, role);
+        return findItemAtLevel<2>([id](const ConfigNode *node) {
+            return node->config.id() == id;
+        });
     }
 
 private:
-
-    // TODO: Remove/replace this method after base class refactoring is done.
-    void traverse(const QModelIndex &index,
-                  const std::function<bool(const QModelIndex &)> &visit) const
-    {
-        if (!index.isValid())
-            return;
-
-        if (!visit(index))
-            return;
-
-        if (!hasChildren(index))
-            return;
-
-        const int rows = rowCount(index);
-        const int cols = columnCount(index);
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j)
-                traverse(this->index(i, j, index), visit);
-        }
-    }
-
-    QModelIndex indexForCheck(const QString &check) const {
-        if (check == "*")
-            return index(0, 0, QModelIndex());
-
-        QModelIndex result;
-        traverse(index(0, 0, QModelIndex()), [&](const QModelIndex &index){
-            using ProjectExplorer::Tree;
-            if (result.isValid())
-                return false;
-
-            auto *node = static_cast<Tree *>(index.internalPointer());
-            const QString nodeName = node->fullPath.toString();
-            if ((check.endsWith("*") && nodeName.startsWith(check.left(check.length() - 1)))
-                    || (!node->isDir && nodeName == check)) {
-                result = index;
-                return false;
-            }
-
-            return check.startsWith(nodeName);
-        });
-        return result;
-    }
-
-    static void collectChecks(const ProjectExplorer::Tree *root, QString &checks)
-    {
-        if (root->checked == Qt::Unchecked)
-            return;
-        if (root->checked == Qt::Checked) {
-            checks += "," + root->fullPath.toString();
-            if (root->isDir)
-                checks += "*";
-            return;
-        }
-        for (const ProjectExplorer::Tree *t : root->childDirectories)
-            collectChecks(t, checks);
-    }
-
-    bool m_enabled = true;
+    Utils::TreeItem *m_builtinRoot = nullptr;
+    Utils::TreeItem *m_customRoot = nullptr;
 };
 
-ClangDiagnosticConfigsWidget::ClangDiagnosticConfigsWidget(const Core::Id &configToSelect,
+ClangDiagnosticConfigsWidget::ClangDiagnosticConfigsWidget(const ClangDiagnosticConfigs &configs,
+                                                           const Core::Id &configToSelect,
                                                            QWidget *parent)
     : QWidget(parent)
     , m_ui(new Ui::ClangDiagnosticConfigsWidget)
-    , m_diagnosticConfigsModel(codeModelSettings()->clangCustomDiagnosticConfigs())
-    , m_tidyTreeModel(new TidyChecksTreeModel())
+    , m_configsModel(new ConfigsModel(configs))
 {
     m_ui->setupUi(this);
-    setupTabs();
+    m_ui->configsView->setHeaderHidden(true);
+    m_ui->configsView->setUniformRowHeights(true);
+    m_ui->configsView->setRootIsDecorated(false);
+    m_ui->configsView->setModel(m_configsModel);
+    m_ui->configsView->setCurrentIndex(m_configsModel->itemForConfigId(configToSelect)->index());
+    m_ui->configsView->setItemsExpandable(false);
+    m_ui->configsView->expandAll();
+    connect(m_ui->configsView->selectionModel(),
+            &QItemSelectionModel::currentChanged,
+            this,
+            &ClangDiagnosticConfigsWidget::sync);
 
-    m_selectedConfigIndex = m_diagnosticConfigsModel.indexOfConfig(
-                codeModelSettings()->clangDiagnosticConfigId());
+    m_clangBaseChecks = std::make_unique<CppTools::Ui::ClangBaseChecks>();
+    m_clangBaseChecksWidget = new QWidget();
+    m_clangBaseChecks->setupUi(m_clangBaseChecksWidget);
 
-    connectConfigChooserCurrentIndex();
+    m_ui->tabWidget->addTab(m_clangBaseChecksWidget, tr("Clang Warnings"));
+    m_ui->tabWidget->setCurrentIndex(0);
+
     connect(m_ui->copyButton, &QPushButton::clicked,
             this, &ClangDiagnosticConfigsWidget::onCopyButtonClicked);
+    connect(m_ui->renameButton, &QPushButton::clicked,
+            this, &ClangDiagnosticConfigsWidget::onRenameButtonClicked);
     connect(m_ui->removeButton, &QPushButton::clicked,
             this, &ClangDiagnosticConfigsWidget::onRemoveButtonClicked);
-    connectDiagnosticOptionsChanged();
-
-    connect(m_tidyChecks->checksPrefixesTree, &QTreeView::clicked,
-            [this](const QModelIndex &index) {
-        const QString link = m_tidyTreeModel->data(index, Qt::UserRole).toString();
-        if (link.isEmpty())
-            return;
-
-        QDesktopServices::openUrl(QUrl(link));
-    });
-
-    syncWidgetsToModel(configToSelect);
+    connectClangOnlyOptionsChanged();
 }
 
 ClangDiagnosticConfigsWidget::~ClangDiagnosticConfigsWidget()
@@ -273,97 +167,58 @@ ClangDiagnosticConfigsWidget::~ClangDiagnosticConfigsWidget()
     delete m_ui;
 }
 
-void ClangDiagnosticConfigsWidget::onCurrentConfigChanged(int index)
-{
-    m_selectedConfigIndex = index;
-    syncOtherWidgetsToComboBox();
-}
-
-static ClangDiagnosticConfig createCustomConfig(const ClangDiagnosticConfig &config,
-                                                const QString &displayName)
-{
-    ClangDiagnosticConfig copied = config;
-    copied.setId(Core::Id::fromString(QUuid::createUuid().toString()));
-    copied.setDisplayName(displayName);
-    copied.setIsReadOnly(false);
-
-    return copied;
-}
-
 void ClangDiagnosticConfigsWidget::onCopyButtonClicked()
 {
-    const ClangDiagnosticConfig &config = selectedConfig();
-
-    bool diaglogAccepted = false;
+    const ClangDiagnosticConfig &config = currentConfig();
+    bool dialogAccepted = false;
     const QString newName = QInputDialog::getText(this,
                                                   tr("Copy Diagnostic Configuration"),
                                                   tr("Diagnostic configuration name:"),
                                                   QLineEdit::Normal,
                                                   tr("%1 (Copy)").arg(config.displayName()),
-                                                  &diaglogAccepted);
-    if (diaglogAccepted) {
-        const ClangDiagnosticConfig customConfig = createCustomConfig(config, newName);
-        m_diagnosticConfigsModel.appendOrUpdate(customConfig);
-        emit customConfigsChanged(customConfigs());
+                                                  &dialogAccepted);
+    if (dialogAccepted) {
+        const ClangDiagnosticConfig customConfig
+            = ClangDiagnosticConfigsModel::createCustomConfig(config, newName);
 
-        syncConfigChooserToModel(customConfig.id());
+        m_configsModel->appendCustomConfig(customConfig);
+        m_ui->configsView->setCurrentIndex(
+            m_configsModel->itemForConfigId(customConfig.id())->index());
+        sync();
         m_clangBaseChecks->diagnosticOptionsTextEdit->setFocus();
     }
 }
 
-const ClangDiagnosticConfig &ClangDiagnosticConfigsWidget::selectedConfig() const
+void ClangDiagnosticConfigsWidget::onRenameButtonClicked()
 {
-    return m_diagnosticConfigsModel.at(m_selectedConfigIndex);
+    const ClangDiagnosticConfig &config = currentConfig();
+
+    bool dialogAccepted = false;
+    const QString newName = QInputDialog::getText(this,
+                                                  tr("Rename Diagnostic Configuration"),
+                                                  tr("New Name:"),
+                                                  QLineEdit::Normal,
+                                                  config.displayName(),
+                                                  &dialogAccepted);
+    if (dialogAccepted) {
+        ConfigNode *configNode = m_configsModel->itemForConfigId(config.id());
+        configNode->config.setDisplayName(newName);
+    }
 }
 
-Core::Id ClangDiagnosticConfigsWidget::selectedConfigId() const
+const ClangDiagnosticConfig ClangDiagnosticConfigsWidget::currentConfig() const
 {
-    return selectedConfig().id();
+    Utils::TreeItem *item = m_configsModel->itemForIndex(m_ui->configsView->currentIndex());
+    return static_cast<ConfigNode *>(item)->config;
 }
 
 void ClangDiagnosticConfigsWidget::onRemoveButtonClicked()
 {
-    m_diagnosticConfigsModel.removeConfigWithId(selectedConfigId());
-    emit customConfigsChanged(customConfigs());
-
-    syncConfigChooserToModel();
-}
-
-void ClangDiagnosticConfigsWidget::onClangTidyModeChanged(int index)
-{
-    ClangDiagnosticConfig config = selectedConfig();
-    config.setClangTidyMode(static_cast<ClangDiagnosticConfig::TidyMode>(index));
-    updateConfig(config);
-    syncClangTidyWidgets(config);
-}
-
-void ClangDiagnosticConfigsWidget::onClangTidyTreeChanged()
-{
-    ClangDiagnosticConfig config = selectedConfig();
-    config.setClangTidyChecks(m_tidyTreeModel->selectedChecks());
-    updateConfig(config);
-}
-
-void ClangDiagnosticConfigsWidget::onClazyRadioButtonChanged(bool checked)
-{
-    if (!checked)
-        return;
-
-    QString checks;
-    if (m_clazyChecks->clazyRadioDisabled->isChecked())
-        checks = QString();
-    else if (m_clazyChecks->clazyRadioLevel0->isChecked())
-        checks = "level0";
-    else if (m_clazyChecks->clazyRadioLevel1->isChecked())
-        checks = "level1";
-    else if (m_clazyChecks->clazyRadioLevel2->isChecked())
-        checks = "level2";
-    else if (m_clazyChecks->clazyRadioLevel3->isChecked())
-        checks = "level3";
-
-    ClangDiagnosticConfig config = selectedConfig();
-    config.setClazyChecks(checks);
-    updateConfig(config);
+    const Core::Id configToRemove = currentConfig().id();
+    if (m_configsModel->customConfigsCount() == 1)
+        m_ui->configsView->setCurrentIndex(m_configsModel->fallbackConfigIndex());
+    m_configsModel->removeConfig(configToRemove);
+    sync();
 }
 
 static bool isAcceptedWarningOption(const QString &option)
@@ -402,69 +257,48 @@ static QStringList normalizeDiagnosticInputOptions(const QString &options)
     return options.simplified().split(QLatin1Char(' '), QString::SkipEmptyParts);
 }
 
-void ClangDiagnosticConfigsWidget::onDiagnosticOptionsEdited()
+void ClangDiagnosticConfigsWidget::onClangOnlyOptionsChanged()
 {
-    // Clean up input
+    const bool useBuildSystemWarnings = m_clangBaseChecks->useFlagsFromBuildSystemCheckBox
+                                            ->isChecked();
+
+    // Clean up options input
     const QString diagnosticOptions = m_clangBaseChecks->diagnosticOptionsTextEdit->document()
                                           ->toPlainText();
     const QStringList normalizedOptions = normalizeDiagnosticInputOptions(diagnosticOptions);
 
-    // Validate
+    // Validate options input
     const QString errorMessage = validateDiagnosticOptions(normalizedOptions);
     updateValidityWidgets(errorMessage);
     if (!errorMessage.isEmpty()) {
         // Remember the entered options in case the user will switch back.
-        m_notAcceptedOptions.insert(selectedConfigId(), diagnosticOptions);
+        m_notAcceptedOptions.insert(currentConfig().id(), diagnosticOptions);
         return;
     }
-    m_notAcceptedOptions.remove(selectedConfigId());
+    m_notAcceptedOptions.remove(currentConfig().id());
 
     // Commit valid changes
-    ClangDiagnosticConfig updatedConfig = selectedConfig();
+    ClangDiagnosticConfig updatedConfig = currentConfig();
     updatedConfig.setClangOptions(normalizedOptions);
+    updatedConfig.setUseBuildSystemWarnings(useBuildSystemWarnings);
     updateConfig(updatedConfig);
 }
 
-void ClangDiagnosticConfigsWidget::syncWidgetsToModel(const Core::Id &configToSelect)
+void ClangDiagnosticConfigsWidget::sync()
 {
-    syncConfigChooserToModel(configToSelect);
-    syncOtherWidgetsToComboBox();
-}
-
-void ClangDiagnosticConfigsWidget::syncConfigChooserToModel(const Core::Id &configToSelect)
-{
-    disconnectConfigChooserCurrentIndex();
-
-    m_ui->configChooserList->clear();
-    m_selectedConfigIndex = std::max(std::min(m_selectedConfigIndex,
-                                              m_diagnosticConfigsModel.size() - 1),
-                                     0);
-
-    const int size = m_diagnosticConfigsModel.size();
-    for (int i = 0; i < size; ++i) {
-        const ClangDiagnosticConfig &config = m_diagnosticConfigsModel.at(i);
-        const QString displayName
-                = ClangDiagnosticConfigsModel::displayNameWithBuiltinIndication(config);
-        m_ui->configChooserList->addItem(displayName);
-
-        if (configToSelect == config.id())
-            m_selectedConfigIndex = i;
-    }
-
-    connectConfigChooserCurrentIndex();
-
-    m_ui->configChooserList->setCurrentRow(m_selectedConfigIndex);
-}
-
-void ClangDiagnosticConfigsWidget::syncOtherWidgetsToComboBox()
-{
-    if (isConfigChooserEmpty())
+    if (!m_ui->configsView->currentIndex().isValid())
         return;
 
-    const ClangDiagnosticConfig &config = selectedConfig();
+    disconnectClangOnlyOptionsChanged();
+    Utils::ExecuteOnDestruction e([this]() { connectClangOnlyOptionsChanged(); });
 
     // Update main button row
+    const ClangDiagnosticConfig &config = currentConfig();
     m_ui->removeButton->setEnabled(!config.isReadOnly());
+    m_ui->renameButton->setEnabled(!config.isReadOnly());
+
+    // Update check box
+    m_clangBaseChecks->useFlagsFromBuildSystemCheckBox->setChecked(config.useBuildSystemWarnings());
 
     // Update Text Edit
     const QString options = m_notAcceptedOptions.contains(config.id())
@@ -474,86 +308,23 @@ void ClangDiagnosticConfigsWidget::syncOtherWidgetsToComboBox()
     m_clangBaseChecksWidget->setEnabled(!config.isReadOnly());
 
     if (config.isReadOnly()) {
-        m_ui->infoIcon->setPixmap(Utils::Icons::INFO.pixmap());
+        m_ui->infoLabel->setType(Utils::InfoLabel::Information);
         m_ui->infoLabel->setText(tr("Copy this configuration to customize it."));
-        m_ui->infoLabel->setStyleSheet(QString());
+        m_ui->infoLabel->setFilled(false);
     }
 
-    syncClangTidyWidgets(config);
-    syncClazyWidgets(config);
-}
-
-void ClangDiagnosticConfigsWidget::syncClangTidyWidgets(const ClangDiagnosticConfig &config)
-{
-    disconnectClangTidyItemChanged();
-
-    ClangDiagnosticConfig::TidyMode tidyMode = config.clangTidyMode();
-
-    m_tidyChecks->tidyMode->setCurrentIndex(static_cast<int>(tidyMode));
-    switch (tidyMode) {
-    case ClangDiagnosticConfig::TidyMode::Disabled:
-    case ClangDiagnosticConfig::TidyMode::File:
-        m_tidyChecks->plainTextEditButton->setVisible(false);
-        m_tidyChecks->checksListWrapper->setCurrentIndex(1);
-        break;
-    case ClangDiagnosticConfig::TidyMode::ChecksPrefixList:
-        m_tidyChecks->plainTextEditButton->setVisible(true);
-        m_tidyChecks->checksListWrapper->setCurrentIndex(0);
-        syncTidyChecksToTree(config);
-        break;
-    }
-
-    const bool enabled = !config.isReadOnly();
-    m_tidyChecks->tidyMode->setEnabled(enabled);
-    m_tidyChecks->plainTextEditButton->setText(enabled ? tr("Edit Checks as String...")
-                                                       : tr("View Checks as String..."));
-    m_tidyTreeModel->setEnabled(enabled);
-    connectClangTidyItemChanged();
-}
-
-void ClangDiagnosticConfigsWidget::syncTidyChecksToTree(const ClangDiagnosticConfig &config)
-{
-    m_tidyTreeModel->selectChecks(config.clangTidyChecks());
-}
-
-void ClangDiagnosticConfigsWidget::syncClazyWidgets(const ClangDiagnosticConfig &config)
-{
-    const QString clazyChecks = config.clazyChecks();
-
-    QRadioButton *button = m_clazyChecks->clazyRadioDisabled;
-    if (clazyChecks.isEmpty())
-        button = m_clazyChecks->clazyRadioDisabled;
-    else if (clazyChecks == "level0")
-        button = m_clazyChecks->clazyRadioLevel0;
-    else if (clazyChecks == "level1")
-        button = m_clazyChecks->clazyRadioLevel1;
-    else if (clazyChecks == "level2")
-        button = m_clazyChecks->clazyRadioLevel2;
-    else if (clazyChecks == "level3")
-        button = m_clazyChecks->clazyRadioLevel3;
-
-    button->setChecked(true);
-    m_clazyChecksWidget->setEnabled(!config.isReadOnly());
+    syncExtraWidgets(config);
 }
 
 void ClangDiagnosticConfigsWidget::updateConfig(const ClangDiagnosticConfig &config)
 {
-    m_diagnosticConfigsModel.appendOrUpdate(config);
-    emit customConfigsChanged(customConfigs());
-}
-
-bool ClangDiagnosticConfigsWidget::isConfigChooserEmpty() const
-{
-    return m_ui->configChooserList->count() == 0;
+    m_configsModel->itemForConfigId(config.id())->config = config;
 }
 
 void ClangDiagnosticConfigsWidget::setDiagnosticOptions(const QString &options)
 {
-    if (options != m_clangBaseChecks->diagnosticOptionsTextEdit->document()->toPlainText()) {
-        disconnectDiagnosticOptionsChanged();
+    if (options != m_clangBaseChecks->diagnosticOptionsTextEdit->document()->toPlainText())
         m_clangBaseChecks->diagnosticOptionsTextEdit->document()->setPlainText(options);
-        connectDiagnosticOptionsChanged();
-    }
 
     const QString errorMessage
             = validateDiagnosticOptions(normalizeDiagnosticInputOptions(options));
@@ -562,151 +333,49 @@ void ClangDiagnosticConfigsWidget::setDiagnosticOptions(const QString &options)
 
 void ClangDiagnosticConfigsWidget::updateValidityWidgets(const QString &errorMessage)
 {
-    QString validationResult;
-    const Utils::Icon *icon = nullptr;
-    QString styleSheet;
     if (errorMessage.isEmpty()) {
-        icon = &Utils::Icons::INFO;
-        validationResult = tr("Configuration passes sanity checks.");
+        m_ui->infoLabel->setType(Utils::InfoLabel::Information);
+        m_ui->infoLabel->setText(tr("Configuration passes sanity checks."));
+        m_ui->infoLabel->setFilled(false);
     } else {
-        icon = &Utils::Icons::CRITICAL;
-        validationResult = tr("%1").arg(errorMessage);
-        styleSheet = "color: red;";
+        m_ui->infoLabel->setType(Utils::InfoLabel::Error);
+        m_ui->infoLabel->setText(tr("%1").arg(errorMessage));
+        m_ui->infoLabel->setFilled(true);
     }
-
-    m_ui->infoIcon->setPixmap(icon->pixmap());
-    m_ui->infoLabel->setText(validationResult);
-    m_ui->infoLabel->setStyleSheet(styleSheet);
 }
 
-void ClangDiagnosticConfigsWidget::connectClangTidyItemChanged()
+void ClangDiagnosticConfigsWidget::connectClangOnlyOptionsChanged()
 {
-    connect(m_tidyChecks->tidyMode,
-            static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+    connect(m_clangBaseChecks->useFlagsFromBuildSystemCheckBox,
+            &QCheckBox::stateChanged,
             this,
-            &ClangDiagnosticConfigsWidget::onClangTidyModeChanged);
-    connect(m_tidyTreeModel.get(), &TidyChecksTreeModel::dataChanged,
-            this, &ClangDiagnosticConfigsWidget::onClangTidyTreeChanged);
-}
-
-void ClangDiagnosticConfigsWidget::disconnectClangTidyItemChanged()
-{
-    disconnect(m_tidyChecks->tidyMode,
-               static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-               this,
-               &ClangDiagnosticConfigsWidget::onClangTidyModeChanged);
-    disconnect(m_tidyTreeModel.get(), &TidyChecksTreeModel::dataChanged,
-               this, &ClangDiagnosticConfigsWidget::onClangTidyTreeChanged);
-}
-
-void ClangDiagnosticConfigsWidget::connectClazyRadioButtonClicked(QRadioButton *button)
-{
-    connect(button,
-            &QRadioButton::clicked,
-            this,
-            &ClangDiagnosticConfigsWidget::onClazyRadioButtonChanged);
-}
-
-void ClangDiagnosticConfigsWidget::connectConfigChooserCurrentIndex()
-{
-    connect(m_ui->configChooserList, &QListWidget::currentRowChanged,
-            this, &ClangDiagnosticConfigsWidget::onCurrentConfigChanged);
-}
-
-void ClangDiagnosticConfigsWidget::disconnectConfigChooserCurrentIndex()
-{
-    disconnect(m_ui->configChooserList, &QListWidget::currentRowChanged,
-               this, &ClangDiagnosticConfigsWidget::onCurrentConfigChanged);
-}
-
-void ClangDiagnosticConfigsWidget::connectDiagnosticOptionsChanged()
-{
+            &ClangDiagnosticConfigsWidget::onClangOnlyOptionsChanged);
     connect(m_clangBaseChecks->diagnosticOptionsTextEdit->document(),
             &QTextDocument::contentsChanged,
             this,
-            &ClangDiagnosticConfigsWidget::onDiagnosticOptionsEdited);
+            &ClangDiagnosticConfigsWidget::onClangOnlyOptionsChanged);
 }
 
-void ClangDiagnosticConfigsWidget::disconnectDiagnosticOptionsChanged()
+void ClangDiagnosticConfigsWidget::disconnectClangOnlyOptionsChanged()
 {
+    disconnect(m_clangBaseChecks->useFlagsFromBuildSystemCheckBox,
+               &QCheckBox::stateChanged,
+               this,
+               &ClangDiagnosticConfigsWidget::onClangOnlyOptionsChanged);
     disconnect(m_clangBaseChecks->diagnosticOptionsTextEdit->document(),
                &QTextDocument::contentsChanged,
                this,
-               &ClangDiagnosticConfigsWidget::onDiagnosticOptionsEdited);
+               &ClangDiagnosticConfigsWidget::onClangOnlyOptionsChanged);
 }
 
-ClangDiagnosticConfigs ClangDiagnosticConfigsWidget::customConfigs() const
+ClangDiagnosticConfigs ClangDiagnosticConfigsWidget::configs() const
 {
-    const ClangDiagnosticConfigs allConfigs = m_diagnosticConfigsModel.configs();
-
-    return Utils::filtered(allConfigs, [](const ClangDiagnosticConfig &config){
-        return !config.isReadOnly();
-    });
+    return m_configsModel->configs();
 }
 
-void ClangDiagnosticConfigsWidget::setupTabs()
+QTabWidget *ClangDiagnosticConfigsWidget::tabWidget() const
 {
-    m_clangBaseChecks.reset(new CppTools::Ui::ClangBaseChecks);
-    m_clangBaseChecksWidget = new QWidget();
-    m_clangBaseChecks->setupUi(m_clangBaseChecksWidget);
-
-    m_clazyChecks.reset(new CppTools::Ui::ClazyChecks);
-    m_clazyChecksWidget = new QWidget();
-    m_clazyChecks->setupUi(m_clazyChecksWidget);
-
-    connectClazyRadioButtonClicked(m_clazyChecks->clazyRadioDisabled);
-    connectClazyRadioButtonClicked(m_clazyChecks->clazyRadioLevel0);
-    connectClazyRadioButtonClicked(m_clazyChecks->clazyRadioLevel1);
-    connectClazyRadioButtonClicked(m_clazyChecks->clazyRadioLevel2);
-    connectClazyRadioButtonClicked(m_clazyChecks->clazyRadioLevel3);
-
-    m_tidyChecks.reset(new CppTools::Ui::TidyChecks);
-    m_tidyChecksWidget = new QWidget();
-    m_tidyChecks->setupUi(m_tidyChecksWidget);
-    m_tidyChecks->checksPrefixesTree->setModel(m_tidyTreeModel.get());
-    m_tidyChecks->checksPrefixesTree->expandToDepth(0);
-    m_tidyChecks->checksPrefixesTree->header()->setStretchLastSection(false);
-    m_tidyChecks->checksPrefixesTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    connect(m_tidyChecks->plainTextEditButton, &QPushButton::clicked, this, [this]() {
-        const bool readOnly = selectedConfig().isReadOnly();
-
-        QDialog dialog;
-        dialog.setWindowTitle(tr("Checks"));
-        dialog.setLayout(new QVBoxLayout);
-        auto *textEdit = new QTextEdit(&dialog);
-        textEdit->setReadOnly(readOnly);
-        dialog.layout()->addWidget(textEdit);
-        auto *buttonsBox = new QDialogButtonBox(QDialogButtonBox::Ok
-                                                | (readOnly ? QDialogButtonBox::NoButton
-                                                            : QDialogButtonBox::Cancel));
-        dialog.layout()->addWidget(buttonsBox);
-        QObject::connect(buttonsBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-        QObject::connect(buttonsBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        const QString initialChecks = m_tidyTreeModel->selectedChecks();
-        textEdit->setPlainText(initialChecks);
-
-        QObject::connect(&dialog, &QDialog::accepted, [=, &initialChecks]() {
-            const QString updatedChecks = textEdit->toPlainText();
-            if (updatedChecks == initialChecks)
-                return;
-
-            disconnectClangTidyItemChanged();
-
-            // Also throws away invalid options.
-            m_tidyTreeModel->selectChecks(updatedChecks);
-            onClangTidyTreeChanged();
-
-            connectClangTidyItemChanged();
-        });
-        dialog.exec();
-    });
-
-    connectClangTidyItemChanged();
-
-    m_ui->tabWidget->addTab(m_clangBaseChecksWidget, tr("Clang"));
-    m_ui->tabWidget->addTab(m_tidyChecksWidget, tr("Clang-Tidy"));
-    m_ui->tabWidget->addTab(m_clazyChecksWidget, tr("Clazy"));
-    m_ui->tabWidget->setCurrentIndex(0);
+    return m_ui->tabWidget;
 }
 
 } // CppTools namespace

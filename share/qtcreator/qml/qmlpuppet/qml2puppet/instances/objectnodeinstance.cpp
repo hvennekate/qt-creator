@@ -44,6 +44,7 @@
 #include <QQmlParserStatus>
 #include <QTextDocument>
 #include <QLibraryInfo>
+#include <QJSValue>
 
 static bool isSimpleExpression(const QString &expression)
 {
@@ -136,7 +137,7 @@ void ObjectNodeInstance::initialize(const ObjectNodeInstance::Pointer &objectNod
 void ObjectNodeInstance::setId(const QString &id)
 {
     if (!m_id.isEmpty() && context()) {
-        context()->engine()->rootContext()->setContextProperty(m_id, 0);
+        context()->engine()->rootContext()->setContextProperty(m_id, nullptr);
     }
 
     if (!id.isEmpty() && context()) {
@@ -264,11 +265,17 @@ static bool isList(const QQmlProperty &property)
     return property.propertyTypeCategory() == QQmlProperty::List;
 }
 
+static bool isQJSValue(const QQmlProperty &property)
+{
+    return property.isValid() && !strcmp(property.propertyTypeName(), "QJSValue");
+}
+
 static bool isObject(const QQmlProperty &property)
 {
-    return (property.propertyTypeCategory() == QQmlProperty::Object) ||
-            //QVariant can also store QObjects. Lets trust our model.
-           (QLatin1String(property.propertyTypeName()) == QLatin1String("QVariant"));
+    /* QVariant and QJSValue can also store QObjects. Lets trust our model. */
+    return property.isValid() && (property.propertyTypeCategory() == QQmlProperty::Object
+            || !strcmp(property.propertyTypeName(), "QVariant")
+            || isQJSValue(property));
 }
 
 static QVariant objectToVariant(QObject *object)
@@ -317,7 +324,7 @@ void ObjectNodeInstance::removeFromOldProperty(QObject *object, QObject *oldPare
     }
 
     if (object && object->parent())
-        object->setParent(0);
+        object->setParent(nullptr);
 }
 
 void ObjectNodeInstance::addToNewProperty(QObject *object, QObject *newParent, const PropertyName &newParentProperty)
@@ -337,7 +344,10 @@ void ObjectNodeInstance::addToNewProperty(QObject *object, QObject *newParent, c
 
         list.append(object);
     } else if (isObject(property)) {
-        property.write(objectToVariant(object));
+        if (isQJSValue(property)) /* In this case we have to explcitly generate and convert a QJSValue */
+            property.write(QVariant::fromValue(engine()->newQObject(object)));
+        else
+            property.write(objectToVariant(object));
 
         if (QQuickItem *item = qobject_cast<QQuickItem *>(object))
             if (QQuickItem *newParentItem = qobject_cast<QQuickItem *>(newParent))
@@ -382,6 +392,15 @@ PropertyNameList ObjectNodeInstance::ignoredProperties() const
     return PropertyNameList();
 }
 
+void ObjectNodeInstance::setHideInEditor(bool)
+{
+}
+
+void ObjectNodeInstance::setModifiedFlag(bool b)
+{
+    m_isModified = b;
+}
+
 QVariant ObjectNodeInstance::convertEnumToValue(const QVariant &value, const PropertyName &name)
 {
     Q_ASSERT(value.canConvert<Enumeration>());
@@ -404,6 +423,9 @@ QVariant ObjectNodeInstance::convertEnumToValue(const QVariant &value, const Pro
 void ObjectNodeInstance::setPropertyVariant(const PropertyName &name, const QVariant &value)
 {
     if (ignoredProperties().contains(name))
+        return;
+
+    if (m_isModified)
         return;
 
     QQmlProperty property(object(), QString::fromUtf8(name), context());
@@ -549,11 +571,30 @@ QVariant ObjectNodeInstance::property(const PropertyName &name) const
     return property.read();
 }
 
+void ObjectNodeInstance::ensureVector3DDotProperties(PropertyNameList &list) const
+{
+    const PropertyNameList properties = { "rotation", "scale", "pivot" };
+    for (const auto &property : properties) {
+        if (list.contains(property) && instanceType(property) == "QVector3D") {
+            const PropertyNameList dotProperties = { "x", "y", "z" };
+            for (const auto &dotProperty : dotProperties) {
+                const PropertyName dotPropertyName = property + "." + dotProperty;
+                if (!list.contains(dotPropertyName))
+                    list.append(dotPropertyName);
+            }
+        }
+    }
+}
+
 PropertyNameList ObjectNodeInstance::propertyNames() const
 {
+    PropertyNameList list;
     if (isValid())
-        return QmlPrivateGate::allPropertyNames(object());
-    return PropertyNameList();
+        list = QmlPrivateGate::allPropertyNames(object());
+
+    ensureVector3DDotProperties(list);
+
+    return list;
 }
 
 QString ObjectNodeInstance::instanceType(const PropertyName &name) const
@@ -612,16 +653,18 @@ QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorN
             || typeName == "QtQuick.Controls/Drawer"
             || typeName == "QtQuick.Controls/Dialog"
             || typeName == "QtQuick.Controls/Menu"
+            || typeName == "QtQuick.Controls/Pane"
             || typeName == "QtQuick.Controls/ToolTip")
         polishTypeName = "QtQuick/Item";
 
-    const QHash<QString, QString> mockHash = {{"QtQuick.Controls/SwipeView","qrc:/qtquickplugin/mockfiles/SwipeView.qml"}};
+    const QHash<QString, QString> mockHash = {{"QtQuick.Controls/SwipeView","qrc:/qtquickplugin/mockfiles/SwipeView.qml"},
+                                             {"QtQuick.Dialogs/Dialog","qrc:/qtquickplugin/mockfiles/Dialog.qml"}};
 
     QObject *object = nullptr;
 
     if (mockHash.contains(typeName))
         object = QmlPrivateGate::createComponent(mockHash.value(typeName), context);
-    else
+    else if (majorNumber != -1 && minorNumber != -1)
         object = QmlPrivateGate::createPrimitive(polishTypeName, majorNumber, minorNumber, context);
 
     /* Let's try to create the primitive from source, since with incomplete meta info this might be a pure
@@ -637,16 +680,18 @@ QObject *ObjectNodeInstance::createPrimitive(const QString &typeName, int majorN
 QObject *ObjectNodeInstance::createPrimitiveFromSource(const QString &typeName, int majorNumber, int minorNumber, QQmlContext *context)
 {
     if (typeName.isEmpty())
-        return 0;
+        return nullptr;
 
     QStringList parts = typeName.split("/");
     const QString unqualifiedTypeName = parts.last();
     parts.removeLast();
 
     if (parts.isEmpty())
-        return 0;
+        return nullptr;
 
-    const QString importString = parts.join(".") + " " + QString::number(majorNumber) + "." + QString::number(minorNumber);
+    QString importString = parts.join(".") + " " + QString::number(majorNumber) + "." + QString::number(minorNumber);
+    if (importString == "QtQuick 1.0") /* Workaround for implicit QQml import */
+        importString = "QtQuick 2.0";
     QString source = "import " + importString + "\n" + unqualifiedTypeName + " {\n" + "}\n";
     return createCustomParserObject(source, "", context);
 }
@@ -758,12 +803,12 @@ QObject *ObjectNodeInstance::object() const
 {
         if (!m_object.isNull() && !QmlPrivateGate::objectWasDeleted(m_object.data()))
             return m_object.data();
-        return 0;
+        return nullptr;
 }
 
 QQuickItem *ObjectNodeInstance::contentItem() const
 {
-    return 0;
+    return nullptr;
 }
 
 bool ObjectNodeInstance::hasContent() const
@@ -805,7 +850,7 @@ QQmlContext *ObjectNodeInstance::context() const
         return nodeInstanceServer()->context();
 
     qWarning() << "Error: No NodeInstanceServer";
-    return 0;
+    return nullptr;
 }
 
 QQmlEngine *ObjectNodeInstance::engine() const
@@ -853,7 +898,7 @@ QImage ObjectNodeInstance::renderPreviewImage(const QSize & /*previewImageSize*/
 QObject *ObjectNodeInstance::parent() const
 {
     if (!object())
-        return 0;
+        return nullptr;
 
     return object()->parent();
 }

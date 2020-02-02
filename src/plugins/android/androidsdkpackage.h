@@ -22,7 +22,7 @@
 ** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ****************************************************************************/
-#include "utils/fileutils.h"
+#include <utils/fileutils.h>
 
 #include <QList>
 #include <QObject>
@@ -53,8 +53,9 @@ public:
         SdkPlatformPackage      = 1 << 4,
         SystemImagePackage      = 1 << 5,
         EmulatorToolsPackage    = 1 << 6,
+        ExtraToolsPackage       = 1 << 7,
         AnyValidType = SdkToolsPackage | BuildToolsPackage | PlatformToolsPackage |
-        SdkPlatformPackage | SystemImagePackage | EmulatorToolsPackage
+        SdkPlatformPackage | SystemImagePackage | EmulatorToolsPackage | ExtraToolsPackage
     };
 
     enum PackageState {
@@ -76,13 +77,13 @@ public:
     const QVersionNumber &revision() const;
     PackageState state() const;
     const QString &sdkStylePath() const;
-    const Utils::FileName &installedLocation() const;
+    const Utils::FilePath &installedLocation() const;
 
 protected:
     void setDisplayText(const QString &str);
     void setDescriptionText(const QString &str);
     void setState(PackageState state);
-    void setInstalledLocation(const Utils::FileName &path);
+    void setInstalledLocation(const Utils::FilePath &path);
 
     virtual void updatePackageDetails();
 
@@ -92,7 +93,7 @@ private:
     QVersionNumber m_revision;
     PackageState m_state = PackageState::Unknown;
     QString m_sdkStylePath;
-    Utils::FileName m_installedLocation;
+    Utils::FilePath m_installedLocation;
 
     friend class Internal::SdkManagerOutputParser;
     friend class Internal::AndroidToolOutputParser;
@@ -113,10 +114,13 @@ public:
     const QString &abiName() const;
     const SdkPlatform *platform() const;
     void setPlatform(SdkPlatform *platform);
+    int apiLevel() const;
+    void setApiLevel(const int apiLevel);
 
 private:
     QPointer<SdkPlatform> m_platform;
     QString m_abiName;
+    int m_apiLevel = -1;
 };
 using SystemImageList = QList<SystemImage*>;
 
@@ -188,6 +192,16 @@ public:
 
 // AndroidSdkPackage Overrides
 public:
+    bool isValid() const override;
+    PackageType type() const override;
+};
+
+class ExtraTools : public AndroidSdkPackage
+{
+public:
+    ExtraTools(QVersionNumber revision, QString sdkStylePathStr, QObject *parent = nullptr);
+
+// AndroidSdkPackage Overrides
     bool isValid() const override;
     PackageType type() const override;
 };

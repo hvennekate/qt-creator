@@ -27,12 +27,14 @@
 #include "qttestresult.h"
 #include "../testtreeitem.h"
 
+#include <qtsupport/qtoutputformatter.h>
 #include <utils/qtcassert.h>
 
 #include <QDir>
 #include <QFileInfo>
-#include <QRegExp>
 #include <QRegularExpression>
+
+#include <cctype>
 
 namespace Autotest {
 namespace Internal {
@@ -40,17 +42,16 @@ namespace Internal {
 static QString decode(const QString& original)
 {
     QString result(original);
-    static QRegExp regex("&#((x[0-9A-F]+)|([0-9]+));", Qt::CaseInsensitive);
-    regex.setMinimal(true);
+    static const QRegularExpression regex("&#((x[[:xdigit:]]+)|(\\d+));");
 
-    int pos = 0;
-    while ((pos = regex.indexIn(original, pos)) != -1) {
-        const QString value = regex.cap(1);
+    QRegularExpressionMatchIterator it = regex.globalMatch(original);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        const QString value = match.captured(1);
         if (value.startsWith('x'))
-            result.replace(regex.cap(0), QChar(value.midRef(1).toInt(nullptr, 16)));
+            result.replace(match.captured(0), QChar(value.midRef(1).toInt(nullptr, 16)));
         else
-            result.replace(regex.cap(0), QChar(value.toInt(nullptr, 10)));
-        pos += regex.matchedLength();
+            result.replace(match.captured(0), QChar(value.toInt(nullptr, 10)));
     }
 
     return result;
@@ -162,6 +163,21 @@ TestResultPtr QtTestOutputReader::createDefaultResult() const
     return TestResultPtr(result);
 }
 
+static QString trQtVersion(const QString &version)
+{
+    return QtTestOutputReader::tr("Qt version: %1").arg(version);
+}
+
+static QString trQtBuild(const QString &build)
+{
+    return QtTestOutputReader::tr("Qt build: %1").arg(build);
+}
+
+static QString trQtestVersion(const QString &test)
+{
+    return QtTestOutputReader::tr("QTest version: %1").arg(test);
+}
+
 void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
 {
     static QStringList validEndTags = {QStringLiteral("Incident"),
@@ -174,9 +190,16 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
     if (m_className.isEmpty() && outputLine.trimmed().isEmpty())
         return;
 
-    // avoid encoding problems for Quick tests
-    m_xmlReader.addData(m_testType == TestType::QuickTest ? QString::fromLatin1(outputLine)
-                                                          : QString::fromLocal8Bit(outputLine));
+    if (m_expectTag) {
+        for (auto ch : outputLine) {
+            if (std::isspace(ch))
+                continue;
+            if (ch != '<')
+                return;
+            break;
+        }
+    }
+    m_xmlReader.addData(QString::fromUtf8(outputLine));
     while (!m_xmlReader.atEnd()) {
         if (m_futureInterface.isCanceled())
             return;
@@ -209,7 +232,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
                 m_description.clear();
                 m_duration.clear();
                 m_file.clear();
-                m_result = Result::Invalid;
+                m_result = ResultType::Invalid;
                 m_lineNumber = 0;
                 const QXmlStreamAttributes &attributes = m_xmlReader.attributes();
                 m_result = TestResult::resultFromString(
@@ -225,24 +248,25 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
                 const int iterations = attributes.value(QStringLiteral("iterations")).toInt();
                 m_dataTag = attributes.value(QStringLiteral("tag")).toString();
                 m_description = constructBenchmarkInformation(metric, value, iterations);
-                m_result = Result::Benchmark;
+                m_result = ResultType::Benchmark;
             } else if (currentTag == QStringLiteral("DataTag")) {
                 m_cdataMode = DataTag;
             } else if (currentTag == QStringLiteral("Description")) {
                 m_cdataMode = Description;
             } else if (currentTag == QStringLiteral("QtVersion")) {
-                m_result = Result::MessageInternal;
+                m_result = ResultType::MessageInternal;
                 m_cdataMode = QtVersion;
             } else if (currentTag == QStringLiteral("QtBuild")) {
-                m_result = Result::MessageInternal;
+                m_result = ResultType::MessageInternal;
                 m_cdataMode = QtBuild;
             } else if (currentTag == QStringLiteral("QTestVersion")) {
-                m_result = Result::MessageInternal;
+                m_result = ResultType::MessageInternal;
                 m_cdataMode = QTestVersion;
             }
             break;
         }
         case QXmlStreamReader::Characters: {
+            m_expectTag = false;
             QStringRef text = m_xmlReader.text().trimmed();
             if (text.isEmpty())
                 break;
@@ -257,13 +281,13 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
                 m_description.append(text);
                 break;
             case QtVersion:
-                m_description = tr("Qt version: %1").arg(text.toString());
+                m_description = trQtVersion(text.toString());
                 break;
             case QtBuild:
-                m_description = tr("Qt build: %1").arg(text.toString());
+                m_description = trQtBuild(text.toString());
                 break;
             case QTestVersion:
-                m_description = tr("QTest version: %1").arg(text.toString());
+                m_description = trQtestVersion(text.toString());
                 break;
             default:
                 // this must come from plain printf() calls - but this will be ignored anyhow
@@ -273,6 +297,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
             break;
         }
         case QXmlStreamReader::EndElement: {
+            m_expectTag = true;
             m_cdataMode = None;
             const QStringRef currentTag = m_xmlReader.name();
             if (currentTag == QStringLiteral("TestFunction")) {
@@ -296,7 +321,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
                     && m_xmlReader.error() != QXmlStreamReader::PrematureEndOfDocumentError) {
                 createAndReportResult(tr("XML parsing failed.")
                                       + QString(" (%1) ").arg(m_xmlReader.error())
-                                      + m_xmlReader.errorString(), Result::MessageFatal);
+                                      + m_xmlReader.errorString(), ResultType::MessageFatal);
             }
             break;
         }
@@ -305,7 +330,7 @@ void QtTestOutputReader::processXMLOutput(const QByteArray &outputLine)
 
 static QStringList extractFunctionInformation(const QString &testClassName,
                                               const QString &lineWithoutResultType,
-                                              Result::Type resultType)
+                                              ResultType resultType)
 {
     static QRegularExpression classInformation("^(.+?)\\((.*?)\\)(.*)$");
     QStringList result;
@@ -315,7 +340,7 @@ static QStringList extractFunctionInformation(const QString &testClassName,
         QTC_ASSERT(fullQualifiedFunc.startsWith(testClassName + "::"), return result);
         fullQualifiedFunc = fullQualifiedFunc.mid(testClassName.length() + 2);
         result.append(fullQualifiedFunc);
-        if (resultType == Result::Benchmark) { // tag is displayed differently
+        if (resultType == ResultType::Benchmark) { // tag is displayed differently
             QString possiblyTag = match.captured(3);
             if (!possiblyTag.isEmpty())
                 possiblyTag = possiblyTag.mid(2, possiblyTag.length() - 4);
@@ -329,40 +354,50 @@ static QStringList extractFunctionInformation(const QString &testClassName,
     return result;
 }
 
-void QtTestOutputReader::processPlainTextOutput(const QByteArray &outputLineWithNewLine)
+void QtTestOutputReader::processPlainTextOutput(const QByteArray &outputLine)
 {
-    static QRegExp start("^[*]{9} Start testing of (.*) [*]{9}$");
-    static QRegExp config("^Config: Using QtTest library (.*), (Qt (\\d+(\\.\\d+){2}) \\(.*\\))$");
-    static QRegExp summary("^Totals: \\d+ passed, \\d+ failed, \\d+ skipped(, \\d+ blacklisted)?$");
-    static QRegExp finish("^[*]{9} Finished testing of (.*) [*]{9}$");
+    static const QRegularExpression start("^[*]{9} Start testing of (.*) [*]{9}$");
+    static const QRegularExpression config("^Config: Using QtTest library (.*), "
+                                           "(Qt (\\d+(\\.\\d+){2}) \\(.*\\))$");
+    static const QRegularExpression summary("^Totals: \\d+ passed, \\d+ failed, "
+                                            "\\d+ skipped(, \\d+ blacklisted)?$");
+    static const QRegularExpression finish("^[*]{9} Finished testing of (.*) [*]{9}$");
 
-    static QRegExp result("^(PASS   |FAIL!  |XFAIL  |XPASS  |SKIP   |BPASS   |BFAIL   |RESULT "
-                          "|INFO   |QWARN  |WARNING|QDEBUG |QSYSTEM): (.*)$");
+    static const QRegularExpression result("^(PASS   |FAIL!  |XFAIL  |XPASS  |SKIP   |RESULT "
+                                           "|BPASS  |BFAIL  |BXPASS |BXFAIL "
+                                           "|INFO   |QWARN  |WARNING|QDEBUG |QSYSTEM): (.*)$");
 
-    static QRegExp benchDetails("^\\s+([\\d,.]+ .* per iteration \\(total: [\\d,.]+, iterations: \\d+\\))$");
-    static QRegExp locationUnix("^   Loc: \\[(.*)\\]$");
-    static QRegExp locationWin("^(.*\\(\\d+\\)) : failure location$");
+    static const QRegularExpression benchDetails("^\\s+([\\d,.]+ .* per iteration "
+                                                 "\\(total: [\\d,.]+, iterations: \\d+\\))$");
+    static const QRegularExpression locationUnix(QT_TEST_FAIL_UNIX_REGEXP);
+    static const QRegularExpression locationWin(QT_TEST_FAIL_WIN_REGEXP);
 
     if (m_futureInterface.isCanceled())
         return;
 
-    const QString line = QString::fromLatin1(chopLineBreak(outputLineWithNewLine));
+    const QString line = QString::fromUtf8(outputLine);
+    QRegularExpressionMatch match;
 
-    if (result.exactMatch(line)) {
-        processResultOutput(result.cap(1).toLower().trimmed(), result.cap(2));
-    } else if (locationUnix.exactMatch(line)) {
-        processLocationOutput(locationUnix.cap(1));
-    } else if (locationWin.exactMatch(line)) {
-        processLocationOutput(locationWin.cap(1));
-    } else if (benchDetails.exactMatch(line)) {
-        m_description = benchDetails.cap(1);
-    } else if (config.exactMatch(line)) {
-        handleAndSendConfigMessage(config);
-    } else if (start.exactMatch(line)) {
-        m_className = start.cap(1);
+    auto hasMatch = [&match, line](const QRegularExpression &regex) {
+        match = regex.match(line);
+        return match.hasMatch();
+    };
+
+    if (hasMatch(result)) {
+        processResultOutput(match.captured(1).toLower().trimmed(), match.captured(2));
+    } else if (hasMatch(locationUnix)) {
+        processLocationOutput(match.captured(1));
+    } else if (hasMatch(locationWin)) {
+        processLocationOutput(match.captured(1));
+    } else if (hasMatch(benchDetails)) {
+        m_description = match.captured(1);
+    } else if (hasMatch(config)) {
+        handleAndSendConfigMessage(match);
+    } else if (hasMatch(start)) {
+        m_className = match.captured(1);
         QTC_CHECK(!m_className.isEmpty());
         sendStartMessage(false);
-    } else if (summary.exactMatch(line) || finish.exactMatch(line)) {
+    } else if (summary.match(line).hasMatch() || finish.match(line).hasMatch()) {
         processSummaryFinishOutput();
     } else { // we have some plain output, but we cannot say where for sure it belongs to..
         if (!m_description.isEmpty())
@@ -399,7 +434,7 @@ void QtTestOutputReader::processResultOutput(const QString &result, const QStrin
     if (!description.isEmpty()) {
         if (!m_description.isEmpty())
             m_description.append('\n');
-        m_description.append(description.mid(1)); // cut the first whitespace
+        m_description.append(description.midRef(1)); // cut the first whitespace
     }
     m_formerTestCase = m_testCase;
 }
@@ -430,7 +465,7 @@ void QtTestOutputReader::processSummaryFinishOutput()
     sendFinishMessage(false);
     m_className.clear();
     m_description.clear();
-    m_result = Result::Invalid;
+    m_result = ResultType::Invalid;
     m_file.clear();
     m_lineNumber = 0;
 }
@@ -456,16 +491,16 @@ void QtTestOutputReader::sendCompleteInformation()
 
 void QtTestOutputReader::sendMessageCurrentTest()
 {
-    TestResultPtr testResult = TestResultPtr(new QtTestResult(m_projectFile, m_testType));
-    testResult->setResult(Result::MessageCurrentTest);
+    QtTestResult *testResult = new QtTestResult(QString(), m_projectFile, m_testType, QString());
+    testResult->setResult(ResultType::MessageCurrentTest);
     testResult->setDescription(tr("Entering test function %1::%2").arg(m_className, m_testCase));
-    reportResult(testResult);
+    reportResult(TestResultPtr(testResult));
 }
 
 void QtTestOutputReader::sendStartMessage(bool isFunction)
 {
     TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(Result::MessageTestCaseStart);
+    testResult->setResult(ResultType::TestStart);
     testResult->setDescription(isFunction ? tr("Executing test function %1").arg(m_testCase)
                                           : tr("Executing test case %1").arg(m_className));
     const TestTreeItem *testItem = testResult->findTestTreeItem();
@@ -479,7 +514,7 @@ void QtTestOutputReader::sendStartMessage(bool isFunction)
 void QtTestOutputReader::sendFinishMessage(bool isFunction)
 {
     TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(Result::MessageTestCaseEnd);
+    testResult->setResult(ResultType::TestEnd);
     if (!m_duration.isEmpty()) {
         testResult->setDescription(isFunction ? tr("Execution took %1 ms.").arg(m_duration)
                                               : tr("Test execution took %1 ms.").arg(m_duration));
@@ -490,20 +525,19 @@ void QtTestOutputReader::sendFinishMessage(bool isFunction)
     reportResult(testResult);
 }
 
-// TODO factor out tr() strings to avoid duplication (see XML processing of Characters)
-void QtTestOutputReader::handleAndSendConfigMessage(const QRegExp &config)
+void QtTestOutputReader::handleAndSendConfigMessage(const QRegularExpressionMatch &config)
 {
     TestResultPtr testResult = createDefaultResult();
-    testResult->setResult(Result::MessageInternal);
-    testResult->setDescription(tr("Qt version: %1").arg(config.cap(3)));
+    testResult->setResult(ResultType::MessageInternal);
+    testResult->setDescription(trQtVersion(config.captured(3)));
     reportResult(testResult);
     testResult = createDefaultResult();
-    testResult->setResult(Result::MessageInternal);
-    testResult->setDescription(tr("Qt build: %1").arg(config.cap(2)));
+    testResult->setResult(ResultType::MessageInternal);
+    testResult->setDescription(trQtBuild(config.captured(2)));
     reportResult(testResult);
     testResult = createDefaultResult();
-    testResult->setResult(Result::MessageInternal);
-    testResult->setDescription(tr("QTest version: %1").arg(config.cap(1)));
+    testResult->setResult(ResultType::MessageInternal);
+    testResult->setDescription(trQtestVersion(config.captured(1)));
     reportResult(testResult);
 }
 

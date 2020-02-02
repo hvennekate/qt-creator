@@ -5,14 +5,11 @@ include(../../qtcreatorplugin.pri)
 SOURCES += qnxplugin.cpp \
     qnxbaseqtconfigwidget.cpp \
     qnxutils.cpp \
-    qnxdevicefactory.cpp \
     qnxdevicewizard.cpp \
     qnxrunconfiguration.cpp \
     qnxanalyzesupport.cpp \
     qnxdebugsupport.cpp \
-    qnxqtversionfactory.cpp \
     qnxqtversion.cpp \
-    qnxdeployconfiguration.cpp \
     qnxdevice.cpp \
     qnxdevicetester.cpp \
     qnxdeviceprocesssignaloperation.cpp \
@@ -20,7 +17,6 @@ SOURCES += qnxplugin.cpp \
     qnxtoolchain.cpp \
     slog2inforunner.cpp \
     qnxconfiguration.cpp \
-    qnxsettingswidget.cpp \
     qnxconfigurationmanager.cpp \
     qnxsettingspage.cpp \
     qnxversionnumber.cpp \
@@ -31,14 +27,11 @@ HEADERS += qnxplugin.h\
     qnxconstants.h \
     qnxbaseqtconfigwidget.h \
     qnxutils.h \
-    qnxdevicefactory.h \
     qnxdevicewizard.h \
     qnxrunconfiguration.h \
     qnxanalyzesupport.h \
     qnxdebugsupport.h \
-    qnxqtversionfactory.h \
     qnxqtversion.h \
-    qnxdeployconfiguration.h \
     qnxdevice.h \
     qnxdevicetester.h \
     qnxdeviceprocesssignaloperation.h \
@@ -46,7 +39,6 @@ HEADERS += qnxplugin.h\
     qnxtoolchain.h \
     slog2inforunner.h \
     qnxconfiguration.h \
-    qnxsettingswidget.h \
     qnxconfigurationmanager.h \
     qnxsettingspage.h \
     qnxversionnumber.h \

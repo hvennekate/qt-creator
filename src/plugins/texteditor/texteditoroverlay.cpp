@@ -323,9 +323,7 @@ void TextEditorOverlay::paintSelection(QPainter *painter,
     const QColor &bg = selection.m_bg;
 
 
-    if (begin.isNull()
-        || end.isNull()
-        || begin.position() > end.position())
+    if (begin.isNull() || end.isNull() || begin.position() > end.position() || !bg.isValid())
         return;
 
     QPainterPath path = createSelectionPath(begin, end, m_editor->viewport()->rect());
@@ -339,25 +337,21 @@ void TextEditorOverlay::paintSelection(QPainter *painter,
 
     QRectF pathRect = path.controlPointRect();
 
-    if (bg.isValid()) {
-        if (!m_alpha || begin.blockNumber() != end.blockNumber()) {
-            // gradients are too slow for larger selections :(
-            QColor col = bg;
-            if (m_alpha)
-                col.setAlpha(50);
-            painter->setBrush(col);
-        } else {
-            QLinearGradient linearGrad(pathRect.topLeft(), pathRect.bottomLeft());
-            QColor col1 = fg.lighter(150);
-            col1.setAlpha(20);
-            QColor col2 = fg;
-            col2.setAlpha(80);
-            linearGrad.setColorAt(0, col1);
-            linearGrad.setColorAt(1, col2);
-            painter->setBrush(QBrush(linearGrad));
-        }
+    if (!m_alpha || begin.blockNumber() != end.blockNumber()) {
+        // gradients are too slow for larger selections :(
+        QColor col = bg;
+        if (m_alpha)
+            col.setAlpha(50);
+        painter->setBrush(col);
     } else {
-        painter->setBrush(QBrush());
+        QLinearGradient linearGrad(pathRect.topLeft(), pathRect.bottomLeft());
+        QColor col1 = fg.lighter(150);
+        col1.setAlpha(20);
+        QColor col2 = fg;
+        col2.setAlpha(80);
+        linearGrad.setColorAt(0, col1);
+        linearGrad.setColorAt(1, col2);
+        painter->setBrush(QBrush(linearGrad));
     }
 
     painter->setRenderHint(QPainter::Antialiasing);
@@ -399,7 +393,7 @@ void TextEditorOverlay::fillSelection(QPainter *painter,
 
 void TextEditorOverlay::paint(QPainter *painter, const QRect &clip)
 {
-    Q_UNUSED(clip);
+    Q_UNUSED(clip)
     for (int i = m_selections.size()-1; i >= 0; --i) {
         const OverlaySelection &selection = m_selections.at(i);
         if (selection.m_dropShadow)
@@ -426,7 +420,7 @@ void TextEditorOverlay::paint(QPainter *painter, const QRect &clip)
 
 void TextEditorOverlay::fill(QPainter *painter, const QColor &color, const QRect &clip)
 {
-    Q_UNUSED(clip);
+    Q_UNUSED(clip)
     for (int i = m_selections.size()-1; i >= 0; --i) {
         const OverlaySelection &selection = m_selections.at(i);
         if (selection.m_dropShadow)

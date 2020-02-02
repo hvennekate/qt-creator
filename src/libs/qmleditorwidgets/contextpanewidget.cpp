@@ -155,10 +155,9 @@ void DragWidget::enterEvent(QEvent *)
         setCursor(Qt::ArrowCursor);
 }
 
-ContextPaneWidget::ContextPaneWidget(QWidget *parent) : DragWidget(parent), m_currentWidget(0)
+ContextPaneWidget::ContextPaneWidget(QWidget *parent) : DragWidget(parent), m_currentWidget(nullptr)
 {
     QGridLayout *layout = new QGridLayout(this);
-    layout->setMargin(0);
     layout->setContentsMargins(1, 1, 1, 1);
     layout->setSpacing(0);
     m_toolButton = new QToolButton(this);
@@ -207,7 +206,7 @@ ContextPaneWidget::~ContextPaneWidget()
     //if the pane was never activated the widget is not in a widget tree
     if (!m_bauhausColorDialog.isNull()) {
         delete m_bauhausColorDialog.data();
-        m_bauhausColorDialog = 0;
+        m_bauhausColorDialog = nullptr;
     }
 }
 
@@ -391,7 +390,7 @@ void ContextPaneWidget::onShowColorDialog(bool checked, const QPoint &p)
 
 void ContextPaneWidget::onDisable(bool b)
 {
-    enabledChanged(b);
+    emit enabledChanged(b);
     if (!b) {
         hide();
         colorDialog()->hide();
@@ -491,7 +490,7 @@ void ContextPaneWidget::setPinButton()
     m_toolButton->setFixedSize(20, 20);
     m_toolButton->setToolTip(tr("Unpins the toolbar and moves it to the default position."));
 
-    pinnedChanged(true);
+    emit pinnedChanged(true);
     if (m_resetAction) {
         QSignalBlocker blocker(m_resetAction);
         m_resetAction->setChecked(true);
@@ -508,7 +507,7 @@ void ContextPaneWidget::setLineButton()
     m_toolButton->setToolTip(tr("Hides this toolbar. This toolbar can be"
                                 " permanently disabled in the options page or in the context menu."));
 
-    pinnedChanged(false);
+    emit pinnedChanged(false);
     if (m_resetAction) {
         QSignalBlocker blocker(m_resetAction);
         m_resetAction->setChecked(false);

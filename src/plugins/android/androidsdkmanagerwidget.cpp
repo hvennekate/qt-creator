@@ -29,11 +29,11 @@
 #include "androidsdkmanager.h"
 #include "androidsdkmodel.h"
 
-#include "utils/runextensions.h"
-#include "utils/outputformatter.h"
-#include "utils/runextensions.h"
-#include "utils/qtcassert.h"
-#include "utils/utilsicons.h"
+#include <utils/runextensions.h>
+#include <utils/outputformatter.h>
+#include <utils/runextensions.h>
+#include <utils/qtcassert.h>
+#include <utils/utilsicons.h>
 
 #include <QDialogButtonBox>
 #include <QLabel>
@@ -44,7 +44,7 @@
 #include <QSortFilterProxyModel>
 
 namespace {
-Q_LOGGING_CATEGORY(androidSdkMgrUiLog, "qtc.android.sdkManagerUi", QtWarningMsg)
+static Q_LOGGING_CATEGORY(androidSdkMgrUiLog, "qtc.android.sdkManagerUi", QtWarningMsg)
 }
 
 namespace Android {
@@ -76,8 +76,7 @@ AndroidSdkManagerWidget::AndroidSdkManagerWidget(AndroidConfig &config,
     m_ui->setupUi(this);
     m_ui->sdkLicensebuttonBox->hide();
     m_ui->sdkLicenseLabel->hide();
-    m_ui->warningLabel->setElideMode(Qt::ElideRight);
-    m_ui->warningIconLabel->setPixmap(Utils::Icons::WARNING.pixmap());
+    m_ui->warningLabel->setType(Utils::InfoLabel::Warning);
     m_ui->viewStack->setCurrentWidget(m_ui->packagesStack);
 
     m_formatter = new Utils::OutputFormatter;
@@ -161,7 +160,6 @@ void AndroidSdkManagerWidget::setSdkManagerControlsEnabled(bool enable)
 {
     m_ui->packagesTypeGroup->setEnabled(enable);
     m_ui->expandCheck->setVisible(enable);
-    m_ui->warningIconLabel->setVisible(!enable);
     m_ui->warningLabel->setVisible(!enable);
     m_ui->packagesView->setEnabled(enable);
     m_ui->updateInstalledButton->setEnabled(enable);

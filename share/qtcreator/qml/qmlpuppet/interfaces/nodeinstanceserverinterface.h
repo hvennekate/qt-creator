@@ -33,6 +33,8 @@ class PropertyAbstractContainer;
 class PropertyBindingContainer;
 class PropertyValueContainer;
 
+class Update3dViewStateCommand;
+class Enable3DViewCommand;
 class ChangeFileUrlCommand;
 class ChangeValuesCommand;
 class ChangeBindingsCommand;
@@ -49,6 +51,7 @@ class CompleteComponentCommand;
 class ChangeNodeSourceCommand;
 class TokenCommand;
 class RemoveSharedMemoryCommand;
+class ChangeSelectionCommand;
 
 class NodeInstanceServerInterface : public QObject
 {
@@ -65,6 +68,8 @@ public:
     virtual void changeFileUrl(const ChangeFileUrlCommand &command) = 0;
     virtual void createScene(const CreateSceneCommand &command) = 0;
     virtual void clearScene(const ClearSceneCommand &command) = 0;
+    virtual void update3DViewState(const Update3dViewStateCommand &command) = 0;
+    virtual void enable3DView(const Enable3DViewCommand &command) = 0;
     virtual void removeInstances(const RemoveInstancesCommand &command) = 0;
     virtual void removeProperties(const RemovePropertiesCommand &command) = 0;
     virtual void changePropertyBindings(const ChangeBindingsCommand &command) = 0;
@@ -77,6 +82,7 @@ public:
     virtual void changeNodeSource(const ChangeNodeSourceCommand &command) = 0;
     virtual void token(const TokenCommand &command) = 0;
     virtual void removeSharedMemory(const RemoveSharedMemoryCommand &command) = 0;
+    virtual void changeSelection(const ChangeSelectionCommand &command) = 0;
 
     virtual void benchmark(const QString &)
     {}

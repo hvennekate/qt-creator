@@ -41,7 +41,7 @@ def clickItemVerifyHelpCombo(button, expectedHelpComboRegex, testDetails):
                        "Verifying: '%s' button is being displayed." % getStarted)
 def buttonActive(button):
     # colors of the default theme for active button on Welcome page
-    (activeRed, activeGreen, activeBlue) = (64, 66, 68)
+    (activeRed, activeGreen, activeBlue) = (64, 65, 66)
     # QPalette::Window (used background color of Welcome page buttons)
     enumQPaletteWindow = 10
     color = button.palette.color(enumQPaletteWindow)
@@ -92,7 +92,7 @@ def main():
 
     # select Projects and roughly check this
     switchToSubMode('Projects')
-    for button in ['New Project', 'Open Project']:
+    for button in ['New', 'Open']:
         wsButtonFrame, wsButtonLabel = getWelcomeScreenMainButton(button)
         if test.verify(all((wsButtonFrame, wsButtonLabel)),
                        "Verified whether '%s' button is shown." % button):
@@ -156,7 +156,7 @@ def main():
     for (qType, prop, info) in expect:
         test.verify(checkIfObjectExists(search % (qType, prop)),
                     "Verifying whether %s is shown" % info)
-    checkTableViewForContent(search % (expect[0][0], expect[0][1]), "Help: Create .*", "Tutorials",
+    checkTableViewForContent(search % (expect[0][0], expect[0][1]), "Help: Creating .*", "Tutorials",
                              "Verifying that at least one tutorial is displayed.")
     # exit Qt Creator
     invokeMenuItem("File", "Exit")

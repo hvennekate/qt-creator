@@ -25,30 +25,26 @@
 
 #pragma once
 
+#include <qmljseditor/qmljseditor_global.h>
 #include <qmljs/qmljsmodelmanagerinterface.h>
 #include <texteditor/basehoverhandler.h>
 
 #include <QColor>
 #include <QCoreApplication>
 
-QT_BEGIN_NAMESPACE
-template <class> class QList;
-QT_END_NAMESPACE
-
 namespace QmlJS {
 class ScopeChain;
 class Context;
-typedef QSharedPointer<const Context> ContextPtr;
+using ContextPtr = QSharedPointer<const Context>;
 class Value;
 class ObjectValue;
 }
 
 namespace QmlJSEditor {
-namespace Internal {
 
 class QmlJSEditorWidget;
 
-class QmlJSHoverHandler : public TextEditor::BaseHoverHandler
+class QMLJSEDITOR_EXPORT QmlJSHoverHandler : public TextEditor::BaseHoverHandler
 {
     Q_DECLARE_TR_FUNCTIONS(QmlJSHoverHandler)
 
@@ -82,9 +78,8 @@ private:
                         const QmlJS::Document::Ptr &qmlDocument,
                         QmlJS::AST::Node *node);
 
-    QmlJS::ModelManagerInterface *m_modelManager;
+    QmlJS::ModelManagerInterface *m_modelManager = nullptr;
     QColor m_colorTip;
 };
 
-} // namespace Internal
 } // namespace QmlJSEditor

@@ -26,6 +26,7 @@
 #pragma once
 
 #include <functional>
+#include <mutex>
 
 namespace ClangBackEnd {
 
@@ -33,6 +34,7 @@ class ProgressCounter
 {
 public:
     using SetProgressCallback = std::function<void(int, int)>;
+    using Lock = std::lock_guard<std::mutex>;
 
     ProgressCounter(SetProgressCallback &&progressCallback)
         : m_progressCallback(std::move(progressCallback))
@@ -40,25 +42,52 @@ public:
 
     void addTotal(int total)
     {
-        m_total += total;
+        Lock lock(m_mutex);
 
-        m_progressCallback(m_progress, m_total);
+        if (total) {
+            m_total += total;
+
+            m_progressCallback(m_progress, m_total);
+        }
     }
 
     void removeTotal(int total)
     {
-        m_total -= total;
+        Lock lock(m_mutex);
 
-        sendProgress();
+        if (total) {
+            m_total -= total;
+
+            sendProgress();
+        }
     }
 
     void addProgress(int progress)
     {
-        m_progress += progress;
+        Lock lock(m_mutex);
 
-        sendProgress();
+        if (progress) {
+            m_progress += progress;
+
+            sendProgress();
+        }
     }
 
+    int total() const
+    {
+        Lock lock(m_mutex);
+
+        return m_total;
+    }
+
+    int progress() const
+    {
+        Lock lock(m_mutex);
+
+        return m_progress;
+    }
+
+private:
     void sendProgress()
     {
         m_progressCallback(m_progress, m_total);
@@ -69,17 +98,8 @@ public:
         }
     }
 
-    int total() const
-    {
-        return m_total;
-    }
-
-    int progress() const
-    {
-        return m_total;
-    }
-
 private:
+    mutable std::mutex m_mutex;
     std::function<void(int, int)> m_progressCallback;
     int m_progress = 0;
     int m_total = 0;

@@ -86,9 +86,10 @@ public:
     QStringList absolutePathValues(const QString &variable, const QString &baseDirectory) const;
     QVector<SourceFile> absoluteFileValues(
             const QString &variable, const QString &baseDirectory, const QStringList &searchDirs,
-            QHash<ProString, bool> *handled) const;
+            QHash<ProString, bool> *handled, QSet<QString> &directoriesWithWildcards) const;
     QString propertyValue(const QString &val) const;
     static QStringList sourcesToFiles(const QVector<SourceFile> &sources);
+    QStringList featureRoots() const;
 
 private:
     QMakeEvaluator *d;

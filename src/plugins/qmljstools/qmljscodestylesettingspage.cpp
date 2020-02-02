@@ -51,7 +51,6 @@ namespace Internal {
 
 QmlJSCodeStylePreferencesWidget::QmlJSCodeStylePreferencesWidget(QWidget *parent) :
     QWidget(parent),
-    m_preferences(0),
     m_ui(new Ui::QmlJSCodeStyleSettingsPage)
 {
     m_ui->setupUi(this);
@@ -114,8 +113,7 @@ void QmlJSCodeStylePreferencesWidget::updatePreview()
     QTextCursor tc = m_ui->previewTextEdit->textCursor();
     tc.beginEditBlock();
     while (block.isValid()) {
-        m_ui->previewTextEdit->textDocument()->indenter()
-                ->indentBlock(doc, block, QChar::Null, ts);
+        m_ui->previewTextEdit->textDocument()->indenter()->indentBlock(block, QChar::Null, ts);
         block = block.next();
     }
     tc.endEditBlock();
@@ -123,17 +121,13 @@ void QmlJSCodeStylePreferencesWidget::updatePreview()
 
 // ------------------ CppCodeStyleSettingsPage
 
-QmlJSCodeStyleSettingsPage::QmlJSCodeStyleSettingsPage(/*QSharedPointer<CppFileSettings> &settings,*/
-                     QWidget *parent) :
-    Core::IOptionsPage(parent),
-    m_pageTabPreferences(0)
+QmlJSCodeStyleSettingsPage::QmlJSCodeStyleSettingsPage()
 {
     setId(Constants::QML_JS_CODE_STYLE_SETTINGS_ID);
     setDisplayName(QCoreApplication::translate("QmlJSTools", Constants::QML_JS_CODE_STYLE_SETTINGS_NAME));
     setCategory(QmlJSEditor::Constants::SETTINGS_CATEGORY_QML);
     setDisplayCategory(QCoreApplication::translate("QmlJSEditor", "Qt Quick"));
-    setCategoryIcon(Utils::Icon({{":/qmljstools/images/settingscategory_qml.png",
-                    Utils::Theme::PanelTextColorDark}}, Utils::Icon::Tint));
+    setCategoryIconPath(":/qmljstools/images/settingscategory_qml.png");
 }
 
 QWidget *QmlJSCodeStyleSettingsPage::widget()

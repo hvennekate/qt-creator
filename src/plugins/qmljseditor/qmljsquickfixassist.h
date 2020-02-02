@@ -25,21 +25,23 @@
 
 #pragma once
 
-#include "qmljseditor.h"
-
 #include <qmljstools/qmljsrefactoringchanges.h>
+#include <qmljstools/qmljssemanticinfo.h>
 
 #include <texteditor/codeassist/assistinterface.h>
 #include <texteditor/codeassist/iassistprovider.h>
 
 namespace QmlJSEditor {
+
+class QmlJSEditorWidget;
+
 namespace Internal {
 
 class QmlJSQuickFixAssistInterface : public TextEditor::AssistInterface
 {
 public:
     QmlJSQuickFixAssistInterface(QmlJSEditorWidget *editor, TextEditor::AssistReason reason);
-    ~QmlJSQuickFixAssistInterface();
+    ~QmlJSQuickFixAssistInterface() override;
 
     const QmlJSTools::SemanticInfo &semanticInfo() const;
     QmlJSTools::QmlJSRefactoringFilePtr currentFile() const;
@@ -54,7 +56,7 @@ class QmlJSQuickFixAssistProvider : public TextEditor::IAssistProvider
 {
 public:
     QmlJSQuickFixAssistProvider() = default;
-    ~QmlJSQuickFixAssistProvider() = default;
+    ~QmlJSQuickFixAssistProvider() override = default;
 
     IAssistProvider::RunType runType() const override;
     TextEditor::IAssistProcessor *createProcessor() const override;

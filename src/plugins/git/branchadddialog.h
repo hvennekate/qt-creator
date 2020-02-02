@@ -51,7 +51,14 @@ class BranchAddDialog : public QDialog
     Q_OBJECT
 
 public:
-    BranchAddDialog(const QStringList &localBranches, bool addBranch, QWidget *parent);
+    enum Type {
+        AddBranch,
+        RenameBranch,
+        AddTag,
+        RenameTag
+    };
+
+    BranchAddDialog(const QStringList &localBranches, Type type, QWidget *parent);
     ~BranchAddDialog() override;
 
     void setBranchName(const QString &);
@@ -60,6 +67,9 @@ public:
     void setTrackedBranchName(const QString &name, bool remote);
 
     bool track() const;
+
+    void setCheckoutVisible(bool visible);
+    bool checkout() const;
 
 private:
     void updateButtonStatus();

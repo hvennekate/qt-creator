@@ -39,13 +39,13 @@ class QnxConfigurationManager: public QObject
     Q_OBJECT
 public:
     QnxConfigurationManager();
-    ~QnxConfigurationManager();
+    ~QnxConfigurationManager() override;
 
     static QnxConfigurationManager *instance();
     QList<QnxConfiguration*> configurations() const;
     void removeConfiguration(QnxConfiguration *config);
     bool addConfiguration(QnxConfiguration *config);
-    QnxConfiguration* configurationFromEnvFile(const Utils::FileName &envFile) const;
+    QnxConfiguration* configurationFromEnvFile(const Utils::FilePath &envFile) const;
 
 protected slots:
     void saveConfigs();

@@ -27,8 +27,6 @@
 
 #include <projectexplorer/project.h>
 
-namespace CppTools { class CppProjectUpdater; }
-
 namespace GenericProjectManager {
 namespace Internal {
 
@@ -37,51 +35,14 @@ class GenericProject : public ProjectExplorer::Project
     Q_OBJECT
 
 public:
-    explicit GenericProject(const Utils::FileName &filename);
-    ~GenericProject() override;
+    explicit GenericProject(const Utils::FilePath &filename);
 
-    bool addFiles(const QStringList &filePaths);
-    bool removeFiles(const QStringList &filePaths);
-    bool setFiles(const QStringList &filePaths);
-    bool renameFile(const QString &filePath, const QString &newFilePath);
-
-    enum RefreshOptions {
-        Files         = 0x01,
-        Configuration = 0x02,
-        Everything    = Files | Configuration
-    };
-
-    void refresh(RefreshOptions options);
-
-protected:
-    RestoreResult fromMap(const QVariantMap &map, QString *errorMessage) override;
+    void editFilesTriggered();
+    void removeFilesTriggered(const QStringList &filesToRemove);
 
 private:
-    bool saveRawFileList(const QStringList &rawFileList);
-    bool saveRawList(const QStringList &rawList, const QString &fileName);
-    void parseProject(RefreshOptions options);
-    QStringList processEntries(const QStringList &paths,
-                               QHash<QString, QString> *map = nullptr) const;
-
-    void refreshCppCodeModel();
-    void activeTargetWasChanged();
-    void activeBuildConfigurationWasChanged();
-
-    QString m_filesFileName;
-    QString m_includesFileName;
-    QString m_configFileName;
-    ProjectExplorer::ProjectDocument *m_filesIDocument;
-    ProjectExplorer::ProjectDocument *m_includesIDocument;
-    ProjectExplorer::ProjectDocument *m_configIDocument;
-    QStringList m_rawFileList;
-    QStringList m_files;
-    QHash<QString, QString> m_rawListEntries;
-    QStringList m_rawProjectIncludePaths;
-    QStringList m_projectIncludePaths;
-
-    CppTools::CppProjectUpdater *m_cppCodeModelUpdater = nullptr;
-
-    ProjectExplorer::Target *m_activeTarget = nullptr;
+    RestoreResult fromMap(const QVariantMap &map, QString *errorMessage) final;
+    ProjectExplorer::DeploymentKnowledge deploymentKnowledge() const final;
 };
 
 } // namespace Internal

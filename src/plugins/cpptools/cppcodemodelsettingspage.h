@@ -29,54 +29,13 @@
 
 #include <coreplugin/dialogs/ioptionspage.h>
 
-#include <QPointer>
-#include <QWidget>
-
-QT_FORWARD_DECLARE_CLASS(QComboBox)
-QT_FORWARD_DECLARE_CLASS(QSettings)
-
 namespace CppTools {
-
 namespace Internal {
 
-namespace Ui { class CppCodeModelSettingsPage; }
-
-class CppCodeModelSettingsWidget: public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit CppCodeModelSettingsWidget(QWidget *parent = 0);
-    ~CppCodeModelSettingsWidget() override;
-
-    void setSettings(const QSharedPointer<CppCodeModelSettings> &s);
-    void applyToSettings() const;
-
-private:
-    void setupGeneralWidgets();
-    void setupClangCodeModelWidgets();
-
-    bool applyGeneralWidgetsToSettings() const;
-    bool applyClangCodeModelWidgetsToSettings() const;
-
-private:
-    Ui::CppCodeModelSettingsPage *m_ui = nullptr;
-    QSharedPointer<CppCodeModelSettings> m_settings;
-};
-
-class CppCodeModelSettingsPage: public Core::IOptionsPage
+class CppCodeModelSettingsPage final : public Core::IOptionsPage
 {
 public:
-    explicit CppCodeModelSettingsPage(QSharedPointer<CppCodeModelSettings> &settings,
-                                      QObject *parent = 0);
-
-    QWidget *widget();
-    void apply();
-    void finish();
-
-private:
-    const QSharedPointer<CppCodeModelSettings> m_settings;
-    QPointer<CppCodeModelSettingsWidget> m_widget;
+    explicit CppCodeModelSettingsPage(QSharedPointer<CppCodeModelSettings> &settings);
 };
 
 } // Internal namespace

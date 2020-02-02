@@ -53,6 +53,11 @@ QString Utils::toString(bool value)
     return value ? QLatin1String("Yes") : QLatin1String("No");
 }
 
+QString Utils::toString(int value)
+{
+    return QString::number(value);
+}
+
 QString Utils::toString(unsigned value)
 {
     return QString::number(value);
@@ -103,31 +108,32 @@ QString Utils::toString(ProjectExplorer::HeaderPathType type)
     return QString();
 }
 
-QString Utils::toString(ProjectExplorer::LanguageVersion languageVersion)
+QString Utils::toString(::Utils::LanguageVersion languageVersion)
 {
-#define CASE_LANGUAGEVERSION(x) case ProjectExplorer::LanguageVersion::x: return QLatin1String(#x)
+#define CASE_LANGUAGEVERSION(x) case ::Utils::LanguageVersion::x: return QLatin1String(#x)
     switch (languageVersion) {
-    CASE_LANGUAGEVERSION(C89);
-    CASE_LANGUAGEVERSION(C99);
-    CASE_LANGUAGEVERSION(C11);
-    CASE_LANGUAGEVERSION(C18);
-    CASE_LANGUAGEVERSION(CXX98);
-    CASE_LANGUAGEVERSION(CXX03);
-    CASE_LANGUAGEVERSION(CXX11);
-    CASE_LANGUAGEVERSION(CXX14);
-    CASE_LANGUAGEVERSION(CXX17);
-    CASE_LANGUAGEVERSION(CXX2a);
-    // no default to get a compiler warning if anything is added
+        CASE_LANGUAGEVERSION(None);
+        CASE_LANGUAGEVERSION(C89);
+        CASE_LANGUAGEVERSION(C99);
+        CASE_LANGUAGEVERSION(C11);
+        CASE_LANGUAGEVERSION(C18);
+        CASE_LANGUAGEVERSION(CXX98);
+        CASE_LANGUAGEVERSION(CXX03);
+        CASE_LANGUAGEVERSION(CXX11);
+        CASE_LANGUAGEVERSION(CXX14);
+        CASE_LANGUAGEVERSION(CXX17);
+        CASE_LANGUAGEVERSION(CXX2a);
+        // no default to get a compiler warning if anything is added
     }
 #undef CASE_LANGUAGEVERSION
     return QString();
 }
 
-QString Utils::toString(ProjectExplorer::LanguageExtensions languageExtension)
+QString Utils::toString(::Utils::LanguageExtensions languageExtension)
 {
     QString result;
 
-#define CASE_LANGUAGE_EXTENSION(ext) if (languageExtension & ProjectExplorer::LanguageExtension::ext) \
+#define CASE_LANGUAGE_EXTENSION(ext) if (languageExtension & ::Utils::LanguageExtension::ext) \
     result += QLatin1String(#ext ", ");
 
     CASE_LANGUAGE_EXTENSION(None);
@@ -142,23 +148,27 @@ QString Utils::toString(ProjectExplorer::LanguageExtensions languageExtension)
     return result;
 }
 
-QString Utils::toString(ProjectPart::QtVersion qtVersion)
+QString Utils::toString(::Utils::QtVersion qtVersion)
 {
-#define CASE_QTVERSION(x) case ProjectPart::x: return QLatin1String(#x)
+#define CASE_QTVERSION(x) \
+    case ::Utils::QtVersion::x: \
+        return QLatin1String(#x)
     switch (qtVersion) {
-    CASE_QTVERSION(UnknownQt);
-    CASE_QTVERSION(NoQt);
-    CASE_QTVERSION(Qt4);
-    CASE_QTVERSION(Qt5);
-    // no default to get a compiler warning if anything is added
+        CASE_QTVERSION(Unknown);
+        CASE_QTVERSION(None);
+        CASE_QTVERSION(Qt4);
+        CASE_QTVERSION(Qt5);
+        // no default to get a compiler warning if anything is added
     }
 #undef CASE_QTVERSION
     return QString();
 }
 
-QString Utils::toString(ProjectPart::BuildTargetType buildTargetType)
+QString Utils::toString(ProjectExplorer::BuildTargetType buildTargetType)
 {
-#define CASE_BUILDTARGETTYPE(x) case ProjectPart::x: return QLatin1String(#x)
+#define CASE_BUILDTARGETTYPE(x) \
+    case ProjectExplorer::BuildTargetType::x: \
+        return QLatin1String(#x)
     switch (buildTargetType) {
     CASE_BUILDTARGETTYPE(Unknown);
     CASE_BUILDTARGETTYPE(Executable);
@@ -383,6 +393,17 @@ QString Utils::toString(CPlusPlus::Kind kind)
     return QString();
 }
 
+QString Utils::toString(ProjectPart::ToolChainWordWidth width)
+{
+    switch (width) {
+    case ProjectPart::ToolChainWordWidth::WordWidth32Bit:
+        return QString("32");
+    case ProjectPart::ToolChainWordWidth::WordWidth64Bit:
+        return QString("64");
+    }
+    return QString();
+}
+
 QString Utils::partsForFile(const QString &fileName)
 {
     const QList<ProjectPart::Ptr> parts
@@ -502,21 +523,29 @@ void Dumper::dumpProjectInfos( const QList<ProjectInfo> &projectInfos)
             if (!part->projectConfigFile.isEmpty())
                 m_out << i3 << "Project Config File: " << part->projectConfigFile << "\n";
             m_out << i2 << "Project Part \"" << part->id() << "\"{{{3\n";
-            m_out << i3 << "Project Part Name    : " << part->displayName << "\n";
-            m_out << i3 << "Project Name         : " << projectName << "\n";
-            m_out << i3 << "Project File         : " << projectFilePath << "\n";
-            m_out << i3 << "Selected For Building: " << part->selectedForBuilding << "\n";
-            m_out << i3 << "Build Target Type    : " << Utils::toString(part->buildTargetType) << "\n";
-            m_out << i3 << "Lanugage Version     : " << Utils::toString(part->languageVersion)<<"\n";
-            m_out << i3 << "Lanugage Extensions  : " << Utils::toString(part->languageExtensions)
+            m_out << i3 << "Project Part Name      : " << part->displayName << "\n";
+            m_out << i3 << "Project Name           : " << projectName << "\n";
+            m_out << i3 << "Project File           : " << projectFilePath << "\n";
+            m_out << i3 << "ToolChain Type         : " << part->toolchainType.toString() << "\n";
+            m_out << i3 << "ToolChain Target Triple: " << part->toolChainTargetTriple << "\n";
+            m_out << i3 << "ToolChain Word Width   : " << part->toolChainWordWidth << "\n";
+            m_out << i3 << "ToolChain Install Dir  : " << part->toolChainInstallDir << "\n";
+            m_out << i3 << "Compiler Flags         : " << part->compilerFlags.join(", ") << "\n";
+            m_out << i3 << "Selected For Building  : " << part->selectedForBuilding << "\n";
+            m_out << i3 << "Build System Target    : " << part->buildSystemTarget << "\n";
+            m_out << i3 << "Build Target Type      : " << Utils::toString(part->buildTargetType) << "\n";
+            m_out << i3 << "Language Version       : " << Utils::toString(part->languageVersion)<<"\n";
+            m_out << i3 << "Language Extensions    : " << Utils::toString(part->languageExtensions)
                   << "\n";
-            m_out << i3 << "Qt Version           : " << Utils::toString(part->qtVersion) << "\n";
+            m_out << i3 << "Qt Version             : " << Utils::toString(part->qtVersion) << "\n";
 
             if (!part->files.isEmpty()) {
                 m_out << i3 << "Files:{{{4\n";
                 foreach (const ProjectFile &projectFile, part->files) {
-                    m_out << i4 << Utils::toString(projectFile.kind) << ": " << projectFile.path
-                          << "\n";
+                    m_out << i4 << Utils::toString(projectFile.kind) << ": " << projectFile.path;
+                    if (!projectFile.active)
+                        m_out << " (inactive)";
+                    m_out << "\n";
                 }
             }
 
@@ -594,10 +623,9 @@ void Dumper::dumpWorkingCopy(const WorkingCopy &workingCopy)
     m_out << "Working Copy contains " << workingCopy.size() << " entries{{{1\n";
 
     const QByteArray i1 = indent(1);
-    QHashIterator< ::Utils::FileName, QPair<QByteArray, unsigned> > it = workingCopy.iterator();
-    while (it.hasNext()) {
-        it.next();
-        const ::Utils::FileName &filePath = it.key();
+    const WorkingCopy::Table &elements = workingCopy.elements();
+    for (auto it = elements.cbegin(), end = elements.cend(); it != end; ++it) {
+        const ::Utils::FilePath &filePath = it.key();
         unsigned sourcRevision = it.value().second;
         m_out << i1 << "rev=" << sourcRevision << ", " << filePath << "\n";
     }
@@ -662,8 +690,8 @@ void Dumper::dumpDocuments(const QList<CPlusPlus::Document::Ptr> &documents, boo
         if (!diagnosticMessages.isEmpty()) {
             m_out << i3 << "Diagnostic Messages:{{{4\n";
             foreach (const CPlusPlus::Document::DiagnosticMessage &msg, diagnosticMessages) {
-                const CPlusPlus::Document::DiagnosticMessage::Level level
-                        = static_cast<CPlusPlus::Document::DiagnosticMessage::Level>(msg.level());
+                const auto level =
+                    static_cast<CPlusPlus::Document::DiagnosticMessage::Level>(msg.level());
                 m_out << i4 << "at " << msg.line() << ":" << msg.column() << ", " << Utils::toString(level)
                       << ": " << msg.text() << "\n";
             }

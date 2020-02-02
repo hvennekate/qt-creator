@@ -65,7 +65,7 @@ class LANGUAGESERVERPROTOCOL_EXPORT MessageActionItem : public JsonObject
 {
 public:
     using JsonObject::JsonObject;
-    using JsonObject::operator=;
+    MessageActionItem &operator=(const MessageActionItem &) = default;
 
     QString title() const { return typedValue<QString>(titleKey); }
     void setTitle(QString title) { insert(titleKey, title); }
@@ -87,15 +87,13 @@ public:
 };
 
 class LANGUAGESERVERPROTOCOL_EXPORT ShowMessageRequest : public Request<
-        LanguageClientValue<MessageActionItem>, LanguageClientNull, ShowMessageRequestParams>
+        LanguageClientValue<MessageActionItem>, std::nullptr_t, ShowMessageRequestParams>
 {
 public:
     ShowMessageRequest(const ShowMessageRequestParams &params = ShowMessageRequestParams());
     using Request::Request;
     constexpr static const char methodName[] = "window/showMessageRequest";
 };
-
-using ShowMessageResponse = Response<LanguageClientValue<MessageActionItem>, LanguageClientNull>;
 
 using LogMessageParams = ShowMessageParams;
 

@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include <projectexplorer/runconfiguration.h>
+#include <projectexplorer/runcontrol.h>
 
 #include <qmldebug/qmldebugcommandlinearguments.h>
 
@@ -47,7 +47,6 @@ public:
     AndroidRunnerWorker(ProjectExplorer::RunWorker *runner, const QString &packageName);
     ~AndroidRunnerWorker() override;
 
-    bool uploadFile(const QString &from, const QString &to, const QString &flags = QString("+x"));
     bool runAdb(const QStringList &args, QString *stdOut = nullptr, const QByteArray &writeData = {});
     void adbKill(qint64 pid);
     QStringList selector() const;
@@ -65,15 +64,19 @@ public:
     void handleJdbSettled();
 
 signals:
-    void remoteProcessStarted(Utils::Port gdbServerPort, const QUrl &qmlServer, int pid);
+    void remoteProcessStarted(Utils::Port gdbServerPort, const QUrl &qmlServer, qint64 pid);
     void remoteProcessFinished(const QString &errString = QString());
 
     void remoteOutput(const QString &output);
     void remoteErrorOutput(const QString &output);
 
-protected:
+private:
     void asyncStartHelper();
-    bool startDebuggerServer(QString packageDir, QString *errorStr = nullptr);
+    bool startDebuggerServer(const QString &packageDir, const QString &gdbServerPrefix,
+                             const QString &gdbServerExecutable, QString *errorStr = nullptr);
+    bool deviceFileExists(const QString &filePath);
+    bool packageFileExists(const QString& filePath);
+    bool uploadGdbServer();
 
     enum class JDBState {
         Idle,
@@ -110,6 +113,7 @@ protected:
     QString m_extraAppParams;
     Utils::Environment m_extraEnvVars;
     QString m_gdbserverPath;
+    bool m_useAppParamsForQmlDebugger = false;
 };
 
 } // namespace Internal

@@ -26,6 +26,8 @@
 #include "qmlprojectitem.h"
 #include "filefilteritems.h"
 
+#include <utils/algorithm.h>
+
 #include <QDir>
 
 namespace QmlProjectManager {
@@ -38,9 +40,8 @@ void QmlProjectItem::setSourceDirectory(const QString &directoryPath)
 
     m_sourceDirectory = directoryPath;
 
-    for (int i = 0; i < m_content.size(); ++i) {
-        QmlProjectContentItem *contentElement = m_content.at(i);
-        FileFilterBaseItem *fileFilter = qobject_cast<FileFilterBaseItem*>(contentElement);
+    for (auto contentElement : qAsConst(m_content)) {
+        auto fileFilter = qobject_cast<FileFilterBaseItem*>(contentElement);
         if (fileFilter) {
             fileFilter->setDefaultDirectory(directoryPath);
             connect(fileFilter, &FileFilterBaseItem::filesChanged,
@@ -60,20 +61,26 @@ void QmlProjectItem::setImportPaths(const QStringList &importPaths)
         m_importPaths = importPaths;
 }
 
+void QmlProjectItem::setFileSelectors(const QStringList &selectors)
+{
+    if (m_fileSelectors != selectors)
+        m_fileSelectors = selectors;
+}
+
 /* Returns list of absolute paths */
 QStringList QmlProjectItem::files() const
 {
-    QStringList files;
+    QSet<QString> files;
 
-    for (QmlProjectContentItem *contentElement : m_content) {
-        if (auto fileFilter = qobject_cast<FileFilterBaseItem *>(contentElement)) {
-            foreach (const QString &file, fileFilter->files()) {
-                if (!files.contains(file))
-                    files << file;
+    for (const auto contentElement : qAsConst(m_content)) {
+        if (auto fileFilter = qobject_cast<const FileFilterBaseItem *>(contentElement)) {
+            const QStringList fileList = fileFilter->files();
+            for (const QString &file : fileList) {
+                files.insert(file);
             }
         }
     }
-    return files;
+    return Utils::toList(files);
 }
 
 /**
@@ -84,16 +91,18 @@ QStringList QmlProjectItem::files() const
   */
 bool QmlProjectItem::matchesFile(const QString &filePath) const
 {
-    for (QmlProjectContentItem *contentElement : m_content) {
-        if (auto fileFilter = qobject_cast<FileFilterBaseItem *>(contentElement)) {
-            if (fileFilter->matchesFile(filePath))
-                return true;
-        }
-    }
-    return false;
+    return Utils::contains(m_content, [&filePath](const QmlProjectContentItem *item) {
+        auto fileFilter = qobject_cast<const FileFilterBaseItem *>(item);
+        return fileFilter && fileFilter->matchesFile(filePath);
+    });
 }
 
-QList<Utils::EnvironmentItem> QmlProjectItem::environment() const
+void QmlProjectItem::setForceFreeType(bool b)
+{
+    m_forceFreeType = b;
+}
+
+Utils::EnvironmentItems QmlProjectItem::environment() const
 {
     return m_environment;
 }

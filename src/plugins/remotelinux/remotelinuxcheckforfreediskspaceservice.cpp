@@ -42,7 +42,7 @@ RemoteLinuxCheckForFreeDiskSpaceService::RemoteLinuxCheckForFreeDiskSpaceService
         : AbstractRemoteLinuxDeployService(parent),
           d(new Internal::RemoteLinuxCheckForFreeDiskSpaceServicePrivate)
 {
-    d->processRunner = 0;
+    d->processRunner = nullptr;
     d->requiredSpaceInBytes = 0;
 }
 
@@ -69,17 +69,12 @@ void RemoteLinuxCheckForFreeDiskSpaceService::handleStdErr()
 
 void RemoteLinuxCheckForFreeDiskSpaceService::handleProcessFinished()
 {
-    switch (d->processRunner->processExitStatus()) {
-    case QSsh::SshRemoteProcess::FailedToStart:
-        emit errorMessage(tr("Remote process failed to start."));
+    if (!d->processRunner->processErrorString().isEmpty()) {
+        emit errorMessage(tr("Remote process failed: %1")
+                          .arg(d->processRunner->processErrorString()));
         stopDeployment();
         return;
-    case QSsh::SshRemoteProcess::CrashExit:
-        emit errorMessage(tr("Remote process crashed."));
-        stopDeployment();
-        return;
-    case QSsh::SshRemoteProcess::NormalExit:
-        break;
+
     }
 
     bool isNumber;
@@ -97,28 +92,25 @@ void RemoteLinuxCheckForFreeDiskSpaceService::handleProcessFinished()
     freeSpace /= 1024; // convert kilobyte to megabyte
     if (freeSpace < requiredSpaceInMegaBytes) {
         emit errorMessage(tr("The remote file system has only %n megabytes of free space, "
-                "but %1 megabytes are required.", 0, freeSpace).arg(requiredSpaceInMegaBytes));
+                "but %1 megabytes are required.", nullptr, freeSpace).arg(requiredSpaceInMegaBytes));
         stopDeployment();
         return;
     }
 
     emit progressMessage(tr("The remote file system has %n megabytes of free space, going ahead.",
-                            0, freeSpace));
+                            nullptr, freeSpace));
     stopDeployment();
 }
 
-bool RemoteLinuxCheckForFreeDiskSpaceService::isDeploymentPossible(QString *whyNot) const
+CheckResult RemoteLinuxCheckForFreeDiskSpaceService::isDeploymentPossible() const
 {
-    if (!AbstractRemoteLinuxDeployService::isDeploymentPossible(whyNot))
-        return false;
     if (!d->pathToCheck.startsWith(QLatin1Char('/'))) {
-        if (whyNot) {
-            *whyNot = tr("Cannot check for free disk space: \"%1\" is not an absolute path.")
-                    .arg(d->pathToCheck);
-        }
-        return false;
+        return CheckResult::failure(
+           tr("Cannot check for free disk space: \"%1\" is not an absolute path.")
+                    .arg(d->pathToCheck));
     }
-    return true;
+
+    return AbstractRemoteLinuxDeployService::isDeploymentPossible();
 }
 
 void RemoteLinuxCheckForFreeDiskSpaceService::doDeploy()
@@ -130,7 +122,7 @@ void RemoteLinuxCheckForFreeDiskSpaceService::doDeploy()
             this, &RemoteLinuxCheckForFreeDiskSpaceService::handleStdErr);
     const QString command = QString::fromLatin1("df -k %1 |tail -n 1 |sed 's/  */ /g' "
             "|cut -d ' ' -f 4").arg(d->pathToCheck);
-    d->processRunner->run(command.toUtf8(), deviceConfiguration()->sshParameters());
+    d->processRunner->run(command, deviceConfiguration()->sshParameters());
 }
 
 void RemoteLinuxCheckForFreeDiskSpaceService::stopDeployment()
@@ -142,10 +134,10 @@ void RemoteLinuxCheckForFreeDiskSpaceService::stopDeployment()
 void RemoteLinuxCheckForFreeDiskSpaceService::cleanup()
 {
     if (d->processRunner) {
-        disconnect(d->processRunner, 0, this, 0);
+        disconnect(d->processRunner, nullptr, this, nullptr);
         d->processRunner->cancel();
         delete d->processRunner;
-        d->processRunner = 0;
+        d->processRunner = nullptr;
     }
 }
 

@@ -80,6 +80,7 @@ SOURCES += corejsextensions.cpp \
     editormanager/systemeditor.cpp \
     designmode.cpp \
     editortoolbar.cpp \
+    helpitem.cpp \
     helpmanager.cpp \
     outputpanemanager.cpp \
     navigationsubwidget.cpp \
@@ -87,7 +88,6 @@ SOURCES += corejsextensions.cpp \
     externaltool.cpp \
     dialogs/externaltoolconfig.cpp \
     dialogs/filepropertiesdialog.cpp \
-    toolsettings.cpp \
     variablechooser.cpp \
     mimetypemagicdialog.cpp \
     mimetypesettings.cpp \
@@ -100,6 +100,7 @@ SOURCES += corejsextensions.cpp \
     documentmanager.cpp \
     iversioncontrol.cpp \
     dialogs/addtovcsdialog.cpp \
+    dialogs/restartdialog.cpp \
     ioutputpane.cpp \
     patchtool.cpp \
     windowsupport.cpp \
@@ -110,7 +111,8 @@ SOURCES += corejsextensions.cpp \
     systemsettings.cpp \
     coreicons.cpp \
     diffservice.cpp \
-    menubarfilter.cpp
+    menubarfilter.cpp \
+    welcomepagehelper.cpp
 
 HEADERS += corejsextensions.h \
     mainwindow.h \
@@ -192,6 +194,7 @@ HEADERS += corejsextensions.h \
     editormanager/systemeditor.h \
     designmode.h \
     editortoolbar.h \
+    helpitem.h \
     helpmanager.h \
     helpmanager_implementation.h \
     outputpanemanager.h \
@@ -200,7 +203,6 @@ HEADERS += corejsextensions.h \
     externaltool.h \
     dialogs/externaltoolconfig.h \
     dialogs/filepropertiesdialog.h \
-    toolsettings.h \
     variablechooser.h \
     mimetypemagicdialog.h \
     mimetypesettings.h \
@@ -214,6 +216,7 @@ HEADERS += corejsextensions.h \
     textdocument.h \
     documentmanager.h \
     dialogs/addtovcsdialog.h \
+    dialogs/restartdialog.h \
     patchtool.h \
     windowsupport.h \
     opendocumentstreeview.h \
@@ -224,7 +227,8 @@ HEADERS += corejsextensions.h \
     editormanager/documentmodel_p.h \
     diffservice.h \
     menubarfilter.h \
-    editormanager/ieditorfactory_p.h
+    editormanager/ieditorfactory_p.h \
+    welcomepagehelper.h
 
 FORMS += dialogs/newdialog.ui \
     dialogs/saveitemsdialog.ui \

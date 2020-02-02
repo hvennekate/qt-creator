@@ -36,6 +36,8 @@
 
 #include <cplusplus/CppRewriter.h>
 #include <cplusplus/Overview.h>
+
+#include <utils/algorithm.h>
 #include <utils/changeset.h>
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
@@ -92,8 +94,8 @@ public:
         ModeImplementationFile = 0x00000008
     };
 
-    InsertVirtualMethodsDialog(QWidget *parent = 0);
-    ~InsertVirtualMethodsDialog();
+    InsertVirtualMethodsDialog(QWidget *parent = nullptr);
+    ~InsertVirtualMethodsDialog() override;
     void initGui();
     void initData();
     virtual void saveSettings();
@@ -113,20 +115,20 @@ private:
     void updateOverrideReplacementsComboBox();
 
 private:
-    QTreeView *m_view;
-    QLineEdit *m_filter;
-    QCheckBox *m_hideReimplementedFunctions;
-    QComboBox *m_insertMode;
-    QCheckBox *m_virtualKeyword;
-    QCheckBox *m_overrideReplacementCheckBox;
-    QComboBox *m_overrideReplacementComboBox;
-    QToolButton *m_clearUserAddedReplacementsButton;
-    QDialogButtonBox *m_buttons;
+    QTreeView *m_view = nullptr;
+    QLineEdit *m_filter = nullptr;
+    QCheckBox *m_hideReimplementedFunctions = nullptr;
+    QComboBox *m_insertMode = nullptr;
+    QCheckBox *m_virtualKeyword = nullptr;
+    QCheckBox *m_overrideReplacementCheckBox = nullptr;
+    QComboBox *m_overrideReplacementComboBox = nullptr;
+    QToolButton *m_clearUserAddedReplacementsButton = nullptr;
+    QDialogButtonBox *m_buttons = nullptr;
     QList<bool> m_expansionStateNormal;
     QList<bool> m_expansionStateReimp;
     QStringList m_availableOverrideReplacements;
-    bool m_hasImplementationFile;
-    bool m_hasReimplementedFunctions;
+    bool m_hasImplementationFile = false;
+    bool m_hasReimplementedFunctions = false;
 
 protected:
     VirtualMethodsSettings *m_settings;
@@ -149,15 +151,11 @@ namespace {
 class InsertVirtualMethodsItem
 {
 public:
-    InsertVirtualMethodsItem(InsertVirtualMethodsItem *parent) :
-        row(-1),
-        m_parent(parent)
-    {
-    }
+    InsertVirtualMethodsItem(InsertVirtualMethodsItem *parent)
+        : m_parent(parent)
+    {}
 
-    virtual ~InsertVirtualMethodsItem()
-    {
-    }
+    virtual ~InsertVirtualMethodsItem() = default;
 
     virtual QString description() const = 0;
     virtual Qt::ItemFlags flags() const = 0;
@@ -165,10 +163,10 @@ public:
 
     InsertVirtualMethodsItem *parent() { return m_parent; }
 
-    int row;
+    int row = -1;
 
 private:
-    InsertVirtualMethodsItem *m_parent;
+    InsertVirtualMethodsItem *m_parent = nullptr;
 };
 
 class FunctionItem;
@@ -177,11 +175,11 @@ class ClassItem : public InsertVirtualMethodsItem
 {
 public:
     ClassItem(const QString &className, const Class *clazz);
-    ~ClassItem();
+    ~ClassItem() override;
 
-    QString description() const { return name; }
-    Qt::ItemFlags flags() const;
-    Qt::CheckState checkState() const;
+    QString description() const override { return name; }
+    Qt::ItemFlags flags() const override;
+    Qt::CheckState checkState() const override;
     void removeFunction(int row);
 
     const Class *klass;
@@ -193,9 +191,9 @@ class FunctionItem : public InsertVirtualMethodsItem
 {
 public:
     FunctionItem(const Function *func, const QString &functionName, ClassItem *parent);
-    QString description() const;
-    Qt::ItemFlags flags() const;
-    Qt::CheckState checkState() const { return checked ? Qt::Checked : Qt::Unchecked; }
+    QString description() const override;
+    Qt::ItemFlags flags() const override;
+    Qt::CheckState checkState() const override { return checked ? Qt::Checked : Qt::Unchecked; }
 
     const Function *function = nullptr;
     InsertionPointLocator::AccessSpec accessSpec = InsertionPointLocator::Invalid;
@@ -209,7 +207,7 @@ private:
 };
 
 ClassItem::ClassItem(const QString &className, const Class *clazz) :
-    InsertVirtualMethodsItem(0),
+    InsertVirtualMethodsItem(nullptr),
     klass(clazz),
     name(className)
 {
@@ -339,7 +337,7 @@ public:
     bool insertOverrideReplacement = false;
 
 private:
-    typedef QLatin1String _;
+    using _ = QLatin1String;
     static QString group() { return _("QuickFix/InsertVirtualMethods"); }
     static QString insertVirtualKeywordKey() { return _("insertKeywordVirtual"); }
     static QString insertOverrideReplacementKey() { return _("insertOverrideReplacement"); }
@@ -352,13 +350,13 @@ private:
 class InsertVirtualMethodsModel : public QAbstractItemModel
 {
 public:
-    InsertVirtualMethodsModel(QObject *parent = 0) : QAbstractItemModel(parent)
+    InsertVirtualMethodsModel(QObject *parent = nullptr) : QAbstractItemModel(parent)
     {
         const FontSettings &fs = TextEditorSettings::fontSettings();
         formatReimpFunc = fs.formatFor(C_DISABLED_CODE);
     }
 
-    ~InsertVirtualMethodsModel()
+    ~InsertVirtualMethodsModel() override
     {
         clear();
     }
@@ -371,26 +369,26 @@ public:
         endResetModel();
     }
 
-    QModelIndex index(int row, int column, const QModelIndex &parent) const
+    QModelIndex index(int row, int column, const QModelIndex &parent) const override
     {
         if (column != 0)
-            return QModelIndex();
+            return {};
         if (parent.isValid()) {
-            ClassItem *classItem = static_cast<ClassItem *>(parent.internalPointer());
+            auto classItem = static_cast<ClassItem *>(parent.internalPointer());
             return createIndex(row, column, classItem->functions.at(row));
         }
         return createIndex(row, column, classes.at(row));
     }
 
-    QModelIndex parent(const QModelIndex &child) const
+    QModelIndex parent(const QModelIndex &child) const override
     {
         if (!child.isValid())
-            return QModelIndex();
+            return {};
         InsertVirtualMethodsItem *parent = itemForIndex(child)->parent();
         return parent ? createIndex(parent->row, 0, parent) : QModelIndex();
     }
 
-    int rowCount(const QModelIndex &parent) const
+    int rowCount(const QModelIndex &parent) const override
     {
         if (!parent.isValid())
             return classes.count();
@@ -400,7 +398,7 @@ public:
         return static_cast<ClassItem *>(item)->functions.count();
     }
 
-    int columnCount(const QModelIndex &) const
+    int columnCount(const QModelIndex &) const override
     {
         return 1;
     }
@@ -416,13 +414,13 @@ public:
 
     void removeFunction(FunctionItem *funcItem)
     {
-        ClassItem *classItem = static_cast<ClassItem *>(funcItem->parent());
+        auto classItem = static_cast<ClassItem *>(funcItem->parent());
         beginRemoveRows(createIndex(classItem->row, 0, classItem), funcItem->row, funcItem->row);
         classItem->removeFunction(funcItem->row);
         endRemoveRows();
     }
 
-    QVariant data(const QModelIndex &index, int role) const
+    QVariant data(const QModelIndex &index, int role) const override
     {
         if (!index.isValid())
             return QVariant();
@@ -446,7 +444,7 @@ public:
             break;
         case InsertVirtualMethodsDialog::Reimplemented:
             if (item->parent()) {
-                FunctionItem *function = static_cast<FunctionItem *>(item);
+                auto function = static_cast<FunctionItem *>(item);
                 return QVariant(function->alreadyFound);
             }
 
@@ -454,7 +452,7 @@ public:
         return QVariant();
     }
 
-    bool setData(const QModelIndex &index, const QVariant &value, int role)
+    bool setData(const QModelIndex &index, const QVariant &value, int role) override
     {
         if (!index.isValid())
             return false;
@@ -464,7 +462,7 @@ public:
         case Qt::CheckStateRole: {
             bool checked = value.toInt() == Qt::Checked;
             if (item->parent()) {
-                FunctionItem *funcItem = static_cast<FunctionItem *>(item);
+                auto funcItem = static_cast<FunctionItem *>(item);
                 while (funcItem->checked != checked) {
                     funcItem->checked = checked;
                     const QModelIndex funcIndex = createIndex(funcItem->row, 0, funcItem);
@@ -475,7 +473,7 @@ public:
                     funcItem = funcItem->nextOverride;
                 }
             } else {
-                ClassItem *classItem = static_cast<ClassItem *>(item);
+                auto classItem = static_cast<ClassItem *>(item);
                 foreach (FunctionItem *funcItem, classItem->functions) {
                     if (funcItem->alreadyFound || funcItem->checked == checked)
                         continue;
@@ -489,7 +487,7 @@ public:
         return QAbstractItemModel::setData(index, value, role);
     }
 
-    Qt::ItemFlags flags(const QModelIndex &index) const
+    Qt::ItemFlags flags(const QModelIndex &index) const override
     {
         if (!index.isValid())
             return Qt::NoItemFlags;
@@ -586,7 +584,7 @@ public:
                     if (!name || name->asDestructorNameId())
                         continue;
 
-                    const Function *firstVirtual = 0;
+                    const Function *firstVirtual = nullptr;
                     const bool isVirtual = FunctionUtils::isVirtualFunction(
                                 func, interface.context(), &firstVirtual);
                     if (!isVirtual)
@@ -594,7 +592,7 @@ public:
 
                     if (func->isFinal()) {
                         if (FunctionItem *first = virtualFunctions[firstVirtual]) {
-                            FunctionItem *next = 0;
+                            FunctionItem *next = nullptr;
                             for (FunctionItem *removed = first; next != first; removed = next) {
                                 next = removed->nextOverride;
                                 m_factory->classFunctionModel->removeFunction(removed);
@@ -643,7 +641,7 @@ public:
                     itemName += QLatin1String(" : ") + itemReturnTypeString;
                     if (isReimplemented)
                         itemName += QLatin1String(" (redeclared)");
-                    FunctionItem *funcItem = new FunctionItem(func, itemName, itemBase);
+                    auto funcItem = new FunctionItem(func, itemName, itemBase);
                     if (isReimplemented) {
                         factory->setHasReimplementedFunctions(true);
                         funcItem->reimplemented = true;
@@ -734,7 +732,7 @@ public:
         return spec;
     }
 
-    void perform()
+    void perform() override
     {
         if (!m_factory->gather())
             return;
@@ -846,7 +844,7 @@ public:
 
             // make target lookup context
             Document::Ptr implementationDoc = implementationFile->cppDocument();
-            unsigned line, column;
+            int line, column;
             implementationDoc->translationUnit()->getPosition(insertPos, &line, &column);
             Scope *targetScope = implementationDoc->scopeAt(line, column);
             const LookupContext targetContext(implementationDoc, snapshot());
@@ -855,7 +853,7 @@ public:
                 targetCoN = targetContext.globalNamespace();
 
             // Loop through inserted declarations
-            for (unsigned i = targetClass->memberCount(); i < clazz->memberCount(); ++i) {
+            for (int i = targetClass->memberCount(); i < clazz->memberCount(); ++i) {
                 Declaration *decl = clazz->memberAt(i)->asDeclaration();
                 if (!decl)
                     continue;
@@ -897,12 +895,11 @@ class InsertVirtualMethodsFilterModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 public:
-    InsertVirtualMethodsFilterModel(QObject *parent = 0)
+    InsertVirtualMethodsFilterModel(QObject *parent = nullptr)
         : QSortFilterProxyModel(parent)
-        , m_hideReimplemented(false)
     {}
 
-    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override
     {
         QModelIndex index = sourceModel()->index(sourceRow, 0, sourceParent);
 
@@ -941,22 +938,11 @@ public:
     }
 
 private:
-    bool m_hideReimplemented;
+    bool m_hideReimplemented = false;
 };
 
 InsertVirtualMethodsDialog::InsertVirtualMethodsDialog(QWidget *parent)
     : QDialog(parent)
-    , m_view(0)
-    , m_filter(0)
-    , m_hideReimplementedFunctions(0)
-    , m_insertMode(0)
-    , m_virtualKeyword(0)
-    , m_overrideReplacementCheckBox(0)
-    , m_overrideReplacementComboBox(0)
-    , m_clearUserAddedReplacementsButton(0)
-    , m_buttons(0)
-    , m_hasImplementationFile(false)
-    , m_hasReimplementedFunctions(false)
     , m_settings(new VirtualMethodsSettings)
     , classFunctionModel(new InsertVirtualMethodsModel(this))
     , classFunctionFilterModel(new InsertVirtualMethodsFilterModel(this))
@@ -976,11 +962,11 @@ void InsertVirtualMethodsDialog::initGui()
         return;
 
     setWindowTitle(tr("Insert Virtual Functions"));
-    QVBoxLayout *globalVerticalLayout = new QVBoxLayout;
+    auto globalVerticalLayout = new QVBoxLayout;
 
     // View
     QGroupBox *groupBoxView = new QGroupBox(tr("&Functions to insert:"), this);
-    QVBoxLayout *groupBoxViewLayout = new QVBoxLayout(groupBoxView);
+    auto groupBoxViewLayout = new QVBoxLayout(groupBoxView);
     m_filter = new QLineEdit(this);
     m_filter->setClearButtonEnabled(true);
     m_filter->setPlaceholderText(tr("Filter"));
@@ -995,7 +981,7 @@ void InsertVirtualMethodsDialog::initGui()
 
     // Insertion options
     QGroupBox *groupBoxImplementation = new QGroupBox(tr("&Insertion options:"), this);
-    QVBoxLayout *groupBoxImplementationLayout = new QVBoxLayout(groupBoxImplementation);
+    auto groupBoxImplementationLayout = new QVBoxLayout(groupBoxImplementation);
     m_insertMode = new QComboBox(this);
     m_insertMode->addItem(tr("Insert only declarations"), ModeOnlyDeclarations);
     m_insertMode->addItem(tr("Insert definitions inside class"), ModeInsideClass);
@@ -1012,7 +998,7 @@ void InsertVirtualMethodsDialog::initGui()
     connect(m_overrideReplacementCheckBox, &QCheckBox::clicked,
             m_overrideReplacementComboBox, &QComboBox::setEnabled);
 
-    QAction *clearUserAddedReplacements = new QAction(this);
+    auto clearUserAddedReplacements = new QAction(this);
     clearUserAddedReplacements->setIcon(Utils::Icons::CLEAN_TOOLBAR.icon());
     clearUserAddedReplacements->setText(tr("Clear Added \"override\" Equivalents"));
     connect(clearUserAddedReplacements, &QAction::triggered, [this]() {
@@ -1023,9 +1009,9 @@ void InsertVirtualMethodsDialog::initGui()
     m_clearUserAddedReplacementsButton = new QToolButton(this);
     m_clearUserAddedReplacementsButton->setDefaultAction(clearUserAddedReplacements);
 
-    QHBoxLayout *overrideWidgetsLayout = new QHBoxLayout(this);
+    auto overrideWidgetsLayout = new QHBoxLayout(this);
     overrideWidgetsLayout->setSpacing(0);
-    overrideWidgetsLayout->setMargin(0);
+    overrideWidgetsLayout->setContentsMargins(0, 0, 0, 0);
     overrideWidgetsLayout->addWidget(m_overrideReplacementCheckBox);
     overrideWidgetsLayout->addWidget(m_overrideReplacementComboBox);
     overrideWidgetsLayout->addWidget(m_clearUserAddedReplacementsButton);
@@ -1102,11 +1088,11 @@ void InsertVirtualMethodsDialog::saveSettings()
     m_settings->overrideReplacementIndex = m_overrideReplacementComboBox->currentIndex();
     if (m_overrideReplacementComboBox && m_overrideReplacementComboBox->isEnabled())
         m_settings->overrideReplacement = m_overrideReplacementComboBox->currentText().trimmed();
-    QSet<QString> addedReplacements = m_availableOverrideReplacements.toSet();
+    QSet<QString> addedReplacements = Utils::toSet(m_availableOverrideReplacements);
     addedReplacements.insert(m_settings->overrideReplacement);
-    addedReplacements.subtract(defaultOverrideReplacements().toSet());
+    addedReplacements.subtract(Utils::toSet(defaultOverrideReplacements()));
     m_settings->userAddedOverrideReplacements =
-            sortedAndTrimmedStringListWithoutEmptyElements(addedReplacements.toList());
+            sortedAndTrimmedStringListWithoutEmptyElements(Utils::toList(addedReplacements));
     m_settings->write();
 }
 
@@ -1145,8 +1131,7 @@ void InsertVirtualMethodsDialog::setHasReimplementedFunctions(bool functions)
 
 void InsertVirtualMethodsDialog::setHideReimplementedFunctions(bool hide)
 {
-    InsertVirtualMethodsFilterModel *model =
-            qobject_cast<InsertVirtualMethodsFilterModel *>(classFunctionFilterModel);
+    auto model = qobject_cast<InsertVirtualMethodsFilterModel *>(classFunctionFilterModel);
 
     if (m_expansionStateNormal.isEmpty() && m_expansionStateReimp.isEmpty()) {
         model->setHideReimplementedFunctions(hide);
@@ -1172,8 +1157,7 @@ void InsertVirtualMethodsDialog::updateOverrideReplacementsComboBox()
 
 void InsertVirtualMethodsDialog::saveExpansionState()
 {
-    InsertVirtualMethodsFilterModel *model =
-            qobject_cast<InsertVirtualMethodsFilterModel *>(classFunctionFilterModel);
+    auto model = qobject_cast<InsertVirtualMethodsFilterModel *>(classFunctionFilterModel);
 
     QList<bool> &state = model->hideReimplemented() ? m_expansionStateReimp
                                                     : m_expansionStateNormal;
@@ -1184,8 +1168,7 @@ void InsertVirtualMethodsDialog::saveExpansionState()
 
 void InsertVirtualMethodsDialog::restoreExpansionState()
 {
-    InsertVirtualMethodsFilterModel *model =
-            qobject_cast<InsertVirtualMethodsFilterModel *>(classFunctionFilterModel);
+    auto model = qobject_cast<InsertVirtualMethodsFilterModel *>(classFunctionFilterModel);
 
     const QList<bool> &state = model->hideReimplemented() ? m_expansionStateReimp
                                                           : m_expansionStateNormal;

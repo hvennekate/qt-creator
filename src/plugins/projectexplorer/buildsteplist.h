@@ -27,8 +27,9 @@
 
 #include "projectexplorer_export.h"
 
-#include "projectconfiguration.h"
+#include <coreplugin/id.h>
 
+#include <QObject>
 #include <QVariantMap>
 
 namespace ProjectExplorer {
@@ -36,7 +37,7 @@ namespace ProjectExplorer {
 class BuildStep;
 class Target;
 
-class PROJECTEXPLORER_EXPORT BuildStepList : public ProjectConfiguration
+class PROJECTEXPLORER_EXPORT BuildStepList : public QObject
 {
     Q_OBJECT
 
@@ -47,7 +48,7 @@ public:
     void clear();
 
     QList<BuildStep *> steps() const;
-    QList<BuildStep *> steps(const std::function<bool(const BuildStep *)> &filter) const;
+
     template <class BS> BS *firstOfType() {
         BS *bs = nullptr;
         for (int i = 0; i < count(); ++i) {
@@ -57,34 +58,33 @@ public:
         }
         return nullptr;
     }
-    template <class BS> QList<BS *>allOfType() {
-        QList<BS *> result;
-        BS *bs = nullptr;
-        for (int i = 0; i < count(); ++i) {
-            bs = qobject_cast<BS *>(at(i));
-            if (bs)
-                result.append(bs);
-        }
-        return result;
-    }
+    BuildStep *firstStepWithId(Core::Id id) const;
 
     int count() const;
     bool isEmpty() const;
     bool contains(Core::Id id) const;
 
     void insertStep(int position, BuildStep *step);
+    void insertStep(int position, Core::Id id);
     void appendStep(BuildStep *step) { insertStep(count(), step); }
+    void appendStep(Core::Id stepId) { insertStep(count(), stepId); }
+
+    struct StepCreationInfo {
+        Core::Id stepId;
+        std::function<bool(Target *)> condition; // unset counts as unrestricted
+    };
+
     bool removeStep(int position);
     void moveStepUp(int position);
     BuildStep *at(int position);
 
-    Target *target() const;
-    Project *project() const override;
+    Target *target() { return m_target; }
 
-    QVariantMap toMap() const override;
-    bool fromMap(const QVariantMap &map) override;
+    QVariantMap toMap() const;
+    bool fromMap(const QVariantMap &map);
 
-    bool isActive() const override;
+    Core::Id id() const { return m_id; }
+    QString displayName() const;
 
 signals:
     void stepInserted(int position);
@@ -93,6 +93,8 @@ signals:
     void stepMoved(int from, int to);
 
 private:
+    Target *m_target;
+    Core::Id m_id;
     QList<BuildStep *> m_steps;
 };
 

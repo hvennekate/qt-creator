@@ -23,10 +23,10 @@
 **
 ****************************************************************************/
 
+#include "baremetalconstants.h"
 #include "baremetalrunconfiguration.h"
 
-#include "baremetalconstants.h"
-
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/buildtargetinfo.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/runconfigurationaspects.h>
@@ -43,37 +43,26 @@ namespace Internal {
 BareMetalRunConfiguration::BareMetalRunConfiguration(Target *target, Core::Id id)
     : RunConfiguration(target, id)
 {
-    auto exeAspect = addAspect<ExecutableAspect>();
+    const auto exeAspect = addAspect<ExecutableAspect>();
     exeAspect->setDisplayStyle(BaseStringAspect::LabelDisplay);
     exeAspect->setPlaceHolderText(tr("Unknown"));
 
     addAspect<ArgumentsAspect>();
     addAspect<WorkingDirectoryAspect>();
 
-    connect(target, &Target::deploymentDataChanged,
-            this, &BareMetalRunConfiguration::updateTargetInformation);
-    connect(target, &Target::applicationTargetsChanged,
-            this, &BareMetalRunConfiguration::updateTargetInformation);
-    connect(target, &Target::kitChanged,
-            this, &BareMetalRunConfiguration::updateTargetInformation); // Handles device changes, etc.
-    connect(target->project(), &Project::parsingFinished,
-            this, &BareMetalRunConfiguration::updateTargetInformation);
-}
+    setUpdater([this, exeAspect] {
+        const BuildTargetInfo bti = buildTargetInfo();
+        exeAspect->setExecutable(bti.targetFilePath);
+    });
 
-void BareMetalRunConfiguration::updateTargetInformation()
-{
-    const BuildTargetInfo bti = target()->applicationTargets().buildTargetInfo(buildKey());
-    aspect<ExecutableAspect>()->setExecutable(bti.targetFilePath);
-    emit enabledChanged();
+    connect(target, &Target::buildSystemUpdated, this, &RunConfiguration::update);
 }
-
-const char *BareMetalRunConfiguration::IdPrefix = "BareMetalCustom";
 
 // BareMetalRunConfigurationFactory
 
 BareMetalRunConfigurationFactory::BareMetalRunConfigurationFactory()
 {
-    registerRunConfiguration<BareMetalRunConfiguration>(BareMetalRunConfiguration::IdPrefix);
+    registerRunConfiguration<BareMetalRunConfiguration>("BareMetalCustom");
     setDecorateDisplayNames(true);
     addSupportedTargetDeviceType(BareMetal::Constants::BareMetalOsType);
 }

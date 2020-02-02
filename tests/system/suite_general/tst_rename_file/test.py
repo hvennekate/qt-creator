@@ -46,15 +46,15 @@ def main():
               "OTHER_FILES += example.qml")
     invokeMenuItem("File", "Save All")
     invokeMenuItem("File", "Close All")
-    progressBarWait()
+    waitForProjectParsing()
     for filetype, filename in [["Headers", "person.h"],
                                ["Sources", "main.cpp"],
                                ["Sources", "person.cpp"],
                                ["Resources", "adding.qrc"],
                                ["QML", "example.qml"]]:
         filenames = ["ABCD" + filename.upper(), "abcd" + filename.lower(), "test", "TEST", filename]
-        if (filename.endswith(".qrc") and JIRA.isBugStillOpen(20101)):
-            filenames.remove("ABCD" + filename.upper())
+        if filename.endswith(".qrc"):
+            filenames = ["ABCD" + filename.lower(), "abcd" + filename.lower(), filename]
         previous = filenames[-1]
         for filename in filenames:
             tempFiletype = filetype
@@ -66,7 +66,7 @@ def main():
             renameFile(templateDir, usedProFile, projectName + "." + tempFiletype,
                        previous, filename)
             # QTCREATORBUG-13176 does update the navigator async
-            progressBarWait()
+            waitForProjectParsing()
             if filetype == "Headers":
                 verifyRenamedIncludes(templateDir, "main.cpp", previous, filename)
                 verifyRenamedIncludes(templateDir, "person.cpp", previous, filename)
@@ -93,7 +93,9 @@ def renameFile(projectDir, proFile, branch, oldname, newname):
     try:
         openItemContextMenu(treeview, itemText, 5, 5, 0)
     except:
-        openItemContextMenu(treeview, addBranchWildcardToRoot(itemText), 5, 5, 0)
+        itemWithWildcard = addBranchWildcardToRoot(itemText)
+        waitForObjectItem(treeview, itemWithWildcard, 10000)
+        openItemContextMenu(treeview, itemWithWildcard, 5, 5, 0)
     # hack for Squish5/Qt5.2 problems of handling menus on Mac - remove asap
     if platform.system() == 'Darwin':
         waitFor("macHackActivateContextMenuItem('Rename...')", 5000)
@@ -108,17 +110,21 @@ def renameFile(projectDir, proFile, branch, oldname, newname):
                  "Only the filename without the extension is selected?")
     replaceEditorContent(replaceEdit, newname)
     type(replaceEdit, "<Return>")
+    if oldname == "adding.qrc":
+        clickButton(waitForObject("{text='No' type='QPushButton' unnamed='1' visible='1' "
+                                  "window={type='QMessageBox' unnamed='1' visible='1' "
+                                  "        windowTitle='Rename More Files?'}}"))
     test.verify(waitFor("os.path.exists(newFilePath)", 1000),
                 "Verify that file with new name exists: %s" % newFilePath)
     test.compare(readFile(newFilePath), oldFileText,
                  "Comparing content of file before and after renaming")
     test.verify(waitFor("newname in safeReadFile(proFile)", 2000),
                 "Verify that new filename '%s' was added to pro-file." % newname)
-    if not oldname in newname:
-        test.verify(not oldname in readFile(proFile),
+    if oldname not in newname:
+        test.verify(oldname not in readFile(proFile),
                     "Verify that old filename '%s' was removed from pro-file." % oldname)
     if not (oldname.lower() == newname.lower() and platform.system() in ('Windows', 'Microsoft')):
-        test.verify(not oldname in os.listdir(projectDir),
+        test.verify(oldname not in os.listdir(projectDir),
                     "Verify that file with old name does not exist: %s" % oldFilePath)
 
 def safeReadFile(filename):

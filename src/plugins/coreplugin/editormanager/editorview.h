@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "coreplugin/id.h"
+#include "../id.h"
 
 #include <utils/dropsupport.h>
 
@@ -154,6 +154,8 @@ public slots:
     void goForwardInNavigationHistory();
 
 public:
+    void goToEditLocation(const EditLocation &location);
+
     void addCurrentPositionToNavigationHistory(const QByteArray &saveState = QByteArray());
     void cutForwardNavigationHistory();
 
@@ -171,7 +173,7 @@ public:
     explicit SplitterOrView(EditorView *view);
     ~SplitterOrView() override;
 
-    void split(Qt::Orientation orientation);
+    void split(Qt::Orientation orientation, bool activateView = true);
     void unsplit();
 
     inline bool isView() const { return m_view != nullptr; }

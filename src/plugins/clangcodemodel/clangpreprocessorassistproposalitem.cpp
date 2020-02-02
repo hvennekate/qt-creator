@@ -30,6 +30,7 @@
 #include <cplusplus/Token.h>
 
 namespace ClangCodeModel {
+namespace Internal {
 
 bool ClangPreprocessorAssistProposalItem::prematurelyApplies(const QChar &typedCharacter) const
 {
@@ -130,6 +131,11 @@ QString ClangPreprocessorAssistProposalItem::detail() const
     return QString();
 }
 
+Qt::TextFormat ClangPreprocessorAssistProposalItem::detailFormat() const
+{
+    return Qt::RichText;
+}
+
 bool ClangPreprocessorAssistProposalItem::isSnippet() const
 {
     return false;
@@ -156,4 +162,5 @@ bool ClangPreprocessorAssistProposalItem::isInclude() const
         || m_completionOperator == CPlusPlus::T_ANGLE_STRING_LITERAL;
 }
 
+} // namespace Internal
 } // namespace ClangCodeModel

@@ -100,7 +100,7 @@ LldbEngine::LldbEngine()
 
     connect(&m_lldbProc, &QProcess::errorOccurred,
             this, &LldbEngine::handleLldbError);
-    connect(&m_lldbProc, static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished),
+    connect(&m_lldbProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &LldbEngine::handleLldbFinished);
     connect(&m_lldbProc, &QProcess::readyReadStandardOutput,
             this, &LldbEngine::readLldbStandardOutput);
@@ -191,27 +191,34 @@ void LldbEngine::abortDebuggerProcess()
         notifyEngineShutdownFinished();
 }
 
+static QString adapterStartFailed()
+{
+    return LldbEngine::tr("Adapter start failed.");
+}
+
 void LldbEngine::setupEngine()
 {
     QTC_ASSERT(state() == EngineSetupRequested, qDebug() << state());
 
-    QString lldbCmd = runParameters().debugger.executable;
+    const FilePath lldbCmd = runParameters().debugger.executable;
 
-    showMessage("STARTING LLDB: " + lldbCmd);
-    m_lldbProc.setEnvironment(runParameters().debugger.environment);
+    showMessage("STARTING LLDB: " + lldbCmd.toUserOutput());
+    Environment environment = runParameters().debugger.environment;
+    environment.appendOrSet("PYTHONUNBUFFERED", "1");  // avoid flushing problem on macOS
+    m_lldbProc.setEnvironment(environment);
     if (QFileInfo(runParameters().debugger.workingDirectory).isDir())
         m_lldbProc.setWorkingDirectory(runParameters().debugger.workingDirectory);
 
-    m_lldbProc.setCommand(lldbCmd, QString());
+    m_lldbProc.setCommand(CommandLine(lldbCmd));
     m_lldbProc.start();
 
     if (!m_lldbProc.waitForStarted()) {
         const QString msg = tr("Unable to start LLDB \"%1\": %2")
-            .arg(lldbCmd, m_lldbProc.errorString());
+            .arg(lldbCmd.toUserOutput(), m_lldbProc.errorString());
         notifyEngineSetupFailed();
         showMessage("ADAPTER START FAILED");
         if (!msg.isEmpty())
-            ICore::showWarningWithOptions(tr("Adapter start failed."), msg);
+            ICore::showWarningWithOptions(adapterStartFailed(), msg);
         return;
     }
     m_lldbProc.waitForReadyRead(1000);
@@ -222,9 +229,8 @@ void LldbEngine::setupEngine()
         ICore::resourcePath().toLocal8Bit() + "/debugger/";
 
     m_lldbProc.write("script sys.path.insert(1, '" + dumperSourcePath + "')\n");
+    // This triggers reportState("enginesetupok") or "enginesetupfailed":
     m_lldbProc.write("script from lldbbridge import *\n");
-    m_lldbProc.write("script print(dir())\n");
-    m_lldbProc.write("script theDumper = Dumper()\n"); // This triggers reportState("enginesetupok")
 
     QString commands = nativeStartupCommands();
     if (!commands.isEmpty())
@@ -253,15 +259,25 @@ void LldbEngine::setupEngine()
 
     const DebuggerRunParameters &rp = runParameters();
 
+    const SourcePathMap sourcePathMap =
+        DebuggerSourcePathMappingWidget::mergePlatformQtPath(rp,
+                Internal::globalDebuggerOptions()->sourcePathMap);
+    for (auto it = sourcePathMap.constBegin(), cend = sourcePathMap.constEnd();
+         it != cend;
+         ++it) {
+        executeDebuggerCommand(
+                    "settings append target.source-map " + it.key() + ' ' + expand(it.value()));
+    }
+
     DebuggerCommand cmd2("setupInferior");
-    cmd2.arg("executable", rp.inferior.executable);
+    cmd2.arg("executable", rp.inferior.executable.toString());
     cmd2.arg("breakonmain", rp.breakOnMain);
     cmd2.arg("useterminal", bool(terminal()));
     cmd2.arg("startmode", rp.startMode);
     cmd2.arg("nativemixed", isNativeMixedActive());
     cmd2.arg("workingdirectory", rp.inferior.workingDirectory);
     cmd2.arg("environment", rp.inferior.environment.toStringList());
-    cmd2.arg("processargs", toHex(rp.inferior.commandLineArguments));
+    cmd2.arg("processargs", toHex(QtcProcess::splitArgs(rp.inferior.commandLineArguments).join(QChar(0))));
 
     if (terminal()) {
         const qint64 attachedPID = terminal()->applicationPid();
@@ -314,15 +330,6 @@ void LldbEngine::runEngine()
     if (rp.startMode == AttachCore)
         cmd.arg("coreFile", rp.coreFile);
     runCommand(cmd);
-
-    const SourcePathMap sourcePathMap =
-        DebuggerSourcePathMappingWidget::mergePlatformQtPath(rp,
-                Internal::globalDebuggerOptions()->sourcePathMap);
-    for (auto it = sourcePathMap.constBegin(), cend = sourcePathMap.constEnd();
-         it != cend;
-         ++it) {
-        executeDebuggerCommand("settings append target.source-map " + it.key() + ' ' + it.value());
-    }
 }
 
 void LldbEngine::interruptInferior()
@@ -369,7 +376,7 @@ void LldbEngine::handleResponse(const QString &response)
         const QString name = item.name();
         if (name == "result") {
             QString msg = item["status"].data();
-            if (msg.size())
+            if (!msg.isEmpty())
                 msg[0] = msg.at(0).toUpper();
             showStatusMessage(msg);
 
@@ -384,13 +391,15 @@ void LldbEngine::handleResponse(const QString &response)
                     cmd.callback(response);
             }
         } else if (name == "state")
-            handleStateNotification(item);
+            handleStateNotification(all);
         else if (name == "location")
             handleLocationNotification(item);
         else if (name == "output")
             handleOutputNotification(item);
         else if (name == "pid")
             notifyInferiorPid(item.toProcessHandle());
+        else if (name == "breakpointmodified")
+            handleInterpreterBreakpointModified(item);
     }
 }
 
@@ -427,7 +436,7 @@ void LldbEngine::activateFrame(int frameIndex)
         return;
 
     StackHandler *handler = stackHandler();
-    if (frameIndex == handler->stackSize()) {
+    if (handler->isSpecialFrame(frameIndex)) {
         fetchStack(handler->stackSize() * 10 + 3);
         return;
     }
@@ -557,7 +566,7 @@ void LldbEngine::updateBreakpointData(const Breakpoint &bp, const GdbMi &bkpt, b
     bp->setIgnoreCount(bkpt["ignorecount"].toInt());
     bp->setCondition(fromHex(bkpt["condition"].data()));
     bp->setHitCount(bkpt["hitcount"].toInt());
-    bp->setFileName(bkpt["file"].data());
+    bp->setFileName(FilePath::fromUserInput(bkpt["file"].data()));
     bp->setLineNumber(bkpt["line"].toInt());
 
     GdbMi locations = bkpt["locations"];
@@ -570,7 +579,7 @@ void LldbEngine::updateBreakpointData(const Breakpoint &bp, const GdbMi &bkpt, b
             loc->params.type = bp->type();
             loc->params.address = location["addr"].toAddress();
             loc->params.functionName = location["function"].data();
-            loc->params.fileName = location["file"].data();
+            loc->params.fileName = FilePath::fromUserInput(location["file"].data());
             loc->params.lineNumber = location["line"].toInt();
             loc->displayName = QString("%1.%2").arg(bp->responseId()).arg(locid);
         }
@@ -601,6 +610,31 @@ void LldbEngine::handleOutputNotification(const GdbMi &output)
     else if (channel == "stderr")
         ch = AppError;
     showMessage(data, ch);
+}
+
+void LldbEngine::handleInterpreterBreakpointModified(const GdbMi &bpItem)
+{
+    QTC_ASSERT(bpItem.childCount(), return);
+    QString id = bpItem.childAt(0).m_data;
+
+    Breakpoint bp = breakHandler()->findBreakpointByResponseId(id);
+    if (!bp)        // FIXME adapt whole bp handling and turn into soft assert
+        return;
+
+    // this function got triggered by a lldb internal breakpoint event
+    // avoid asserts regarding unexpected state transitions
+    switch (bp->state()) {
+    case BreakpointInsertionRequested:  // was a pending bp
+        bp->gotoState(BreakpointInsertionProceeding, BreakpointInsertionRequested);
+        break;
+    case BreakpointInserted:            // was an inserted, gets updated now
+        bp->gotoState(BreakpointUpdateRequested, BreakpointInserted);
+        notifyBreakpointChangeProceeding(bp);
+        break;
+    default:
+        break;
+    }
+    updateBreakpointData(bp, bpItem, false);
 }
 
 void LldbEngine::loadSymbols(const QString &moduleName)
@@ -637,7 +671,7 @@ void LldbEngine::requestModuleSymbols(const QString &moduleName)
 {
     DebuggerCommand cmd("fetchSymbols");
     cmd.arg("module", moduleName);
-    cmd.callback = [moduleName](const DebuggerResponse &response) {
+    cmd.callback = [this, moduleName](const DebuggerResponse &response) {
         const GdbMi &symbols = response.data["symbols"];
         QString moduleName = response.data["module"].data();
         Symbols syms;
@@ -650,7 +684,7 @@ void LldbEngine::requestModuleSymbols(const QString &moduleName)
             symbol.demangled = item["demangled"].data();
             syms.append(symbol);
         }
-        Internal::showModuleSymbols(moduleName, syms);
+        showModuleSymbols(moduleName, syms);
     };
     runCommand(cmd);
 }
@@ -705,12 +739,14 @@ void LldbEngine::fetchStack(int limit)
 //
 //////////////////////////////////////////////////////////////////////
 
-void LldbEngine::assignValueInDebugger(WatchItem *,
+void LldbEngine::assignValueInDebugger(WatchItem *item,
     const QString &expression, const QVariant &value)
 {
     DebuggerCommand cmd("assignValue");
-    cmd.arg("exp", toHex(expression));
+    cmd.arg("expr", toHex(expression));
     cmd.arg("value", toHex(value.toString()));
+    cmd.arg("type", toHex(item->type));
+    cmd.arg("simpleType", isIntOrFloatType(item->type));
     cmd.callback = [this](const DebuggerResponse &) { updateLocals(); };
     runCommand(cmd);
 }
@@ -730,6 +766,7 @@ void LldbEngine::doUpdateLocals(const UpdateParameters &params)
     cmd.arg("dyntype", boolSetting(UseDynamicType));
     cmd.arg("partialvar", params.partialVariable);
     cmd.arg("qobjectnames", boolSetting(ShowQObjectNames));
+    cmd.arg("timestamps", boolSetting(LogTimeStamps));
 
     StackFrame frame = stackHandler()->currentFrame();
     cmd.arg("context", frame.context);
@@ -779,7 +816,7 @@ QString LldbEngine::errorMessage(QProcess::ProcessError error) const
             return tr("The LLDB process failed to start. Either the "
                 "invoked program \"%1\" is missing, or you may have insufficient "
                 "permissions to invoke the program.")
-                .arg(runParameters().debugger.executable);
+                .arg(runParameters().debugger.executable.toUserOutput());
         case QProcess::Crashed:
             return tr("The LLDB process crashed some time after starting "
                 "successfully.");
@@ -828,9 +865,9 @@ void LldbEngine::readLldbStandardOutput()
     }
 }
 
-void LldbEngine::handleStateNotification(const GdbMi &reportedState)
+void LldbEngine::handleStateNotification(const GdbMi &item)
 {
-    QString newState = reportedState.data();
+    const QString newState = item["state"].data();
     if (newState == "running")
         notifyInferiorRunOk();
     else if (newState == "inferiorrunfailed")
@@ -865,9 +902,11 @@ void LldbEngine::handleStateNotification(const GdbMi &reportedState)
         notifyInferiorIll();
     else if (newState == "enginesetupok")
         notifyEngineSetupOk();
-    else if (newState == "enginesetupfailed")
+    else if (newState == "enginesetupfailed") {
+        Core::AsynchronousMessageBox::critical(adapterStartFailed(),
+                                               item["error"].data());
         notifyEngineSetupFailed();
-    else if (newState == "enginerunfailed")
+    } else if (newState == "enginerunfailed")
         notifyEngineRunFailed();
     else if (newState == "enginerunandinferiorrunok") {
         if (runParameters().continueAfterAttach)
@@ -891,20 +930,18 @@ void LldbEngine::handleStateNotification(const GdbMi &reportedState)
 void LldbEngine::handleLocationNotification(const GdbMi &reportedLocation)
 {
     qulonglong address = reportedLocation["address"].toAddress();
-    QString fileName = reportedLocation["file"].data();
+    Utils::FilePath fileName = FilePath::fromUserInput(reportedLocation["file"].data());
     QString function = reportedLocation["function"].data();
     int lineNumber = reportedLocation["line"].toInt();
     Location loc = Location(fileName, lineNumber);
-    if (operatesByInstruction() || !QFileInfo::exists(fileName) || lineNumber <= 0) {
+    if (operatesByInstruction() || !fileName.exists() || lineNumber <= 0) {
         loc = Location(address);
         loc.setNeedsMarker(true);
         loc.setUseAssembler(true);
     }
 
     // Quickly set the location marker.
-    if (lineNumber > 0
-            && QFileInfo::exists(fileName)
-            && function != "::qt_qmlDebugMessageAvailable()")
+    if (lineNumber > 0 && fileName.exists() && function != "::qt_qmlDebugMessageAvailable()")
         gotoLocation(Location(fileName, lineNumber));
 }
 
@@ -1011,7 +1048,7 @@ void LldbEngine::changeMemory(MemoryAgent *agent, quint64 addr, const QByteArray
     DebuggerCommand cmd("writeMemory");
     cmd.arg("address", addr);
     cmd.arg("data", QString::fromUtf8(data.toHex()));
-    cmd.callback = [](const DebuggerResponse &response) { Q_UNUSED(response); };
+    cmd.callback = [](const DebuggerResponse &response) { Q_UNUSED(response) };
     runCommand(cmd);
 }
 

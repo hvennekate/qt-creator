@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.0" language="fr">
+<TS version="2.1" language="fr">
 <context>
     <name>Application</name>
     <message>
@@ -12589,8 +12589,12 @@ Ajouter, modifier et supprimer des filtres de documents, lesquels déterminent l
         <translation>Sans filtre</translation>
     </message>
     <message>
-        <source>&lt;html&gt;&lt;head&gt;&lt;title&gt;No Documentation&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;br/&gt;&lt;center&gt;&lt;b&gt;%1&lt;/b&gt;&lt;br/&gt;No documentation available.&lt;/center&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head&gt;&lt;title&gt;Aucune documentation&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;br/&gt;&lt;center&gt;&lt;b&gt;%1&lt;/b&gt;&lt;br/&gt;Aucune documentation disponible.&lt;/center&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <source>No Documentation</source>
+        <translation>Aucune documentation</translation>
+    </message>
+    <message>
+        <source>No documentation available.</source>
+        <translation>Aucune documentation disponible.</translation>
     </message>
     <message>
         <source>Close current page</source>
@@ -42408,7 +42412,7 @@ au gestionnaire de version (%2)</translation>
     </message>
     <message>
         <source>Set Message Tracepoint at Line %1...</source>
-        <translation>Définir un message de traçace à la ligne %1...</translation>
+        <translation>Définir un message de traçage à la ligne %1...</translation>
     </message>
     <message>
         <source>Disassemble Function &quot;%1&quot;</source>
@@ -70887,7 +70891,7 @@ réinitialisation du moniteur</translation>
     <message>
         <source>Get Started Now</source>
         <translatorcomment>attention à la longueur du texte, doit reste petit</translatorcomment>
-        <translation type="unfinished">Démarrer</translation>
+        <translation>Démarrer</translation>
     </message>
     <message>
         <source>Online Community</source>

@@ -32,33 +32,54 @@
 #include <utils/savedaction.h>
 
 #include <QAction>
+#include <QHeaderView>
 
 namespace Debugger {
 namespace Internal {
 
-StackTreeView::StackTreeView()
+StackTreeView::StackTreeView(QWidget *parent)
+    : BaseTreeView(parent)
 {
-    setWindowTitle(tr("Stack"));
-
-    connect(action(UseAddressInStackView), &QAction::toggled,
-        this, &StackTreeView::showAddressColumn);
-    showAddressColumn(false);
-}
-
-void StackTreeView::showAddressColumn(bool on)
-{
-    setColumnHidden(StackAddressColumn, !on);
-    resizeColumnToContents(StackLevelColumn);
-    resizeColumnToContents(StackLineNumberColumn);
-    resizeColumnToContents(StackAddressColumn);
+    setSpanColumn(StackFunctionNameColumn);
 }
 
 void StackTreeView::setModel(QAbstractItemModel *model)
 {
     BaseTreeView::setModel(model);
+
+    if (model)
+        setRootIndex(model->index(0, 0, QModelIndex()));
+
+    connect(static_cast<StackHandler*>(model), &StackHandler::stackChanged,
+            this, [this]() {
+        if (!m_contentsAdjusted)
+            adjustForContents();
+    });
+}
+
+void StackTreeView::showAddressColumn(bool on)
+{
+    setColumnHidden(StackAddressColumn, !on);
+    adjustForContents(true);
+}
+
+void StackTreeView::adjustForContents(bool refreshSpan)
+{
+    // Skip resizing if no contents. This will be called again once contents are available.
+    if (!model() || model()->rowCount() == 0) {
+        if (refreshSpan)
+            refreshSpanColumn();
+        return;
+    }
+
+    // Resize without attempting to fix up the columns.
+    setSpanColumn(-1);
     resizeColumnToContents(StackLevelColumn);
+    resizeColumnToContents(StackFileNameColumn);
     resizeColumnToContents(StackLineNumberColumn);
-    showAddressColumn(action(UseAddressInStackView)->isChecked());
+    resizeColumnToContents(StackAddressColumn);
+    setSpanColumn(StackFunctionNameColumn);
+    m_contentsAdjusted = true;
 }
 
 } // namespace Internal

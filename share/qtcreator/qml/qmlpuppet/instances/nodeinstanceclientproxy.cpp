@@ -41,6 +41,8 @@
 #include "instancecontainer.h"
 #include "createinstancescommand.h"
 #include "createscenecommand.h"
+#include "update3dviewstatecommand.h"
+#include "enable3dviewcommand.h"
 #include "changevaluescommand.h"
 #include "changebindingscommand.h"
 #include "changeauxiliarycommand.h"
@@ -67,14 +69,18 @@
 #include "endpuppetcommand.h"
 #include "debugoutputcommand.h"
 #include "puppetalivecommand.h"
+#include "changeselectioncommand.h"
+#include "drop3dlibraryitemcommand.h"
+#include "view3dclosedcommand.h"
+#include "puppettocreatorcommand.h"
 
 namespace QmlDesigner {
 
 NodeInstanceClientProxy::NodeInstanceClientProxy(QObject *parent)
     : QObject(parent),
-      m_inputIoDevice(0),
-      m_outputIoDevice(0),
-      m_nodeInstanceServer(0),
+      m_inputIoDevice(nullptr),
+      m_outputIoDevice(nullptr),
+      m_nodeInstanceServer(nullptr),
       m_writeCommandCounter(0),
       m_synchronizeId(-1)
 {
@@ -87,8 +93,7 @@ void NodeInstanceClientProxy::initializeSocket()
 {
     QLocalSocket *localSocket = new QLocalSocket(this);
     connect(localSocket, &QIODevice::readyRead, this, &NodeInstanceClientProxy::readDataStream);
-    connect(localSocket,
-            static_cast<void (QLocalSocket::*)(QLocalSocket::LocalSocketError)>(&QLocalSocket::error),
+    connect(localSocket, QOverload<QLocalSocket::LocalSocketError>::of(&QLocalSocket::error),
             QCoreApplication::instance(), &QCoreApplication::quit);
     connect(localSocket, &QLocalSocket::disconnected, QCoreApplication::instance(), &QCoreApplication::quit);
     localSocket->connectToServer(QCoreApplication::arguments().at(1), QIODevice::ReadWrite | QIODevice::Unbuffered);
@@ -130,6 +135,7 @@ bool compareCommands(const QVariant &command, const QVariant &controlCommand)
 {
     static const int informationChangedCommandType = QMetaType::type("InformationChangedCommand");
     static const int valuesChangedCommandType = QMetaType::type("ValuesChangedCommand");
+    static const int valuesModifiedCommandType = QMetaType::type("ValuesModifiedCommand");
     static const int pixmapChangedCommandType = QMetaType::type("PixmapChangedCommand");
     static const int childrenChangedCommandType = QMetaType::type("ChildrenChangedCommand");
     static const int statePreviewImageChangedCommandType = QMetaType::type("StatePreviewImageChangedCommand");
@@ -137,13 +143,17 @@ bool compareCommands(const QVariant &command, const QVariant &controlCommand)
     static const int synchronizeCommandType = QMetaType::type("SynchronizeCommand");
     static const int tokenCommandType = QMetaType::type("TokenCommand");
     static const int debugOutputCommandType = QMetaType::type("DebugOutputCommand");
+    static const int changeSelectionCommandType = QMetaType::type("ChangeSelectionCommand");
+    static const int drop3DLibraryItemCommandType = QMetaType::type("Drop3DLibraryItemCommand");
 
     if (command.userType() == controlCommand.userType()) {
         if (command.userType() == informationChangedCommandType)
             return command.value<InformationChangedCommand>() == controlCommand.value<InformationChangedCommand>();
         else if (command.userType() == valuesChangedCommandType)
             return command.value<ValuesChangedCommand>() == controlCommand.value<ValuesChangedCommand>();
-         else if (command.userType() == pixmapChangedCommandType)
+        else if (command.userType() == valuesModifiedCommandType)
+            return command.value<ValuesModifiedCommand>() == controlCommand.value<ValuesModifiedCommand>();
+        else if (command.userType() == pixmapChangedCommandType)
             return command.value<PixmapChangedCommand>() == controlCommand.value<PixmapChangedCommand>();
         else if (command.userType() == childrenChangedCommandType)
             return command.value<ChildrenChangedCommand>() == controlCommand.value<ChildrenChangedCommand>();
@@ -157,6 +167,10 @@ bool compareCommands(const QVariant &command, const QVariant &controlCommand)
             return command.value<TokenCommand>() == controlCommand.value<TokenCommand>();
         else if (command.userType() == debugOutputCommandType)
             return command.value<DebugOutputCommand>() == controlCommand.value<DebugOutputCommand>();
+        else if (command.userType() == changeSelectionCommandType)
+            return command.value<ChangeSelectionCommand>() == controlCommand.value<ChangeSelectionCommand>();
+        else if (command.userType() == drop3DLibraryItemCommandType)
+            return command.value<Drop3DLibraryItemCommand>() == controlCommand.value<Drop3DLibraryItemCommand>();
     }
 
     return false;
@@ -199,6 +213,11 @@ void NodeInstanceClientProxy::valuesChanged(const ValuesChangedCommand &command)
     writeCommand(QVariant::fromValue(command));
 }
 
+void NodeInstanceClientProxy::valuesModified(const ValuesModifiedCommand &command)
+{
+    writeCommand(QVariant::fromValue(command));
+}
+
 void NodeInstanceClientProxy::pixmapChanged(const PixmapChangedCommand &command)
 {
     writeCommand(QVariant::fromValue(command));
@@ -234,6 +253,26 @@ void NodeInstanceClientProxy::puppetAlive(const PuppetAliveCommand &command)
     writeCommand(QVariant::fromValue(command));
 }
 
+void NodeInstanceClientProxy::selectionChanged(const ChangeSelectionCommand &command)
+{
+     writeCommand(QVariant::fromValue(command));
+}
+
+void NodeInstanceClientProxy::library3DItemDropped(const Drop3DLibraryItemCommand &command)
+{
+    writeCommand(QVariant::fromValue(command));
+}
+
+void NodeInstanceClientProxy::handlePuppetToCreatorCommand(const PuppetToCreatorCommand &command)
+{
+    writeCommand(QVariant::fromValue(command));
+}
+
+void NodeInstanceClientProxy::view3DClosed(const View3DClosedCommand &command)
+{
+    writeCommand(QVariant::fromValue(command));
+}
+
 void NodeInstanceClientProxy::flush()
 {
 }
@@ -253,9 +292,6 @@ qint64 NodeInstanceClientProxy::bytesToWrite() const
 
 QVariant NodeInstanceClientProxy::readCommandFromIOStream(QIODevice *ioDevice, quint32 *readCommandCounter, quint32 *blockSize)
 {
-
-
-
     QDataStream in(ioDevice);
     in.setVersion(QDataStream::Qt_4_8);
 
@@ -304,9 +340,8 @@ void NodeInstanceClientProxy::readDataStream()
             break;
     }
 
-    foreach (const QVariant &command, commandList) {
+    for (const QVariant &command : qAsConst(commandList))
         dispatchCommand(command);
-    }
 }
 
 void NodeInstanceClientProxy::sendPuppetAliveCommand()
@@ -337,6 +372,16 @@ void NodeInstanceClientProxy::changeFileUrl(const ChangeFileUrlCommand &command)
 void NodeInstanceClientProxy::createScene(const CreateSceneCommand &command)
 {
     nodeInstanceServer()->createScene(command);
+}
+
+void NodeInstanceClientProxy::update3DViewState(const Update3dViewStateCommand &command)
+{
+    nodeInstanceServer()->update3DViewState(command);
+}
+
+void NodeInstanceClientProxy::enable3DView(const Enable3DViewCommand &command)
+{
+    nodeInstanceServer()->enable3DView(command);
 }
 
 void NodeInstanceClientProxy::clearScene(const ClearSceneCommand &command)
@@ -418,9 +463,16 @@ void NodeInstanceClientProxy::redirectToken(const EndPuppetCommand & /*command*/
     QCoreApplication::exit();
 }
 
+void NodeInstanceClientProxy::changeSelection(const ChangeSelectionCommand &command)
+{
+    nodeInstanceServer()->changeSelection(command);
+}
+
 void NodeInstanceClientProxy::dispatchCommand(const QVariant &command)
 {
     static const int createInstancesCommandType = QMetaType::type("CreateInstancesCommand");
+    static const int update3dViewStateCommand = QMetaType::type("Update3dViewStateCommand");
+    static const int enable3DViewCommandType = QMetaType::type("Enable3DViewCommand");
     static const int changeFileUrlCommandType = QMetaType::type("ChangeFileUrlCommand");
     static const int createSceneCommandType = QMetaType::type("CreateSceneCommand");
     static const int clearSceneCommandType = QMetaType::type("ClearSceneCommand");
@@ -438,11 +490,16 @@ void NodeInstanceClientProxy::dispatchCommand(const QVariant &command)
     static const int removeSharedMemoryCommandType = QMetaType::type("RemoveSharedMemoryCommand");
     static const int tokenCommandType = QMetaType::type("TokenCommand");
     static const int endPuppetCommandType = QMetaType::type("EndPuppetCommand");
+    static const int changeSelectionCommandType = QMetaType::type("ChangeSelectionCommand");
 
     const int commandType = command.userType();
 
     if (commandType == createInstancesCommandType)
         createInstances(command.value<CreateInstancesCommand>());
+    else if (commandType == update3dViewStateCommand)
+        update3DViewState(command.value<Update3dViewStateCommand>());
+    else if (commandType == enable3DViewCommandType)
+        enable3DView(command.value<Enable3DViewCommand>());
     else if (commandType == changeFileUrlCommandType)
         changeFileUrl(command.value<ChangeFileUrlCommand>());
     else if (commandType == createSceneCommandType)
@@ -478,6 +535,9 @@ void NodeInstanceClientProxy::dispatchCommand(const QVariant &command)
     else if (commandType == synchronizeCommandType) {
         SynchronizeCommand synchronizeCommand = command.value<SynchronizeCommand>();
         m_synchronizeId = synchronizeCommand.synchronizeId();
+    } else if (commandType == changeSelectionCommandType) {
+        ChangeSelectionCommand changeSelectionCommand = command.value<ChangeSelectionCommand>();
+        changeSelection(changeSelectionCommand);
     } else {
         Q_ASSERT(false);
     }

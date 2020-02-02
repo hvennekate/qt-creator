@@ -194,7 +194,7 @@ def qdump_X_QModelIndex(d, value):
     #gdb.execute('call free($mi)')
 
 def qdump__Qt__ItemDataRole(d, value):
-    d.putEnumValue(value, {
+    d.putEnumValue(value.integer(), {
         0  : "Qt::DisplayRole",
         1  : "Qt::DecorationRole",
         2  : "Qt::EditRole",
@@ -227,7 +227,12 @@ def qdump__QStandardItemData(d, value):
 
 def qdump__QStandardItem(d, value):
     vtable, dptr = value.split('pp')
-    vtable1, model, parent, values, children, rows, cols, item = d.split('pppPPIIp', dptr)
+    # There used to be a virtual destructor that got removed in
+    # 88b6abcebf29b455438 on Apr 18 17:01:22 2017
+    if d.qtVersion() >= 0x050900 or d.isMsvcTarget():
+        model, parent, values, children, rows, cols, item = d.split('ppPPIIp', dptr)
+    else:
+        vtable1, model, parent, values, children, rows, cols, item = d.split('pppPPIIp', dptr)
     d.putValue(' ')
     d.putNumChild(1)
     if d.isExpanded():
@@ -396,8 +401,7 @@ def qdump__QDateTime(d, value):
 
 
 def qdump__QDir(d, value):
-    if not d.isMsvcTarget():
-        d.putNumChild(1)
+    d.putNumChild(1)
     privAddress = d.extractPointer(value)
     bit32 = d.ptrSize() == 4
     qt5 = d.qtVersion() >= 0x050000
@@ -468,21 +472,22 @@ def qdump__QDir(d, value):
         absoluteDirEntryOffset = dirEntryOffset + fileSystemEntrySize
 
     d.putStringValue(privAddress + dirEntryOffset)
-    if d.isExpanded() and not d.isMsvcTarget():
+    if d.isExpanded():
         with Children(d):
-            ns = d.qtNamespace()
-            d.call('int', value, 'count')  # Fill cache.
-            #d.putCallItem('absolutePath', '@QString', value, 'absolutePath')
-            #d.putCallItem('canonicalPath', '@QString', value, 'canonicalPath')
-            with SubItem(d, 'absolutePath'):
-                typ = d.lookupType(ns + 'QString')
-                d.putItem(d.createValue(privAddress + absoluteDirEntryOffset, typ))
-            with SubItem(d, 'entryInfoList'):
-                typ = d.lookupType(ns + 'QList<' + ns + 'QFileInfo>')
-                d.putItem(d.createValue(privAddress + fileInfosOffset, typ))
-            with SubItem(d, 'entryList'):
-                typ = d.lookupType(ns + 'QStringList')
-                d.putItem(d.createValue(privAddress + filesOffset, typ))
+            if not d.isMsvcTarget():
+                ns = d.qtNamespace()
+                d.call('int', value, 'count')  # Fill cache.
+                #d.putCallItem('absolutePath', '@QString', value, 'absolutePath')
+                #d.putCallItem('canonicalPath', '@QString', value, 'canonicalPath')
+                with SubItem(d, 'absolutePath'):
+                    typ = d.lookupType(ns + 'QString')
+                    d.putItem(d.createValue(privAddress + absoluteDirEntryOffset, typ))
+                with SubItem(d, 'entryInfoList'):
+                    typ = d.lookupType(ns + 'QFileInfo')
+                    qdumpHelper_QList(d, privAddress + fileInfosOffset, typ)
+                with SubItem(d, 'entryList'):
+                    typ = d.lookupType(ns + 'QStringList')
+                    d.putItem(d.createValue(privAddress + filesOffset, typ))
             d.putFields(value)
 
 
@@ -492,15 +497,15 @@ def qdump__QEvent(d, value):
         with Children(d):
             # Add a sub-item with the event type.
             with SubItem(d, '[type]'):
-                (vtable, privateD, t) = value.split("pp{ushort}")
-                event_type_name = "QEvent::Type"
+                (vtable, privateD, t, flags) = value.split("pp{short}{short}")
+                event_type_name = d.qtNamespace() + "QEvent::Type"
                 type_value = t.cast(event_type_name)
-                d.putValue(type_value.displayEnum('0x%04x'))
+                d.putValue(type_value.displayEnum('0x%04x', bitsize=16))
                 d.putType(event_type_name)
                 d.putNumChild(0)
 
             # Show the rest of the class fields as usual.
-            d.putFields(value, dumpBase=True)
+            d.putFields(value)
 
 def qdump__QKeyEvent(d, value):
     # QEvent fields
@@ -531,9 +536,9 @@ def qdump__QKeyEvent(d, value):
     #data = d.encodeString(txt)
     key_txt_utf8 = d.encodeStringUtf8(txt)
 
-    k_type_name = "Qt::Key"
-    k_casted_to_enum_value = k.cast(k_type_name)
-    k_name = k_casted_to_enum_value.displayEnum()
+    k_type_name = d.qtNamespace() + "Qt::Key"
+    k_cast_to_enum_value = k.cast(k_type_name)
+    k_name = k_cast_to_enum_value.displayEnum(bitsize=32)
     matches = re.search(r'Key_(\w+)', k_name)
     if matches:
         k_name = matches.group(1)
@@ -587,8 +592,8 @@ def qdump__QKeyEvent(d, value):
         with Children(d):
             # Add a sub-item with the enum name and value.
             with SubItem(d, '[{}]'.format(k_type_name)):
-                k_casted_to_enum_value = k.cast(k_type_name)
-                d.putValue(k_casted_to_enum_value.displayEnum('0x%04x'))
+                k_cast_to_enum_value = k.cast(k_type_name)
+                d.putValue(k_cast_to_enum_value.displayEnum('0x%04x', bitsize=32))
                 d.putType(k_type_name)
                 d.putNumChild(0)
 
@@ -600,7 +605,16 @@ def qdump__QFile(d, value):
     # 9fc0965 and a373ffcd change the layout of the private structure
     qtVersion = d.qtVersion()
     is32bit = d.ptrSize() == 4
-    if qtVersion >= 0x050700:
+    if qtVersion >= 0x050600 and d.qtTypeInfoVersion() >= 17:
+        # Some QRingBuffer member got removed in 8f92baf5c9
+        if d.isWindowsTarget():
+            if d.isMsvcTarget():
+                offset = 164 if is32bit else 224
+            else:
+               offset = 160 if is32bit else 224
+        else:
+            offset = 156 if is32bit else 224
+    elif qtVersion >= 0x050700:
         if d.isWindowsTarget():
             if d.isMsvcTarget():
                 offset = 176 if is32bit else 248
@@ -756,7 +770,7 @@ def qdump__QFlags(d, value):
     i = value.split('{int}')[0]
     enumType = value.type[0]
     v = i.cast(enumType.name)
-    d.putValue(v.displayEnum('0x%04x'))
+    d.putValue(v.displayEnum('0x%04x', bitsize=32))
     d.putNumChild(0)
 
 
@@ -1197,14 +1211,15 @@ def qdump__QMetaObject(d, value):
             d.putMembersItem(value)
 
 
-def qdump__QObjectPrivate__ConnectionList(d, value):
+if False:
+  def qdump__QObjectPrivate__ConnectionList(d, value):
     d.putNumChild(1)
     if d.isExpanded():
         i = 0
         with Children(d):
             first, last = value.split('pp')
             currentConnection = first
-            connectionType = d.createType('QObjectPrivate::Connection')
+            connectionType = d.createType('@QObjectPrivate::Connection')
             while currentConnection and currentConnection != last:
                 sender, receiver, slotObj, nextConnectionList, nextp, prev = \
                     d.split('pppppp', currentConnection)
@@ -1231,6 +1246,11 @@ def qdump__QPixmap(d, value):
     else:
         (dummy, width, height) = d.split('pii', dataPtr)
         d.putValue('(%dx%d)' % (width, height))
+    d.putPlainChildren(value)
+
+
+def qdump__QMargins(d, value):
+    d.putValue('left:%s, top:%s, right:%s, bottom:%s' % (value.split('iiii')))
     d.putPlainChildren(value)
 
 
@@ -1410,6 +1430,31 @@ def qdump__QSize(d, value):
 def qdump__QSizeF(d, value):
     d.putValue('(%s, %s)' % value.split('dd'))
     d.putPlainChildren(value)
+
+
+def qdump__QSizePolicy__Policy(d, value):
+    d.putEnumValue(value.integer(), {
+        0  : 'QSizePolicy::Fixed',
+        1  : 'QSizePolicy::GrowFlag',
+        2  : 'QSizePolicy::ExpandFlag',
+        3  : 'QSizePolicy::MinimumExpanding (GrowFlag|ExpandFlag)',
+        4  : 'QSizePolicy::ShrinkFlag',
+        5  : 'QSizePolicy::Preferred (GrowFlag|ShrinkFlag)',
+        7  : 'QSizePolicy::Expanding (GrowFlag|ShrinkFlag|ExpandFlag)',
+        8  : 'QSizePolicy::IgnoreFlag',
+       13  : 'QSizePolicy::Ignored (ShrinkFlag|GrowFlag|IgnoreFlag)',
+    })
+
+def qdump__QSizePolicy(d, value):
+    bits = value.integer()
+    d.putEmptyValue(-99)
+    d.putNumChild(1)
+    if d.isExpanded():
+        with Children(d):
+            d.putIntItem('horStretch', (bits >> 0) & 0xff)
+            d.putIntItem('verStretch', (bits >> 8) & 0xff)
+            d.putEnumItem('horPolicy', (bits >> 16) & 0xf, "@QSizePolicy::Policy")
+            d.putEnumItem('verPolicy', (bits >> 20) & 0xf, "@QSizePolicy::Policy")
 
 
 def qform__QStack():
@@ -1904,7 +1949,8 @@ def qdump__QVector(d, value):
     d.putItemCount(size)
     d.putPlotData(data, size, value.type[0])
 
-def qdump__QObjectConnectionList(d, value):
+if False:
+  def qdump__QObjectConnectionList(d, value):
     dd = d.extractPointer(value)
     data, size, alloc = d.vectorDataHelper(dd)
     d.check(0 <= size and size <= alloc and alloc <= 1000 * 1000 * 1000)
@@ -1926,7 +1972,10 @@ def qdump__QWeakPointer(d, value):
     qdump_QWeakPointerHelper(d, value, True)
 
 def qdump__QPointer(d, value):
-    qdump_QWeakPointerHelper(d, value['wp'], True, value.type[0])
+    # actually, we'd use value['wp'] instead of value, but since we
+    # only split() on the result and the (sub-)object address is the
+    # same it does not matter but saves some cycles.
+    qdump_QWeakPointerHelper(d, value, True, value.type[0])
 
 def qdump_QWeakPointerHelper(d, value, isWeak, innerType = None):
     if isWeak:

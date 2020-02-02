@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "qmljsquickfixassist.h"
+#include "qmljseditor.h"
 #include "qmljseditorconstants.h"
 #include "qmljseditordocument.h"
 
@@ -53,8 +54,7 @@ QmlJSQuickFixAssistInterface::QmlJSQuickFixAssistInterface(QmlJSEditorWidget *ed
     , m_currentFile(QmlJSRefactoringChanges::file(editor, m_semanticInfo.document))
 {}
 
-QmlJSQuickFixAssistInterface::~QmlJSQuickFixAssistInterface()
-{}
+QmlJSQuickFixAssistInterface::~QmlJSQuickFixAssistInterface() = default;
 
 const SemanticInfo &QmlJSQuickFixAssistInterface::semanticInfo() const
 {

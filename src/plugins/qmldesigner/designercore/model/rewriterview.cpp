@@ -53,6 +53,9 @@
 #include <utils/changeset.h>
 #include <utils/qtcassert.h>
 
+#include <utility>
+#include <vector>
+
 using namespace QmlDesigner::Internal;
 
 namespace QmlDesigner {
@@ -387,6 +390,25 @@ void RewriterView::deactivateTextMofifierChangeSignals()
         textModifier()->deactivateChangeSignals();
 }
 
+void RewriterView::auxiliaryDataChanged(const ModelNode &node, const PropertyName &name, const QVariant &)
+{
+    if (m_restoringAuxData)
+        return;
+
+    if (name.endsWith("@NodeInstance"))
+        return;
+
+    if (name.endsWith("@Internal"))
+        return;
+
+    if (node.isRootNode()) {
+        if (name == "width" || name == "height" || name == "autoSize")
+            return;
+    }
+
+    m_textModifier->textDocument()->setModified(true);
+}
+
 void RewriterView::applyModificationGroupChanges()
 {
     Q_ASSERT(transactionLevel == 0);
@@ -465,7 +487,11 @@ QString RewriterView::auxiliaryDataAsQML() const
 {
     bool hasAuxData = false;
 
+    setupCanonicalHashes();
+
     QString str = "Designer {\n    ";
+
+    QTC_ASSERT(!m_canonicalIntModelNode.isEmpty(), return {});
 
     int columnCount = 0;
     for (const auto &node : allModelNodes()) {
@@ -479,7 +505,8 @@ QString RewriterView::auxiliaryDataAsQML() const
             const int startLen = str.length();
             str += "D{";
             str += "i:";
-            str += QString::number(node.internalId());
+
+            str += QString::number(m_canonicalModelNodeInt.value(node));
             str += ";";
 
             QStringList keys = Utils::transform(data.keys(), [](const PropertyName &name) {
@@ -498,8 +525,13 @@ QString RewriterView::auxiliaryDataAsQML() const
 
                 const QVariant value = data.value(key.toUtf8());
                 QString strValue = value.toString();
-                if (static_cast<QMetaType::Type>(value.type()) == QMetaType::QString)
+
+                auto metaType = static_cast<QMetaType::Type>(value.type());
+
+                if (metaType == QMetaType::QString
+                        || metaType == QMetaType::QColor) {
                     strValue = "\"" + strValue + "\"";
+                }
 
                 if (!strValue.isEmpty()) {
                     str += replaceIllegalPropertyNameChars(key) + ":";
@@ -522,6 +554,11 @@ QString RewriterView::auxiliaryDataAsQML() const
         return str;
 
     return {};
+}
+
+ModelNode RewriterView::getNodeForCanonicalIndex(int index)
+{
+    return m_canonicalIntModelNode.value(index);
 }
 
 Internal::ModelNodePositionStorage *RewriterView::positionStorage() const
@@ -654,44 +691,67 @@ static bool isInNodeDefinition(int nodeTextOffset, int nodeTextLength, int curso
     return (nodeTextOffset <= cursorPosition) && (nodeTextOffset + nodeTextLength > cursorPosition);
 }
 
-ModelNode RewriterView::nodeAtTextCursorPositionRekursive(const ModelNode &root, int cursorPosition) const
+ModelNode RewriterView::nodeAtTextCursorPositionHelper(const ModelNode &root, int cursorPosition) const
 {
-    ModelNode node = root;
+    using myPair = std::pair<ModelNode,int>;
+    std::vector<myPair> data;
 
-    int lastOffset = -1;
-
-    bool sorted = true;
-
-    if (!root.nodeProperties().isEmpty())
-        sorted = false;
-
-    foreach (const ModelNode &currentNode, node.directSubModelNodes()) {
-        const int offset = nodeOffset(currentNode);
-
-        if (offset < cursorPosition && offset > lastOffset) {
-            node = nodeAtTextCursorPositionRekursive(currentNode, cursorPosition);
-            lastOffset = offset;
-        } else {
-            if (sorted)
-                break;
-        }
+    for (const ModelNode &node : allModelNodes()) {
+        int offset = nodeOffset(node);
+        if (offset > 0)
+            data.emplace_back(std::make_pair(node, offset));
     }
 
-    const int nodeTextLength = nodeLength(node);
-    const int nodeTextOffset = nodeOffset(node);
+    std::sort(data.begin(), data.end(), [](myPair a, myPair b) {
+        return a.second < b.second;
+    });
 
-    if (nodeTextLength < 0)
-        return ModelNode();
+    ModelNode lastNode = root;
 
-    if (isInNodeDefinition(nodeTextOffset, nodeTextLength, cursorPosition))
-        return node;
+    for (const myPair &pair : data) {
+        ModelNode node = pair.first;
 
-    return root;
+        const int nodeTextLength = nodeLength(node);
+        const int nodeTextOffset = nodeOffset(node);
+
+        if (isInNodeDefinition(nodeTextOffset, nodeTextLength, cursorPosition))
+            lastNode = node;
+        else if (nodeTextOffset > cursorPosition)
+            break;
+    }
+
+    return lastNode;
+}
+
+void RewriterView::setupCanonicalHashes() const
+{
+    m_canonicalIntModelNode.clear();
+    m_canonicalModelNodeInt.clear();
+
+    using myPair = std::pair<ModelNode,int>;
+    std::vector<myPair> data;
+
+    for (const ModelNode &node : allModelNodes()) {
+        int offset = nodeOffset(node);
+        QTC_ASSERT(offset > 0, qDebug() << Q_FUNC_INFO << "no offset" << node; return);
+        data.emplace_back(std::make_pair(node, offset));
+    }
+
+    std::sort(data.begin(), data.end(), [](myPair a, myPair b) {
+        return a.second < b.second;
+    });
+
+    int i = 0;
+    for (const myPair &pair : data) {
+        m_canonicalIntModelNode.insert(i, pair.first);
+        m_canonicalModelNodeInt.insert(pair.first, i);
+        ++i;
+    }
 }
 
 ModelNode RewriterView::nodeAtTextCursorPosition(int cursorPosition) const
 {
-    return nodeAtTextCursorPositionRekursive(rootModelNode(), cursorPosition);
+    return nodeAtTextCursorPositionHelper(rootModelNode(), cursorPosition);
 }
 
 bool RewriterView::renameId(const QString& oldId, const QString& newId)
@@ -909,13 +969,13 @@ void RewriterView::delayedSetup()
 
 static QString annotationsEnd()
 {
-    const static QString end = QString(" %1*/").arg(annotationsEscapeSequence);
+    const static QString end = QString("%1*/").arg(annotationsEscapeSequence);
     return end;
 }
 
 static QString annotationsStart()
 {
-    const static QString start = QString("/*%1 ").arg(annotationsEscapeSequence);
+    const static QString start = QString("/*%1").arg(annotationsEscapeSequence);
     return start;
 }
 
@@ -940,26 +1000,27 @@ void RewriterView::writeAuxiliaryData()
 
     const QString oldText = m_textModifier->text();
 
-    QString newText = oldText;
-
-    int startIndex = newText.indexOf(annotationsStart());
-    int endIndex = newText.indexOf(annotationsEnd());
-
-    if (startIndex > 0 && endIndex > 0)
-        newText.remove(startIndex, endIndex - startIndex + annotationsEnd().length());
+    const int startIndex = oldText.indexOf(annotationsStart());
+    const int endIndex = oldText.indexOf(annotationsEnd());
 
     QString auxData = auxiliaryDataAsQML();
 
+    const bool replace = startIndex > 0 && endIndex > 0;
+
     if (!auxData.isEmpty()) {
-        auxData.prepend("\n" + annotationsStart());
-        auxData.append(annotationsEnd() + "\n");
-        newText.append(auxData);
+        auxData.prepend("\n");
+        auxData.prepend(annotationsStart());
+        if (!replace)
+            auxData.prepend("\n");
+        auxData.append(annotationsEnd());
+        if (!replace)
+            auxData.append("\n");
     }
 
-    QTextCursor tc(m_textModifier->textDocument());
-    Utils::ChangeSet changeSet;
-    changeSet.replace(0, oldText.length(), newText);
-    changeSet.apply(&tc);
+    if (replace)
+        m_textModifier->replace(startIndex, endIndex - startIndex + annotationsEnd().length(), auxData);
+    else
+        m_textModifier->replace(oldText.length(), 0, auxData);
 }
 
 static void checkNode(const QmlJS::SimpleReaderNode::Ptr &node, RewriterView *view);
@@ -980,7 +1041,7 @@ static QString fixUpIllegalChars(const QString &str)
     return ret;
 }
 
-static void checkNode(const QmlJS::SimpleReaderNode::Ptr &node, RewriterView *view)
+void checkNode(const QmlJS::SimpleReaderNode::Ptr &node, RewriterView *view)
 {
     if (!node)
         return;
@@ -988,8 +1049,10 @@ static void checkNode(const QmlJS::SimpleReaderNode::Ptr &node, RewriterView *vi
     if (!node->propertyNames().contains("i"))
         return;
 
-    const int internalId = node->property("i").toInt();
-    const ModelNode modelNode = view->modelNodeForInternalId(internalId);
+    const int index = node->property("i").toInt();
+
+    const ModelNode modelNode = view->getNodeForCanonicalIndex(index);
+
     if (!modelNode.isValid())
         return;
 
@@ -1007,6 +1070,12 @@ void RewriterView::restoreAuxiliaryData()
 {
     QTC_ASSERT(m_textModifier, return);
 
+    m_restoringAuxData = true;
+
+    setupCanonicalHashes();
+
+    QTC_ASSERT(!m_canonicalIntModelNode.isEmpty(), return);
+
     const QString text = m_textModifier->text();
 
     int startIndex = text.indexOf(annotationsStart());
@@ -1018,6 +1087,8 @@ void RewriterView::restoreAuxiliaryData()
         QmlJS::SimpleReader reader;
         checkChildNodes(reader.readFromSource(auxSource), this);
     }
+
+    m_restoringAuxData = false;
 }
 
 } //QmlDesigner

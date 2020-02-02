@@ -30,15 +30,18 @@
 #include <QDir>
 
 #include <connectionserver.h>
+#include <environment.h>
+#include <executeinloop.h>
 #include <filepathcaching.h>
 #include <generatedfiles.h>
-#include <refactoringserver.h>
 #include <refactoringclientproxy.h>
+#include <refactoringserver.h>
 #include <symbolindexing.h>
 
 #include <sqliteexception.h>
 
 #include <chrono>
+#include <iostream>
 
 using namespace std::chrono_literals;
 
@@ -57,6 +60,8 @@ QStringList processArguments(QCoreApplication &application)
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument(QStringLiteral("connection"), QStringLiteral("Connection"));
+    parser.addPositionalArgument(QStringLiteral("databasepath"), QStringLiteral("Database path"));
+    parser.addPositionalArgument(QStringLiteral("resourcepath"), QStringLiteral("Resource path"));
 
     parser.process(application);
 
@@ -83,22 +88,64 @@ public:
     }
 };
 
-struct Data // because we have a cycle dependency
+class ApplicationEnvironment final : public ClangBackEnd::Environment
 {
-    Data(const QString &databasePath)
-        : database{Utils::PathString{databasePath}, 100000ms}
+public:
+    ApplicationEnvironment(const QString &preIncludeSearchPath)
+        : m_preIncludeSearchPath(ClangBackEnd::FilePath{preIncludeSearchPath})
     {}
 
+    Utils::PathString pchBuildDirectory() const override { return {}; }
+    uint hardwareConcurrency() const override { return std::thread::hardware_concurrency(); }
+    ClangBackEnd::NativeFilePathView preIncludeSearchPath() const override
+    {
+        return m_preIncludeSearchPath;
+    }
+
+private:
+    ClangBackEnd::NativeFilePath m_preIncludeSearchPath;
+};
+
+struct Data // because we have a cycle dependency
+{
+    Data(const QString &databasePath, const QString &preIncludeSearchPath)
+        : environment{preIncludeSearchPath}
+        , database{Utils::PathString{databasePath}, 100000ms}
+    {}
+
+    ApplicationEnvironment environment;
     Sqlite::Database database;
     RefactoringDatabaseInitializer<Sqlite::Database> databaseInitializer{database};
     FilePathCaching filePathCache{database};
     GeneratedFiles generatedFiles;
-    SymbolIndexing symbolIndexing{database, filePathCache, generatedFiles, [&] (int progress, int total) { clangCodeModelServer.setProgress(progress, total); }};
     RefactoringServer clangCodeModelServer{symbolIndexing, filePathCache, generatedFiles};
+    SymbolIndexing symbolIndexing{database,
+                                  filePathCache,
+                                  generatedFiles,
+                                  [&](int progress, int total) {
+                                      executeInLoop([&] {
+                                          clangCodeModelServer.setProgress(progress, total);
+                                      });
+                                  },
+                                  environment};
 };
+
+#ifdef Q_OS_WIN
+extern "C" void __stdcall OutputDebugStringW(const wchar_t* msg);
+static void messageOutput(QtMsgType type, const QMessageLogContext &, const QString &msg)
+{
+    OutputDebugStringW(msg.toStdWString().c_str());
+    std::wcout << msg.toStdWString() << std::endl;
+    if (type == QtFatalMsg)
+        abort();
+}
+#endif
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    qInstallMessageHandler(messageOutput);
+#endif
     try {
         QCoreApplication::setOrganizationName(QStringLiteral("QtProject"));
         QCoreApplication::setOrganizationDomain(QStringLiteral("qt-project.org"));
@@ -110,8 +157,9 @@ int main(int argc, char *argv[])
         const QStringList arguments = processArguments(application);
         const QString connectionName = arguments[0];
         const QString databasePath = arguments[1];
+        const QString preIncludeSearchPath = arguments[2] + "/indexer_preincludes";
 
-        Data data{databasePath};
+        Data data{databasePath, preIncludeSearchPath};
 
         ConnectionServer<RefactoringServer, RefactoringClientProxy> connectionServer;
         connectionServer.setServer(&data.clangCodeModelServer);

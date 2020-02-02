@@ -25,16 +25,16 @@
 
 #include "texteditorplugin.h"
 
-#include "texteditor.h"
 #include "findincurrentfile.h"
 #include "findinfiles.h"
 #include "findinopenfiles.h"
 #include "fontsettings.h"
-#include "generichighlighter/manager.h"
+#include "highlighter.h"
 #include "linenumberfilter.h"
 #include "outlinefactory.h"
 #include "plaintexteditorfactory.h"
 #include "snippets/snippetprovider.h"
+#include "texteditor.h"
 #include "texteditoractionhandler.h"
 #include "texteditorsettings.h"
 
@@ -48,6 +48,7 @@
 #include <texteditor/icodestylepreferences.h>
 #include <texteditor/tabsettings.h>
 
+#include <utils/fancylineedit.h>
 #include <utils/qtcassert.h>
 #include <utils/macroexpander.h>
 
@@ -125,6 +126,10 @@ bool TextEditorPlugin::initialize(const QStringList &arguments, QString *errorMe
         if (BaseTextEditor *editor = BaseTextEditor::currentTextEditor())
             editor->editorWidget()->invokeAssist(Completion);
     });
+    connect(command, &Command::keySequenceChanged, [command] {
+        Utils::FancyLineEdit::setCompletionShortcut(command->keySequence());
+    });
+    Utils::FancyLineEdit::setCompletionShortcut(command->keySequence());
 
     // Add shortcut for invoking quick fix options
     QAction *quickFixAction = new QAction(tr("Trigger Refactoring Action"), this);
@@ -143,9 +148,6 @@ bool TextEditorPlugin::initialize(const QStringList &arguments, QString *errorMe
         if (BaseTextEditor *editor = BaseTextEditor::currentTextEditor())
             editor->editorWidget()->showContextMenu();
     });
-
-    // Generic highlighter.
-    connect(ICore::instance(), &ICore::coreOpened, Manager::instance(), &Manager::registerHighlightingFiles);
 
     // Add text snippet provider.
     SnippetProvider::registerGroup(Constants::TEXT_SNIPPET_GROUP_ID,
@@ -227,6 +229,12 @@ void TextEditorPlugin::extensionsInitialized()
 LineNumberFilter *TextEditorPlugin::lineNumberFilter()
 {
     return &m_instance->d->lineNumberFilter;
+}
+
+ExtensionSystem::IPlugin::ShutdownFlag TextEditorPlugin::aboutToShutdown()
+{
+    Highlighter::handleShutdown();
+    return SynchronousShutdown;
 }
 
 void TextEditorPluginPrivate::updateSearchResultsFont(const FontSettings &settings)

@@ -34,6 +34,7 @@
 #include <clangcodemodelclientproxy.h>
 
 #include <iostream>
+#include <clocale>
 
 using ClangBackEnd::ClangCodeModelClientProxy;
 using ClangBackEnd::ClangCodeModelServer;
@@ -56,8 +57,11 @@ QString processArguments(QCoreApplication &application)
 }
 
 #ifdef Q_OS_WIN
-static void messageOutput(QtMsgType type, const QMessageLogContext &, const QString &msg)
+extern "C" void __stdcall OutputDebugStringW(const wchar_t* msg);
+static void messageOutput(QtMsgType type, const QMessageLogContext &/*context*/,
+                          const QString &msg)
 {
+    OutputDebugStringW(msg.toStdWString().c_str());
     std::wcout << msg.toStdWString() << std::endl;
     if (type == QtFatalMsg)
         abort();
@@ -67,7 +71,7 @@ static void messageOutput(QtMsgType type, const QMessageLogContext &, const QStr
 int main(int argc, char *argv[])
 {
 #ifdef Q_OS_WIN
-    qInstallMessageHandler(messageOutput);
+     qInstallMessageHandler(&messageOutput);
 #endif
     QCoreApplication::setOrganizationName(QStringLiteral("QtProject"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("qt-project.org"));
@@ -75,12 +79,18 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
 
     QCoreApplication application(argc, argv);
+
+    // Some tidy checks use locale-dependent conversion functions and thus might throw exceptions.
+    std::setlocale(LC_NUMERIC, "C");
+
     CrashHandlerSetup setupCrashHandler(QCoreApplication::applicationName(),
                                         CrashHandlerSetup::DisableRestart);
 
     const QString connection = processArguments(application);
 
-    clang_enableStackTraces();
+    // Printing the stack strace might dead lock as clang's stack printer allocates memory.
+    if (qEnvironmentVariableIntValue("QTC_CLANG_ENABLE_STACKTRACES"))
+        clang_enableStackTraces();
 
     ClangCodeModelServer clangCodeModelServer;
     ConnectionServer<ClangCodeModelServer, ClangCodeModelClientProxy> connectionServer;

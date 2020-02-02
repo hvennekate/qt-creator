@@ -139,8 +139,8 @@ void DockWidgetTitleButton::paintEvent(QPaintEvent *)
     opt.init(this);
     opt.state |= QStyle::State_AutoRaise;
     opt.icon = icon();
-    opt.subControls = nullptr;
-    opt.activeSubControls = nullptr;
+    opt.subControls = {};
+    opt.activeSubControls = {};
     opt.features = QStyleOptionToolButton::None;
     opt.arrowType = Qt::NoArrow;
     int size = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
@@ -182,7 +182,6 @@ public:
         m_maximumActiveSize   = QSize(maxWidth, activeHeight);
 
         auto layout = new QHBoxLayout(this);
-        layout->setMargin(0);
         layout->setSpacing(0);
         layout->setContentsMargins(4, 0, 0, 0);
         layout->addWidget(m_titleLabel);
@@ -468,12 +467,9 @@ void FancyMainWindow::handleVisibilityChanged(bool visible)
 
 void FancyMainWindow::saveSettings(QSettings *settings) const
 {
-    QHash<QString, QVariant> hash = saveSettings();
-    QHashIterator<QString, QVariant> it(hash);
-    while (it.hasNext()) {
-        it.next();
+    const QHash<QString, QVariant> hash = saveSettings();
+    for (auto it = hash.cbegin(), end = hash.cend(); it != end; ++it)
         settings->setValue(it.key(), it.value());
-    }
 }
 
 void FancyMainWindow::restoreSettings(const QSettings *settings)
@@ -521,6 +517,21 @@ const QList<QDockWidget *> FancyMainWindow::dockWidgets() const
 bool FancyMainWindow::autoHideTitleBars() const
 {
     return d->m_autoHideTitleBars.isChecked();
+}
+
+void FancyMainWindow::setAutoHideTitleBars(bool on)
+{
+    d->m_autoHideTitleBars.setChecked(on);
+}
+
+bool FancyMainWindow::isCentralWidgetShown() const
+{
+    return d->m_showCentralWidget.isChecked();
+}
+
+void FancyMainWindow::showCentralWidget(bool on)
+{
+    d->m_showCentralWidget.setChecked(on);
 }
 
 void FancyMainWindow::addDockActionsToMenu(QMenu *menu)

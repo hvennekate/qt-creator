@@ -51,7 +51,7 @@ GerritRemoteChooser::GerritRemoteChooser(QWidget *parent) :
     m_remoteComboBox->setMinimumSize(QSize(40, 0));
 
     horizontalLayout->addWidget(m_remoteComboBox);
-    horizontalLayout->setMargin(0);
+    horizontalLayout->setContentsMargins(0, 0, 0, 0);
 
     m_resetRemoteButton = new QToolButton(this);
     m_resetRemoteButton->setToolTip(tr("Refresh Remote Servers"));
@@ -103,11 +103,9 @@ bool GerritRemoteChooser::updateRemotes(bool forceReload)
     m_remoteComboBox->clear();
     m_remotes.clear();
     QString errorMessage; // Mute errors. We'll just fallback to the defaults
-    QMap<QString, QString> remotesList =
-            Git::Internal::GitPlugin::client()->synchronousRemotesList(m_repository, &errorMessage);
-    QMapIterator<QString, QString> mapIt(remotesList);
-    while (mapIt.hasNext()) {
-        mapIt.next();
+    const QMap<QString, QString> remotesList =
+            Git::Internal::GitPluginPrivate::client()->synchronousRemotesList(m_repository, &errorMessage);
+    for (auto mapIt = remotesList.cbegin(), end = remotesList.cend(); mapIt != end; ++mapIt) {
         GerritServer server;
         if (!server.fillFromRemote(mapIt.value(), *m_parameters, forceReload))
             continue;
@@ -124,7 +122,7 @@ bool GerritRemoteChooser::updateRemotes(bool forceReload)
 void GerritRemoteChooser::addRemote(const GerritServer &server, const QString &name)
 {
     if (!m_allowDups) {
-        for (auto remote : m_remotes) {
+        for (const auto &remote : qAsConst(m_remotes)) {
             if (remote.second == server)
                 return;
         }

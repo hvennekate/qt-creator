@@ -44,15 +44,15 @@ class TextEditorWidget;
 class RefactoringChanges;
 class RefactoringFile;
 class RefactoringChangesData;
-typedef QSharedPointer<RefactoringFile> RefactoringFilePtr;
-typedef QVector<QPair<QTextCursor, QTextCursor> > RefactoringSelections;
+using RefactoringFilePtr = QSharedPointer<RefactoringFile>;
+using RefactoringSelections = QVector<QPair<QTextCursor, QTextCursor>>;
 
 // ### listen to the m_editor::destroyed signal?
 class TEXTEDITOR_EXPORT RefactoringFile
 {
     Q_DISABLE_COPY(RefactoringFile)
 public:
-    typedef Utils::ChangeSet::Range Range;
+    using Range = Utils::ChangeSet::Range;
 
 public:
     virtual ~RefactoringFile();
@@ -66,9 +66,9 @@ public:
     TextEditorWidget *editor() const;
 
     // converts 1-based line and column into 0-based source offset
-    int position(unsigned line, unsigned column) const;
+    int position(int line, int column) const;
     // converts 0-based source offset into 1-based line and column
-    void lineAndColumn(int offset, unsigned *line, unsigned *column) const;
+    void lineAndColumn(int offset, int *line, int *column) const;
 
     QChar charAt(int pos) const;
     QString textOf(int start, int end) const;
@@ -122,7 +122,7 @@ protected:
 class TEXTEDITOR_EXPORT RefactoringChanges
 {
 public:
-    typedef Utils::ChangeSet::Range Range;
+    using Range = Utils::ChangeSet::Range;
 
 public:
     RefactoringChanges();
@@ -150,7 +150,7 @@ class TEXTEDITOR_EXPORT RefactoringChangesData
     Q_DISABLE_COPY(RefactoringChangesData)
 
 public:
-    RefactoringChangesData() {}
+    RefactoringChangesData() = default;
     virtual ~RefactoringChangesData();
 
     virtual void indentSelection(const QTextCursor &selection,

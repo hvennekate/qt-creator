@@ -35,6 +35,7 @@
 #include "addkitoperation.h"
 #include "addqtoperation.h"
 #include "addtoolchainoperation.h"
+#include "addvalueoperation.h"
 #include "findkeyoperation.h"
 #include "findvalueoperation.h"
 #include "getoperation.h"
@@ -116,7 +117,7 @@ int parseArguments(const QStringList &args, Settings *s,
 
             // sdkpath
             if (current.startsWith(QLatin1String("--sdkpath="))) {
-                s->sdkPath = Utils::FileName::fromString(current.mid(10));
+                s->sdkPath = Utils::FilePath::fromString(current.mid(10));
                 continue;
             }
             if (current == QLatin1String("-s")) {
@@ -125,7 +126,7 @@ int parseArguments(const QStringList &args, Settings *s,
                     printHelp(operations);
                     return 1;
                 }
-                s->sdkPath = Utils::FileName::fromString(next);
+                s->sdkPath = Utils::FilePath::fromString(next);
                 ++i; // skip next;
                 continue;
             }
@@ -187,6 +188,7 @@ int main(int argc, char *argv[])
     operations.emplace_back(std::make_unique<AddDeviceOperation>());
     operations.emplace_back(std::make_unique<AddQtOperation>());
     operations.emplace_back(std::make_unique<AddToolChainOperation>());
+    operations.emplace_back(std::make_unique<AddValueOperation>());
 
     operations.emplace_back(std::make_unique<AddKitOperation>());
 

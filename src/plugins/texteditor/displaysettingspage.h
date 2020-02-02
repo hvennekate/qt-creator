@@ -27,27 +27,19 @@
 
 #include "texteditor_global.h"
 
-#include "texteditoroptionspage.h"
+#include <coreplugin/dialogs/ioptionspage.h>
 
 namespace TextEditor {
 
 class DisplaySettings;
 class MarginSettings;
 
-class DisplaySettingsPageParameters
-{
-public:
-    Core::Id id;
-    QString displayName;
-    QString settingsPrefix;
-};
-
-class DisplaySettingsPage : public TextEditorOptionsPage
+class DisplaySettingsPage : public Core::IOptionsPage
 {
     Q_OBJECT
 
 public:
-    DisplaySettingsPage(const DisplaySettingsPageParameters &p, QObject *parent);
+    DisplaySettingsPage();
     ~DisplaySettingsPage() override;
 
     // IOptionsPage

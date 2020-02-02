@@ -26,7 +26,7 @@
 import QtQuick 2.0
 import HelperWidgets 2.0
 import QtQuick.Layouts 1.0
-import QtQuick.Controls 1.0 as Controls
+import StudioControls 1.0 as StudioControls
 
 SectionLayout {
     property bool isInModel: backendValue.isInModel;
@@ -40,12 +40,16 @@ SectionLayout {
     onBackendValueChanged: evaluateAlignment()
     onValueFromBackendChanged: evaluateAlignment()
 
+    property int spinBoxWidth: 82
+
     Connections {
         target: modelNodeBackend
         onSelectionChanged: {
             evaluateAlignment()
         }
     }
+
+    id: root
 
     Component.onCompleted: evaluateAlignment()
 
@@ -66,11 +70,9 @@ SectionLayout {
             return 3;
 
         return 0;
-
     }
 
     function indexOfHorizontalAlignment() {
-
         if (backendValue.expression === undefined)
             return 0;
 
@@ -84,11 +86,9 @@ SectionLayout {
             return 2;
 
         return 0;
-
     }
 
     function evaluateAlignment() {
-
         blockAlignment = true
 
         verticalAlignmentComboBox.currentIndex = indexOfVerticalAlignment();
@@ -114,9 +114,7 @@ SectionLayout {
             backendValue.expression = expressionStr
             backendValue.resetValue();
         }
-
     }
-
 
     Label {
         text: qsTr("Alignment")
@@ -124,99 +122,81 @@ SectionLayout {
     }
 
     SecondColumnLayout {
-
-        Controls.ComboBox {
+        StudioControls.ComboBox {
             ColorLogic {
                 id: colorLogic
             }
+            Layout.fillWidth: true
 
-            ExtendedFunctionButton {
-                x: 2
-                anchors.verticalCenter: parent.verticalCenter
+            ExtendedFunctionLogic {
+                id: extFuncLogic
                 backendValue: backendValues.Layout_alignment
-                visible: horizontalAlignmentComboBox.enabled
-                onReseted:  {
+                onReseted: {
                     horizontalAlignmentComboBox.currentIndex = 0
                     verticalAlignmentComboBox.currentIndex = 0
                 }
             }
 
+            actionIndicator.icon.color: extFuncLogic.color
+            actionIndicator.icon.text: extFuncLogic.glyph
+            actionIndicator.onClicked: extFuncLogic.show()
+
+            actionIndicator.visible: true
+
+            labelColor: horizontalAlignmentComboBox.currentIndex === 0 ? colorLogic.__defaultTextColor : colorLogic.__changedTextColor
+
             id: horizontalAlignmentComboBox
 
             property bool __isCompleted: false
-            property color textColor: currentIndex === 0 ? colorLogic.__defaultTextColor : colorLogic.__changedTextColor
 
             model: ["AlignLeft", "AlignHCenter", "AlignRight"]
 
-            onCurrentIndexChanged: {
+            onActivated: {
                 if (!horizontalAlignmentComboBox.__isCompleted)
                     return;
 
+                horizontalAlignmentComboBox.currentIndex = index
                 composeExpressionString();
-            }
-
-            style: CustomComboBoxStyle {
-                textColor: horizontalAlignmentComboBox.textColor
             }
 
             Component.onCompleted: {
                 horizontalAlignmentComboBox.__isCompleted = true;
             }
-
         }
-
-        ExpandingSpacer {
-
-        }
-
     }
 
     Label {
-
     }
 
     SecondColumnLayout {
-
-        Controls.ComboBox {
+        StudioControls.ComboBox {
             id: verticalAlignmentComboBox
+            Layout.fillWidth: true
 
-            ExtendedFunctionButton {
-                x: 2
-                anchors.verticalCenter: parent.verticalCenter
-                backendValue: backendValues.Layout_alignment
-                visible: verticalAlignmentComboBox.enabled
-                onReseted:  {
-                    horizontalAlignmentComboBox.currentIndex = 0
-                    verticalAlignmentComboBox.currentIndex = 0
-                }
-            }
+            actionIndicator.icon.color: extFuncLogic.color
+            actionIndicator.icon.text: extFuncLogic.glyph
+            actionIndicator.onClicked: extFuncLogic.show()
+
+            actionIndicator.visible: true
+
+            labelColor: verticalAlignmentComboBox.currentIndex === 0 ? colorLogic.__defaultTextColor : colorLogic.__changedTextColor
 
             property bool __isCompleted: false
-            property color textColor: currentIndex === 0 ? colorLogic.__defaultTextColor : colorLogic.__changedTextColor
 
-            model: ["AlignVCenter", "AlignTop","AlignBottom","AlignBaseline"]
+            model: ["AlignVCenter", "AlignTop", "AlignBottom", "AlignBaseline"]
 
-            onCurrentIndexChanged: {
+            onActivated: {
                 if (!verticalAlignmentComboBox.__isCompleted)
                     return;
 
+                verticalAlignmentComboBox.currentIndex = index
                 composeExpressionString();
-            }
-
-            style: CustomComboBoxStyle {
-                textColor: verticalAlignmentComboBox.textColor
             }
 
             Component.onCompleted: {
                 verticalAlignmentComboBox.__isCompleted = true;
             }
-
         }
-
-        ExpandingSpacer {
-
-        }
-
     }
 
     Label {
@@ -228,21 +208,13 @@ SectionLayout {
         CheckBox {
             backendValue: backendValues.Layout_fillWidth
             text: qsTr("Fill width")
-        }
-
-        Item {
-            width: 10
-            height: 10
-
+            Layout.fillWidth: true
         }
 
         CheckBox {
             backendValue: backendValues.Layout_fillHeight
             text: qsTr("Fill height")
-        }
-
-        ExpandingSpacer {
-
+            Layout.fillWidth: true
         }
     }
 
@@ -261,8 +233,9 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_preferredWidth
-            maximumValue: 0xffff
             minimumValue: -1
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
         }
 
@@ -278,12 +251,10 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_preferredHeight
-            maximumValue: 0xffff
             minimumValue: -1
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
-        }
-        ExpandingSpacer {
-
         }
     }
 
@@ -302,8 +273,9 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_minimumWidth
-            maximumValue: 0xffff
             minimumValue: 0
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
         }
 
@@ -319,12 +291,10 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_minimumHeight
-            maximumValue: 0xffff
             minimumValue: 0
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
-        }
-        ExpandingSpacer {
-
         }
     }
 
@@ -343,8 +313,9 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_maximumWidth
-            maximumValue: 0xffff
             minimumValue: 0
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
         }
 
@@ -360,12 +331,10 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_maximumHeight
-            maximumValue: 0xffff
             minimumValue: 0
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
-        }
-        ExpandingSpacer {
-
         }
     }
 
@@ -384,13 +353,10 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_rowSpan
-            maximumValue: 0xffff
             minimumValue: 0
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
-        }
-
-        ExpandingSpacer {
-
         }
     }
 
@@ -409,13 +375,10 @@ SectionLayout {
 
         SpinBox {
             backendValue: backendValues.Layout_columnSpan
-            maximumValue: 0xffff
             minimumValue: 0
+            maximumValue: 0xffff
+            realDragRange: 5000
             decimals: 0
-        }
-
-        ExpandingSpacer {
-
         }
     }
 }

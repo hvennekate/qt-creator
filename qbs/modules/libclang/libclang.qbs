@@ -11,6 +11,7 @@ Module {
 
         property stringList hostOS: qbs.hostOS
         property stringList targetOS: qbs.targetOS
+        property stringList toolchain: qbs.toolchain
 
         property string llvmConfig
         property string llvmVersion
@@ -38,6 +39,11 @@ Module {
             llvmToolingDefines = toolingParams.defines;
             llvmToolingIncludes = toolingParams.includes;
             llvmToolingCxxFlags = toolingParams.cxxFlags;
+            if (toolchain.contains("gcc")) {
+                llvmToolingCxxFlags.push("-Wno-unused-parameter");
+                // clang/Format/Format.h has intentional multiline comments
+                llvmToolingCxxFlags.push("-Wno-comment");
+            }
             llvmFormattingLibs = ClangFunctions.formattingLibs(llvmConfig, QtcFunctions, targetOS);
             found = llvmConfig && File.exists(llvmIncludeDir.concat("/clang-c/Index.h"));
         }
@@ -58,7 +64,7 @@ Module {
         return incl != llvmIncludeDir;
     })
     property stringList llvmToolingCxxFlags: clangProbe.llvmToolingCxxFlags
-    property bool toolingEnabled: Environment.getEnv("QTC_ENABLE_CLANG_LIBTOOLING")
+    property bool toolingEnabled: !Environment.getEnv("QTC_DISABLE_CLANG_REFACTORING")
 
     validate: {
         if (!clangProbe.found) {

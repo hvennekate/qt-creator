@@ -30,16 +30,14 @@
 namespace Autotest {
 namespace Icons {
 
-const Utils::Icon SORT_ALPHABETICALLY({
-        {":/autotest/images/sort.png", Utils::Theme::IconsBaseColor}});
 const Utils::Icon SORT_NATURALLY({
         {":/autotest/images/leafsort.png", Utils::Theme::IconsBaseColor}});
-const Utils::Icon RUN_SELECTED_OVERLAY({
-        {":/autotest/images/runselected_boxes.png", Utils::Theme::BackgroundColorDark},
-        {":/autotest/images/runselected_tickmarks.png", Utils::Theme::IconsBaseColor}});
-const Utils::Icon RUN_FILE_OVERLAY({
-        {":/autotest/images/run_file.png", Utils::Theme::IconsBaseColor}});
 
+const Utils::Icon RUN_SELECTED_OVERLAY({
+        {":/utils/images/runselected_boxes.png", Utils::Theme::BackgroundColorDark},
+        {":/utils/images/runselected_tickmarks.png", Utils::Theme::IconsBaseColor}});
+const Utils::Icon RUN_FILE_OVERLAY({
+        {":/utils/images/run_file.png", Utils::Theme::IconsBaseColor}});
 const Utils::Icon RESULT_PASS({
         {":/utils/images/filledcircle.png", Utils::Theme::OutputPanes_TestPassTextColor}},
         Utils::Icon::Tint);
@@ -61,6 +59,14 @@ const Utils::Icon RESULT_BLACKLISTEDPASS({
         Utils::Icon::Tint | Utils::Icon::PunchEdges);
 const Utils::Icon RESULT_BLACKLISTEDFAIL({
         {":/utils/images/filledcircle.png", Utils::Theme::OutputPanes_TestFailTextColor},
+        {":/projectexplorer/images/buildstepdisable.png", Utils::Theme::PanelTextColorDark}},
+        Utils::Icon::Tint | Utils::Icon::PunchEdges);
+const Utils::Icon RESULT_BLACKLISTEDXPASS({
+        {":/utils/images/filledcircle.png", Utils::Theme::OutputPanes_TestXPassTextColor},
+        {":/projectexplorer/images/buildstepdisable.png", Utils::Theme::PanelTextColorDark}},
+        Utils::Icon::Tint | Utils::Icon::PunchEdges);
+const Utils::Icon RESULT_BLACKLISTEDXFAIL({
+        {":/utils/images/filledcircle.png", Utils::Theme::OutputPanes_TestXFailTextColor},
         {":/projectexplorer/images/buildstepdisable.png", Utils::Theme::PanelTextColorDark}},
         Utils::Icon::Tint | Utils::Icon::PunchEdges);
 const Utils::Icon RESULT_BENCHMARK({

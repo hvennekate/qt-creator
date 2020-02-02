@@ -50,6 +50,7 @@
 #include <utils/qtcassert.h>
 
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QSharedPointer>
@@ -130,7 +131,7 @@ const QChar *BatchFileLineTokenizer::advanceToTokenBegin()
 
     forever {
         if (atEnd())
-            return 0;
+            return nullptr;
 
         if (atQuotationMark()) {
             m_isWithinQuotation = true;
@@ -151,7 +152,7 @@ const QChar *BatchFileLineTokenizer::advanceToTokenEnd()
         if (m_isWithinQuotation) {
             if (atEnd()) {
                 qWarning("ClangBatchFileProcessor: error: unfinished quotation.");
-                return 0;
+                return nullptr;
             }
 
             if (atQuotationMark())
@@ -194,7 +195,7 @@ public:
 
 public:
     Command(const CommandContext &context) : m_commandContext(context) {}
-    virtual ~Command() {}
+    virtual ~Command() = default;
 
     const CommandContext &context() const { return m_commandContext; }
     virtual bool run() { return true; }
@@ -234,9 +235,9 @@ bool OpenProjectCommand::run()
     QTC_ASSERT(openProjectSucceeded, return false);
 
     Project *project = openProjectSucceeded.project();
-    project->configureAsExampleProject({});
+    project->configureAsExampleProject();
 
-    return CppTools::Tests::TestCase::waitUntilCppModelManagerIsAwareOf(project, timeOutInMs());
+    return CppTools::Tests::TestCase::waitUntilProjectIsFullyOpened(project, timeOutInMs());
 }
 
 Command::Ptr OpenProjectCommand::parse(BatchFileLineTokenizer &arguments,
@@ -302,7 +303,7 @@ WaitForUpdatedCodeWarnings::WaitForUpdatedCodeWarnings(ClangEditorDocumentProces
 
 bool WaitForUpdatedCodeWarnings::wait(int timeOutInMs) const
 {
-    QTime time;
+    QElapsedTimer time;
     time.start();
 
     forever {
@@ -580,7 +581,7 @@ bool ProcessEventsCommand::run()
 {
     qCDebug(debug) << "line" << context().lineNumber << "ProcessEventsCommand" << m_durationInMs;
 
-    QTime time;
+    QElapsedTimer time;
     time.start();
 
     forever {

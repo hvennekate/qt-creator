@@ -9,8 +9,6 @@ include(../../../src/shared/clang/clang_defines.pri)
     DEFINES += CLANG_UNIT_TESTS
     INCLUDEPATH += $$LLVM_INCLUDEPATH
     win32 {
-        LIBS += -lVersion
-
         # set run path for clang.dll dependency
         bin_path = $$LLVM_BINDIR
         bin_path ~= s,/,\\,g
@@ -18,11 +16,13 @@ include(../../../src/shared/clang/clang_defines.pri)
         check.commands = cd . & set PATH=$$bin_path;%PATH%& cmd /c
     }
 
-    LIBS += $$LIBTOOLING_LIBS $$LIBCLANG_LIBS
+    LIBS += $$ALL_CLANG_LIBS
+
     !contains(QMAKE_DEFAULT_LIBDIRS, $$LLVM_LIBDIR): QMAKE_RPATHDIR += $$LLVM_LIBDIR
 
     LLVM_CXXFLAGS ~= s,-g\d?,
-    QMAKE_CXXFLAGS += $$LLVM_CXXFLAGS
+    QMAKE_CXXFLAGS_WARN_ON *= $$LLVM_CXXFLAGS_WARNINGS
+    QMAKE_CXXFLAGS *= $$LLVM_CXXFLAGS
 
     DEFINES += CLANG_COMPILER_PATH=\"R\\\"xxx($$LLVM_BINDIR/clang)xxx\\\"\"
 }

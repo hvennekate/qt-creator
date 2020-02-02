@@ -36,7 +36,6 @@
 #include <coreplugin/dialogs/promptoverwritedialog.h>
 #include <texteditor/icodestylepreferences.h>
 #include <texteditor/icodestylepreferencesfactory.h>
-#include <texteditor/indenter.h>
 #include <texteditor/normalindenter.h>
 #include <texteditor/storagesettings.h>
 #include <texteditor/tabsettings.h>
@@ -81,7 +80,7 @@ static ICodeStylePreferences *codeStylePreferences(Project *project, Id language
 
 bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(errorMessage)
 
     if (file->isBinary() || file->contents().isEmpty())
         return true; // nothing to do
@@ -94,18 +93,22 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
     auto baseProject = qobject_cast<Project *>(wizard->property("SelectedProject").value<QObject *>());
     ICodeStylePreferencesFactory *factory = TextEditorSettings::codeStyleFactory(languageId);
 
-    Indenter *indenter = nullptr;
-    if (factory)
-        indenter = factory->createIndenter();
-    if (!indenter)
-        indenter = new NormalIndenter();
-
-    ICodeStylePreferences *codeStylePrefs = codeStylePreferences(baseProject, languageId);
-    indenter->setCodeStylePreferences(codeStylePrefs);
     QTextDocument doc(file->contents());
     QTextCursor cursor(&doc);
+    Indenter *indenter = nullptr;
+    if (factory) {
+        indenter = factory->createIndenter(&doc);
+        indenter->setFileName(Utils::FilePath::fromString(file->path()));
+    }
+    if (!indenter)
+        indenter = new NormalIndenter(&doc);
+    ICodeStylePreferences *codeStylePrefs = codeStylePreferences(baseProject, languageId);
+    indenter->setCodeStylePreferences(codeStylePrefs);
+
     cursor.select(QTextCursor::Document);
-    indenter->indent(&doc, cursor, QChar::Null, codeStylePrefs->currentTabSettings());
+    indenter->indent(cursor,
+                     QChar::Null,
+                     codeStylePrefs->currentTabSettings());
     delete indenter;
     if (TextEditorSettings::storageSettings().m_cleanWhitespace) {
         QTextBlock block = doc.firstBlock();
@@ -121,33 +124,33 @@ bool JsonWizardGenerator::formatFile(const JsonWizard *wizard, GeneratedFile *fi
 
 bool JsonWizardGenerator::writeFile(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
 bool JsonWizardGenerator::postWrite(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
 bool JsonWizardGenerator::polish(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
 bool JsonWizardGenerator::allDone(const JsonWizard *wizard, GeneratedFile *file, QString *errorMessage)
 {
-    Q_UNUSED(wizard);
-    Q_UNUSED(file);
-    Q_UNUSED(errorMessage);
+    Q_UNUSED(wizard)
+    Q_UNUSED(file)
+    Q_UNUSED(errorMessage)
     return true;
 }
 
@@ -212,7 +215,7 @@ JsonWizardGenerator::OverwriteResult JsonWizardGenerator::promptForOverwrite(Jso
     if (overwriteDialog.exec() != QDialog::Accepted)
         return OverwriteCanceled;
 
-    const QSet<QString> existingFilesToKeep = QSet<QString>::fromList(overwriteDialog.uncheckedFiles());
+    const QSet<QString> existingFilesToKeep = Utils::toSet(overwriteDialog.uncheckedFiles());
     if (existingFilesToKeep.size() == files->size()) // All exist & all unchecked->Cancel.
         return OverwriteCanceled;
 
@@ -306,9 +309,9 @@ JsonWizardGenerator *FileGeneratorFactory::create(Id typeId, const QVariant &dat
                                                   const QString &path, Id platform,
                                                   const QVariantMap &variables)
 {
-    Q_UNUSED(path);
-    Q_UNUSED(platform);
-    Q_UNUSED(variables);
+    Q_UNUSED(path)
+    Q_UNUSED(platform)
+    Q_UNUSED(variables)
 
     QTC_ASSERT(canCreate(typeId), return nullptr);
 
@@ -346,9 +349,9 @@ JsonWizardGenerator *ScannerGeneratorFactory::create(Id typeId, const QVariant &
                                                      const QString &path, Id platform,
                                                      const QVariantMap &variables)
 {
-    Q_UNUSED(path);
-    Q_UNUSED(platform);
-    Q_UNUSED(variables);
+    Q_UNUSED(path)
+    Q_UNUSED(platform)
+    Q_UNUSED(variables)
 
     QTC_ASSERT(canCreate(typeId), return nullptr);
 

@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "target.h"
+
 #include <projectexplorer/kit.h>
 
 #include <utils/fileutils.h>
@@ -35,13 +37,16 @@ class Project : public QObject {
 public:
     Project() = default;
 
-    Utils::FileName projectDirectory() const {
-        return Utils::FileName();
-    }
+    Utils::FilePath projectDirectory() const { return {}; }
 
-    Utils::FileName rootProjectDirectory() const {
-        return Utils::FileName();
-    }
+    Utils::FilePath rootProjectDirectory() const { return rootProjectDirectoryPath; }
+
+    Target *activeTarget() const { return {}; }
+
+    QVariant namedSettings(const QString &name) const { return settings.at(name); }
+    void setNamedSettings(const QString &name, const QVariant &value) { settings[name] = value; }
+
+    Utils::FilePath rootProjectDirectoryPath;
+    mutable std::map<QString, QVariant> settings;
 };
-
-}
+} // namespace ProjectExplorer

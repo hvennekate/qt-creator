@@ -38,6 +38,9 @@ const int  P_MODE_WELCOME          = 100;
 const int  P_MODE_EDIT             = 90;
 const int  P_MODE_DESIGN           = 89;
 
+// TouchBar
+const char TOUCH_BAR[]             = "QtCreator.TouchBar";
+
 // Menubar
 const char MENU_BAR[]              = "QtCreator.MenuBar";
 
@@ -122,12 +125,11 @@ const char CLOSE_ALTERNATIVE[]     = "QtCreator.Close_Alternative"; // temporary
 const char CLOSEALL[]              = "QtCreator.CloseAll";
 const char CLOSEOTHERS[]           = "QtCreator.CloseOthers";
 const char CLOSEALLEXCEPTVISIBLE[] = "QtCreator.CloseAllExceptVisible";
-const char GOTONEXT[]              = "QtCreator.GotoNext";
-const char GOTOPREV[]              = "QtCreator.GotoPrevious";
 const char GOTONEXTINHISTORY[]     = "QtCreator.GotoNextInHistory";
 const char GOTOPREVINHISTORY[]     = "QtCreator.GotoPreviousInHistory";
 const char GO_BACK[]               = "QtCreator.GoBack";
 const char GO_FORWARD[]            = "QtCreator.GoForward";
+const char GOTOLASTEDIT[]          = "QtCreator.GotoLastEdit";
 const char ABOUT_QTCREATOR[]       = "QtCreator.AboutQtCreator";
 const char ABOUT_PLUGINS[]         = "QtCreator.AboutPlugins";
 const char S_RETURNTOEDITOR[]      = "QtCreator.ReturnToEditor";
@@ -189,6 +191,12 @@ const char G_HELP_SUPPORT[]        = "QtCreator.Group.Help.Supprt";
 const char G_HELP_ABOUT[]          = "QtCreator.Group.Help.About";
 const char G_HELP_UPDATES[]        = "QtCreator.Group.Help.Updates";
 
+// Touchbar groups
+const char G_TOUCHBAR_HELP[]       = "QtCreator.Group.TouchBar.Help";
+const char G_TOUCHBAR_EDITOR[]     = "QtCreator.Group.TouchBar.Editor";
+const char G_TOUCHBAR_NAVIGATION[] = "QtCreator.Group.TouchBar.Navigation";
+const char G_TOUCHBAR_OTHER[]      = "QtCreator.Group.TouchBar.Other";
+
 const char WIZARD_CATEGORY_QT[] = "R.Qt";
 const char WIZARD_TR_CATEGORY_QT[] = QT_TRANSLATE_NOOP("Core", "Qt");
 const char WIZARD_KIND_UNKNOWN[] = "unknown";
@@ -203,6 +211,7 @@ const char SETTINGS_ID_TOOLS[] = "D.ExternalTools";
 const char SETTINGS_ID_MIMETYPES[] = "E.MimeTypes";
 
 const char SETTINGS_DEFAULTTEXTENCODING[] = "General/DefaultFileEncoding";
+const char SETTINGS_DEFAULT_LINE_TERMINATOR[] = "General/DefaultLineTerminator";
 
 const char SETTINGS_THEME[] = "Core/CreatorTheme";
 const char DEFAULT_THEME[] = "flat";

@@ -32,12 +32,15 @@
 
 #include <QList>
 
+QT_FORWARD_DECLARE_CLASS(QDateTime)
 QT_FORWARD_DECLARE_CLASS(QString)
 
 namespace ProjectExplorer { class DeployableFile; }
-
+namespace QSsh { class SshRemoteProcess; }
 namespace RemoteLinux {
 namespace Internal { class GenericDirectUploadServicePrivate; }
+
+enum class IncrementalDeployment { Enabled, Disabled, NotSupported };
 
 class REMOTELINUX_EXPORT GenericDirectUploadService : public AbstractRemoteLinuxDeployService
 {
@@ -47,7 +50,7 @@ public:
     ~GenericDirectUploadService() override;
 
     void setDeployableFiles(const QList<ProjectExplorer::DeployableFile> &deployableFiles);
-    void setIncrementalDeployment(bool incremental);
+    void setIncrementalDeployment(IncrementalDeployment incremental);
     void setIgnoreMissingFiles(bool ignoreMissingFiles);
 
   protected:
@@ -60,27 +63,17 @@ public:
     void stopDeployment() override;
 
 private:
-    void handleSftpInitialized();
-    void handleSftpChannelError(const QString &errorMessage);
-    void handleFileInfoAvailable(QSsh::SftpJobId jobId, const QList<QSsh::SftpFileInfo> &fileInfos);
-    void handleJobFinished(QSsh::SftpJobId jobId, const QString &errorMsg);
-    void handleUploadProcFinished(int exitStatus);
-    void handleMkdirFinished(int exitStatus);
-    void handleStdOutData();
-    void handleStdErrData();
-    void handleReadChannelFinished();
+    void runStat(const ProjectExplorer::DeployableFile &file);
+    QDateTime timestampFromStat(const ProjectExplorer::DeployableFile &file,
+                                QSsh::SshRemoteProcess *statProc, const QString &errorMsg);
+    void checkForStateChangeOnRemoteProcFinished();
 
     QList<ProjectExplorer::DeployableFile> collectFilesToUpload(
             const ProjectExplorer::DeployableFile &file) const;
     void setFinished();
-    void uploadNextFile();
     void queryFiles();
-    void clearRunningProc();
-
-    void handleProcFailure();
-    void runPostQueryOnProcResult();
-
-    void tryFinish();
+    void uploadFiles();
+    void chmod();
 
     Internal::GenericDirectUploadServicePrivate * const d;
 };

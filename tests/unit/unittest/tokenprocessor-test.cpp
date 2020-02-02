@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 #include "googletest.h"
-#include "testenvironment.h"
+#include "unittest-utility-functions.h"
 
 #include <clangdocument.h>
 #include <clangdocuments.h>
@@ -128,7 +128,7 @@ struct Data {
     ClangBackEnd::Documents documents{unsavedFiles};
     Utf8String filePath{Utf8StringLiteral(TESTDATA_DIR"/highlightingmarks.cpp")};
     Document document{filePath,
-                      TestEnvironment::addPlatformArguments(
+                      UnitTest::addPlatformArguments(
                           {Utf8StringLiteral("-std=c++14"),
                            Utf8StringLiteral("-I" TESTDATA_DIR)}),
                       {},
@@ -1552,14 +1552,14 @@ TEST_F(TokenProcessor, NamespaceTypeSpelling)
     ASSERT_THAT(container.extraInfo.semanticParentTypeSpelling, Utf8StringLiteral("NFoo::NBar::NTest"));
 }
 
-TEST_F(TokenProcessor, DISABLED_WITHOUT_INVALIDDECL_PATCH(TypeNameOfInvalidDeclarationIsInvalid))
+TEST_F(TokenProcessor, TypeNameOfInvalidDeclarationIsInvalid)
 {
     const auto infos = translationUnit.tokenInfosInRange(sourceRange(594, 14));
 
     ASSERT_THAT(infos[0], HasOnlyType(HighlightingType::Invalid));
 }
 
-TEST_F(TokenProcessor, DISABLED_WITHOUT_INVALIDDECL_PATCH(VariableNameOfInvalidDeclarationIsInvalid))
+TEST_F(TokenProcessor, VariableNameOfInvalidDeclarationIsInvalid)
 {
     const auto infos = translationUnit.tokenInfosInRange(sourceRange(594, 14));
 
@@ -1677,6 +1677,49 @@ TEST_F(TokenProcessor, QtOldStyleSignalFunctionPointerType)
     ASSERT_THAT(infos[4], HasOnlyType(HighlightingType::Type));
     ASSERT_THAT(infos[7], HasOnlyType(HighlightingType::Type));
     ASSERT_THAT(infos[10], HasOnlyType(HighlightingType::Type));
+}
+
+TEST_F(TokenProcessor, NonConstParameterConstructor)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(681, 90));
+
+    infos[1];
+
+    ASSERT_THAT(infos[4], Not(HasMixin(HighlightingType::OutputArgument)));
+}
+
+TEST_F(TokenProcessor, DISABLED_NonConstArgumentConstructor)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(686, 47));
+
+    infos[2];
+
+    ASSERT_THAT(infos[3], HasMixin(HighlightingType::OutputArgument));
+}
+
+TEST_F(TokenProcessor, LambdaLocalVariableCapture)
+{
+    const auto infos = translationUnit.tokenInfosInRange(sourceRange(442, 47));
+
+    ASSERT_THAT(infos[4], HasOnlyType(HighlightingType::LocalVariable));
+}
+
+TEST_F(TokenProcessor, StaticProtectedMember)
+{
+    const auto infos = translationUnit.fullTokenInfosInRange(sourceRange(693, 31));
+
+    ClangBackEnd::TokenInfoContainer container(infos[2]);
+
+    ASSERT_THAT(container.extraInfo.accessSpecifier, ClangBackEnd::AccessSpecifier::Protected);
+}
+
+TEST_F(TokenProcessor, StaticPrivateMember)
+{
+    const auto infos = translationUnit.fullTokenInfosInRange(sourceRange(696, 29));
+
+    ClangBackEnd::TokenInfoContainer container(infos[2]);
+
+    ASSERT_THAT(container.extraInfo.accessSpecifier, ClangBackEnd::AccessSpecifier::Private);
 }
 
 Data *TokenProcessor::d;

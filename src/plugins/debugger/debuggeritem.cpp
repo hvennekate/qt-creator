@@ -26,11 +26,11 @@
 #include "debuggeritem.h"
 #include "debuggeritemmanager.h"
 #include "debuggerkitinformation.h"
-#include "debuggerkitconfigwidget.h"
 #include "debuggerprotocol.h"
 
 #include <projectexplorer/abi.h>
 
+#include <utils/algorithm.h>
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
 #include <utils/macroexpander.h>
@@ -61,6 +61,35 @@ const char DEBUGGER_INFORMATION_ABIS[] = "Abis";
 const char DEBUGGER_INFORMATION_LASTMODIFIED[] = "LastModified";
 const char DEBUGGER_INFORMATION_WORKINGDIRECTORY[] = "WorkingDirectory";
 
+
+//! Return the configuration of gdb as a list of --key=value
+//! \note That the list will also contain some output not in this format.
+static QString getConfigurationOfGdbCommand(const FilePath &command)
+{
+    // run gdb with the --configuration opion
+    Utils::SynchronousProcess gdbConfigurationCall;
+    Utils::SynchronousProcessResponse output =
+            gdbConfigurationCall.runBlocking({command, {"--configuration"}});
+    return output.allOutput();
+}
+
+//! Extract the target ABI identifier from GDB output
+//! \return QString() (aka Null) if unable to find something
+static QString extractGdbTargetAbiStringFromGdbOutput(const QString &gdbOutput)
+{
+    const auto outputLines = gdbOutput.split('\n');
+    const auto whitespaceSeparatedTokens = outputLines.join(' ').split(' ', QString::SkipEmptyParts);
+
+    const QString targetKey{"--target="};
+    const QString targetValue = Utils::findOrDefault(whitespaceSeparatedTokens,
+                                                [&targetKey](const QString &token) { return token.startsWith(targetKey); });
+    if (!targetValue.isEmpty())
+        return targetValue.mid(targetKey.size());
+
+    return {};
+}
+
+
 namespace Debugger {
 
 // --------------------------------------------------------------------------
@@ -77,8 +106,8 @@ DebuggerItem::DebuggerItem(const QVariant &id)
 DebuggerItem::DebuggerItem(const QVariantMap &data)
 {
     m_id = data.value(DEBUGGER_INFORMATION_ID).toString();
-    m_command = FileName::fromUserInput(data.value(DEBUGGER_INFORMATION_COMMAND).toString());
-    m_workingDirectory = FileName::fromUserInput(data.value(DEBUGGER_INFORMATION_WORKINGDIRECTORY).toString());
+    m_command = FilePath::fromUserInput(data.value(DEBUGGER_INFORMATION_COMMAND).toString());
+    m_workingDirectory = FilePath::fromUserInput(data.value(DEBUGGER_INFORMATION_WORKINGDIRECTORY).toString());
     m_unexpandedDisplayName = data.value(DEBUGGER_INFORMATION_DISPLAYNAME).toString();
     m_isAutoDetected = data.value(DEBUGGER_INFORMATION_AUTODETECTED, false).toBool();
     m_version = data.value(DEBUGGER_INFORMATION_VERSION).toString();
@@ -86,7 +115,8 @@ DebuggerItem::DebuggerItem(const QVariantMap &data)
                                                  static_cast<int>(NoEngineType)).toInt());
     m_lastModified = data.value(DEBUGGER_INFORMATION_LASTMODIFIED).toDateTime();
 
-    foreach (const QString &a, data.value(DEBUGGER_INFORMATION_ABIS).toStringList()) {
+    const QStringList abis = data.value(DEBUGGER_INFORMATION_ABIS).toStringList();
+    for (const QString &a : abis) {
         Abi abi = Abi::fromString(a);
         if (!abi.isNull())
             m_abis.append(abi);
@@ -113,15 +143,14 @@ void DebuggerItem::reinitializeFromFile()
     // CDB only understands the single-dash -version, whereas GDB and LLDB are
     // happy with both -version and --version. So use the "working" -version
     // except for the experimental LLDB-MI which insists on --version.
-    const char *version = "-version";
+    QString version = "-version";
     const QFileInfo fileInfo = m_command.toFileInfo();
     m_lastModified = fileInfo.lastModified();
     if (fileInfo.baseName().toLower().contains("lldb-mi"))
         version = "--version";
 
     SynchronousProcess proc;
-    SynchronousProcessResponse response
-            = proc.runBlocking(m_command.toString(), {QLatin1String(version)});
+    SynchronousProcessResponse response = proc.runBlocking({m_command, {version}});
     if (response.result != SynchronousProcessResponse::Finished) {
         m_engineType = NoEngineType;
         return;
@@ -130,22 +159,6 @@ void DebuggerItem::reinitializeFromFile()
     const QString output = response.allOutput().trimmed();
     if (output.contains("gdb")) {
         m_engineType = GdbEngineType;
-        const char needle[] = "This GDB was configured as \"";
-        // E.g.  "--host=i686-pc-linux-gnu --target=arm-unknown-nto-qnx6.5.0".
-        // or "i686-linux-gnu"
-        int pos1 = output.indexOf(needle);
-        if (pos1 != -1) {
-            pos1 += int(strlen(needle));
-            int pos2 = output.indexOf('"', pos1 + 1);
-            QString target = output.mid(pos1, pos2 - pos1);
-            int pos3 = target.indexOf("--target=");
-            if (pos3 >= 0)
-                target = target.mid(pos3 + 9);
-            m_abis.append(Abi::abiFromTargetTriplet(target));
-        } else {
-            // Fallback.
-            m_abis = Abi::abisOfBinary(m_command); // FIXME: Wrong.
-        }
 
         // Version
         bool isMacGdb, isQnxGdb;
@@ -155,6 +168,33 @@ void DebuggerItem::reinitializeFromFile()
         if (version)
             m_version = QString::fromLatin1("%1.%2.%3")
                 .arg(version / 10000).arg((version / 100) % 100).arg(version % 100);
+
+        // ABI
+        const bool unableToFindAVersion = (0 == version);
+        const bool gdbSupportsConfigurationFlag = (version >= 70700);
+        if (gdbSupportsConfigurationFlag || unableToFindAVersion) {
+            const auto gdbConfiguration = getConfigurationOfGdbCommand(m_command);
+            const auto gdbTargetAbiString =
+                    extractGdbTargetAbiStringFromGdbOutput(gdbConfiguration);
+            if (!gdbTargetAbiString.isEmpty()) {
+                m_abis.append(Abi::abiFromTargetTriplet(gdbTargetAbiString));
+                return;
+            }
+        }
+
+        // ABI: legacy: the target was removed from the output of --version with
+        // https://sourceware.org/git/gitweb.cgi?p=binutils-gdb.git;a=commit;h=c61b06a19a34baab66e3809c7b41b0c31009ed9f
+        auto legacyGdbTargetAbiString = extractGdbTargetAbiStringFromGdbOutput(output);
+        if (!legacyGdbTargetAbiString.isEmpty()) {
+            // remove trailing "
+            legacyGdbTargetAbiString =
+                    legacyGdbTargetAbiString.left(legacyGdbTargetAbiString.length() - 1);
+            m_abis.append(Abi::abiFromTargetTriplet(legacyGdbTargetAbiString));
+            return;
+        }
+
+        qWarning() << "Unable to determine gdb target ABI";
+        //! \note If unable to determine the GDB ABI, no ABI is appended to m_abis here.
         return;
     }
     if (output.startsWith("lldb") || output.startsWith("LLDB")) {
@@ -220,7 +260,7 @@ QIcon DebuggerItem::decoration() const
         return Utils::Icons::CRITICAL.icon();
     if (!m_command.toFileInfo().isExecutable())
         return Utils::Icons::WARNING.icon();
-    if (!m_workingDirectory.isEmpty() && !m_workingDirectory.toFileInfo().isDir())
+    if (!m_workingDirectory.isEmpty() && !m_workingDirectory.isDir())
         return Utils::Icons::WARNING.icon();
     return QIcon();
 }
@@ -262,14 +302,14 @@ QString DebuggerItem::displayName() const
         return m_unexpandedDisplayName;
 
     MacroExpander expander;
-    expander.registerVariable("Debugger:Type", DebuggerKitInformation::tr("Type of Debugger Backend"),
+    expander.registerVariable("Debugger:Type", DebuggerKitAspect::tr("Type of Debugger Backend"),
         [this] { return engineTypeName(); });
-    expander.registerVariable("Debugger:Version", DebuggerKitInformation::tr("Debugger"),
+    expander.registerVariable("Debugger:Version", DebuggerKitAspect::tr("Debugger"),
         [this] { return !m_version.isEmpty() ? m_version :
-                                               DebuggerKitInformation::tr("Unknown debugger version"); });
-    expander.registerVariable("Debugger:Abi", DebuggerKitInformation::tr("Debugger"),
+                                               DebuggerKitAspect::tr("Unknown debugger version"); });
+    expander.registerVariable("Debugger:Abi", DebuggerKitAspect::tr("Debugger"),
         [this] { return !m_abis.isEmpty() ? abiNames().join(' ') :
-                                            DebuggerKitInformation::tr("Unknown debugger ABI"); });
+                                            DebuggerKitAspect::tr("Unknown debugger ABI"); });
     return expander.expand(m_unexpandedDisplayName);
 }
 
@@ -283,7 +323,7 @@ void DebuggerItem::setEngineType(const DebuggerEngineType &engineType)
     m_engineType = engineType;
 }
 
-void DebuggerItem::setCommand(const FileName &command)
+void DebuggerItem::setCommand(const FilePath &command)
 {
     m_command = command;
 }
@@ -303,7 +343,7 @@ void DebuggerItem::setVersion(const QString &version)
     m_version = version;
 }
 
-void DebuggerItem::setAbis(const QList<Abi> &abis)
+void DebuggerItem::setAbis(const Abis &abis)
 {
     m_abis = abis;
 }
@@ -341,6 +381,11 @@ static DebuggerItem::MatchLevel matchSingle(const Abi &debuggerAbi, const Abi &t
         return DebuggerItem::DoesNotMatch;
 
     // We have at least 'Matches well' now. Mark the combinations we really like.
+    if (HostOsInfo::isWindowsHost() && engineType == CdbEngineType
+        && targetAbi.osFlavor() >= Abi::WindowsMsvc2005Flavor
+        && targetAbi.osFlavor() <= Abi::WindowsLastMsvcFlavor) {
+        return DebuggerItem::MatchesPerfectly;
+    }
     if (HostOsInfo::isWindowsHost() && engineType == GdbEngineType && targetAbi.osFlavor() == Abi::WindowsMSysFlavor)
         return DebuggerItem::MatchesPerfectly;
     if (HostOsInfo::isLinuxHost() && engineType == GdbEngineType && targetAbi.os() == Abi::LinuxOS)

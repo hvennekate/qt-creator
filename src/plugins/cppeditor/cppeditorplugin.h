@@ -40,7 +40,7 @@ class CppEditorPlugin : public ExtensionSystem::IPlugin
 
 public:
     CppEditorPlugin();
-    ~CppEditorPlugin();
+    ~CppEditorPlugin() override;
 
     static CppEditorPlugin *instance();
 
@@ -58,14 +58,13 @@ public:
     void openDeclarationDefinitionInNextSplit();
     void openTypeHierarchy();
     void openIncludeHierarchy();
-    void findUsages();
     void showPreProcessorDialog();
     void renameSymbolUnderCursor();
     void switchDeclarationDefinition();
 
 #ifdef WITH_TESTS
 private:
-    QList<QObject *> createTestObjects() const override;
+    QVector<QObject *> createTestObjects() const override;
 
 private slots:
     // The following tests expect that no projects are loaded on start-up.
@@ -127,6 +126,7 @@ private slots:
     void test_quickfix_InsertDefFromDecl_ignoreSurroundingGeneratedDeclarations();
     void test_quickfix_InsertDefFromDecl_respectWsInOperatorNames1();
     void test_quickfix_InsertDefFromDecl_respectWsInOperatorNames2();
+    void test_quickfix_InsertDefFromDecl_noexcept_specifier();
     void test_quickfix_InsertDefFromDecl_macroUsesAtEndOfFile1();
     void test_quickfix_InsertDefFromDecl_macroUsesAtEndOfFile2();
     void test_quickfix_InsertDefFromDecl_erroneousStatementAtEndOfFile();

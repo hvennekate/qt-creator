@@ -39,29 +39,20 @@ using namespace ResourceEditor;
 using namespace ResourceEditor::Internal;
 
 QrcEditor::QrcEditor(RelativeResourceModel *model, QWidget *parent)
-  : QWidget(parent),
-    m_treeview(new ResourceView(model, &m_history)),
-    m_addFileAction(0)
+  : Core::MiniSplitter(Qt::Vertical, parent),
+    m_treeview(new ResourceView(model, &m_history))
 {
-    m_ui.setupUi(this);
-    QHBoxLayout *layout = new QHBoxLayout;
-    layout->setSpacing(0);
-    layout->setMargin(0);
-    m_ui.centralWidget->setLayout(layout);
+    addWidget(m_treeview);
+    auto widget = new QWidget;
+    m_ui.setupUi(widget);
+    addWidget(widget);
     m_treeview->setFrameStyle(QFrame::NoFrame);
-    layout->addWidget(m_treeview);
 
+    connect(m_ui.addPrefixButton, &QAbstractButton::clicked, this, &QrcEditor::onAddPrefix);
+    connect(m_ui.addFilesButton, &QAbstractButton::clicked, this, &QrcEditor::onAddFiles);
     connect(m_ui.removeButton, &QAbstractButton::clicked, this, &QrcEditor::onRemove);
     connect(m_ui.removeNonExistingButton, &QPushButton::clicked,
             this, &QrcEditor::onRemoveNonExisting);
-
-    // 'Add' button with menu
-    QMenu *addMenu = new QMenu(this);
-    m_addFileAction = addMenu->addAction(tr("Add Files"));
-    connect(m_addFileAction, &QAction::triggered, this, &QrcEditor::onAddFiles);
-    connect(addMenu->addAction(tr("Add Prefix")), &QAction::triggered,
-            this, &QrcEditor::onAddPrefix);
-    m_ui.addButton->setMenu(addMenu);
 
     connect(m_treeview, &ResourceView::removeItem, this, &QrcEditor::onRemove);
     connect(m_treeview->selectionModel(), &QItemSelectionModel::currentChanged,
@@ -92,7 +83,7 @@ QrcEditor::QrcEditor(RelativeResourceModel *model, QWidget *parent)
     connect(&m_history, &QUndoStack::canRedoChanged, this, &QrcEditor::updateHistoryControls);
     connect(&m_history, &QUndoStack::canUndoChanged, this, &QrcEditor::updateHistoryControls);
 
-    Aggregation::Aggregate * agg = new Aggregation::Aggregate;
+    auto agg = new Aggregation::Aggregate;
     agg->add(m_treeview);
     agg->add(new Core::ItemViewFind(m_treeview));
 
@@ -100,9 +91,7 @@ QrcEditor::QrcEditor(RelativeResourceModel *model, QWidget *parent)
     updateCurrent();
 }
 
-QrcEditor::~QrcEditor()
-{
-}
+QrcEditor::~QrcEditor() = default;
 
 void QrcEditor::loaded(bool success)
 {
@@ -142,8 +131,7 @@ void QrcEditor::updateCurrent()
     m_currentLanguage = m_treeview->currentLanguage();
     m_ui.languageText->setText(m_currentLanguage);
 
-    m_ui.addButton->setEnabled(true);
-    m_addFileAction->setEnabled(isValid);
+    m_ui.addFilesButton->setEnabled(isValid);
     m_ui.removeButton->setEnabled(isValid);
 }
 
@@ -161,8 +149,6 @@ void QrcEditor::updateHistoryControls()
 // When the user does a multiselection of files, this requires popping
 // up the dialog several times in a row.
 struct ResolveLocationContext {
-    ResolveLocationContext() : copyButton(0), skipButton(0), abortButton(0) {}
-
     QAbstractButton *execLocationMessageBox(QWidget *parent,
                                         const QString &file,
                                         bool wantSkipButton);
@@ -173,9 +159,9 @@ struct ResolveLocationContext {
     QScopedPointer<QMessageBox> messageBox;
     QScopedPointer<QFileDialog> copyFileDialog;
 
-    QPushButton *copyButton;
-    QPushButton *skipButton;
-    QPushButton *abortButton;
+    QPushButton *copyButton = nullptr;
+    QPushButton *skipButton = nullptr;
+    QPushButton *abortButton = nullptr;
 };
 
 QAbstractButton *ResolveLocationContext::execLocationMessageBox(QWidget *parent,

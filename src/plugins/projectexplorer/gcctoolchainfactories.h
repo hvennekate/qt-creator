@@ -33,6 +33,8 @@
 #include <QList>
 #include <QSet>
 
+#include <functional>
+
 QT_BEGIN_NAMESPACE
 class QComboBox;
 QT_END_NAMESPACE
@@ -40,6 +42,7 @@ QT_END_NAMESPACE
 namespace Utils { class PathChooser; }
 
 namespace ProjectExplorer {
+class ClangToolChain;
 class GccToolChain;
 
 namespace Internal {
@@ -50,33 +53,20 @@ class GccToolChainFactory : public ToolChainFactory
 
 public:
     GccToolChainFactory();
-    QSet<Core::Id> supportedLanguages() const override;
 
     QList<ToolChain *> autoDetect(const QList<ToolChain *> &alreadyKnown) override;
-    QList<ToolChain *> autoDetect(const Utils::FileName &compilerPath, const Core::Id &language) override;
-
-    bool canCreate() override;
-    ToolChain *create(Core::Id language) override;
-
-    bool canRestore(const QVariantMap &data) override;
-    ToolChain *restore(const QVariantMap &data) override;
+    QList<ToolChain *> detectForImport(const ProjectExplorer::ToolChainDescription &tcd) override;
 
 protected:
-    virtual GccToolChain *createToolChain(bool autoDetect);
-    void versionProbe(const QString &name,
-                      Core::Id language,
-                      Core::Id type,
-                      QList<ToolChain *> &tcs,
-                      QList<ToolChain *> &known,
-                      const QSet<QString> &filteredNames = {});
-
-    Utils::FileName compilerPathFromEnvironment(const QString &compilerName);
-
+    enum class DetectVariants { Yes, No };
+    using ToolchainChecker = std::function<bool(const ToolChain *)>;
     QList<ToolChain *> autoDetectToolchains(
-            const Utils::FileName &compilerPath, const Abi &requiredAbi, Core::Id language,
-            const Core::Id requiredTypeId, const QList<ToolChain *> &alreadyKnown);
-    QList<ToolChain *> autoDetectToolChain(const Utils::FileName &compilerPath, const Core::Id language,
-                                           const Abi &requiredAbi = Abi());
+            const QString &compilerName, DetectVariants detectVariants, Core::Id language,
+            const Core::Id requiredTypeId, const QList<ToolChain *> &alreadyKnown,
+            const ToolchainChecker &checker = {});
+    QList<ToolChain *> autoDetectToolChain(
+            const ToolChainDescription &tcd,
+            const ToolchainChecker &checker = {});
 };
 
 // --------------------------------------------------------------------------
@@ -91,7 +81,7 @@ public:
     explicit GccToolChainConfigWidget(GccToolChain *tc);
     static QStringList splitString(const QString &s);
 
-private:
+protected:
     void handleCompilerCommandChange();
     void handlePlatformCodeGenFlagsChange();
     void handlePlatformLinkerFlagsChange();
@@ -103,13 +93,37 @@ private:
 
     void setFromToolchain();
 
+    AbiWidget *m_abiWidget;
+
+private:
     Utils::PathChooser *m_compilerCommand;
     QLineEdit *m_platformCodeGenFlagsLineEdit;
     QLineEdit *m_platformLinkerFlagsLineEdit;
-    AbiWidget *m_abiWidget;
 
     bool m_isReadOnly = false;
     ProjectExplorer::Macros m_macros;
+};
+
+// --------------------------------------------------------------------------
+// ClangToolChainConfigWidget
+// --------------------------------------------------------------------------
+
+class ClangToolChainConfigWidget : public GccToolChainConfigWidget
+{
+    Q_OBJECT
+public:
+    explicit ClangToolChainConfigWidget(ClangToolChain *tc);
+
+private:
+    void applyImpl() override;
+    void discardImpl() override { setFromClangToolchain(); }
+    bool isDirtyImpl() const override;
+    void makeReadOnlyImpl() override;
+
+    void setFromClangToolchain();
+    void updateParentToolChainComboBox();
+    QList<QMetaObject::Connection> m_parentToolChainConnections;
+    QComboBox *m_parentToolchainCombo = nullptr;
 };
 
 // --------------------------------------------------------------------------
@@ -122,15 +136,9 @@ class ClangToolChainFactory : public GccToolChainFactory
 
 public:
     ClangToolChainFactory();
-    QSet<Core::Id> supportedLanguages() const override;
 
     QList<ToolChain *> autoDetect(const QList<ToolChain *> &alreadyKnown) override;
-    QList<ToolChain *> autoDetect(const Utils::FileName &compilerPath, const Core::Id &language) final;
-
-    bool canRestore(const QVariantMap &data) override;
-
-protected:
-    GccToolChain *createToolChain(bool autoDetect) override;
+    QList<ToolChain *> detectForImport(const ToolChainDescription &tcd) final;
 };
 
 // --------------------------------------------------------------------------
@@ -143,15 +151,9 @@ class MingwToolChainFactory : public GccToolChainFactory
 
 public:
     MingwToolChainFactory();
-    QSet<Core::Id> supportedLanguages() const override;
 
     QList<ToolChain *> autoDetect(const QList<ToolChain *> &alreadyKnown) override;
-    QList<ToolChain *> autoDetect(const Utils::FileName &compilerPath, const Core::Id &language) final;
-
-    bool canRestore(const QVariantMap &data) override;
-
-protected:
-    GccToolChain *createToolChain(bool autoDetect) override;
+    QList<ToolChain *> detectForImport(const ToolChainDescription &tcd) final;
 };
 
 // --------------------------------------------------------------------------
@@ -164,15 +166,9 @@ class LinuxIccToolChainFactory : public GccToolChainFactory
 
 public:
     LinuxIccToolChainFactory();
-    QSet<Core::Id> supportedLanguages() const override;
 
     QList<ToolChain *> autoDetect(const QList<ToolChain *> &alreadyKnown) override;
-    QList<ToolChain *> autoDetect(const Utils::FileName &compilerPath, const Core::Id &language) final;
-
-    bool canRestore(const QVariantMap &data) override;
-
-protected:
-    GccToolChain *createToolChain(bool autoDetect) override;
+    QList<ToolChain *> detectForImport(const ToolChainDescription &tcd) final;
 };
 
 } // namespace Internal

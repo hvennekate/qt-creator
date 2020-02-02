@@ -36,14 +36,14 @@ class QPushButton;
 class QVBoxLayout;
 QT_END_NAMESPACE
 
+namespace Utils {
+class InfoLabel;
+}
+
 namespace ProjectExplorer {
 
 class DeployConfiguration;
-class DeployConfigurationModel;
-class NamedWidget;
 class RunConfiguration;
-class RunConfigurationModel;
-class RunConfigWidget;
 class Target;
 
 namespace Internal {
@@ -58,7 +58,7 @@ public:
 
 private:
     void currentRunConfigurationChanged(int index);
-    void aboutToShowAddMenu();
+    void showAddRunConfigDialog();
     void cloneRunConfiguration();
     void removeRunConfiguration();
     void activeRunConfigurationChanged();
@@ -83,18 +83,15 @@ private:
     void updateEnabledState();
 
     Target *m_target;
-    RunConfigurationModel *m_runConfigurationsModel;
-    DeployConfigurationModel *m_deployConfigurationModel;
     QWidget *m_runConfigurationWidget = nullptr;
     RunConfiguration *m_runConfiguration = nullptr;
     QVBoxLayout *m_runLayout = nullptr;
-    NamedWidget *m_deployConfigurationWidget = nullptr;
+    QWidget *m_deployConfigurationWidget = nullptr;
     QVBoxLayout *m_deployLayout = nullptr;
     BuildStepListWidget *m_deploySteps = nullptr;
-    QMenu *m_addRunMenu;
     QMenu *m_addDeployMenu;
     bool m_ignoreChange = false;
-    typedef QPair<QWidget *, QLabel *> RunConfigItem;
+    using RunConfigItem = QPair<QWidget *, QLabel *>;
     QList<RunConfigItem> m_subWidgets;
 
     QGridLayout *m_gridLayout;
@@ -106,9 +103,9 @@ private:
     QPushButton *m_addRunToolButton;
     QPushButton *m_removeRunToolButton;
     QPushButton *m_renameRunButton;
+    QPushButton *m_cloneRunButton;
     QPushButton *m_renameDeployButton;
-    QLabel *m_disabledIcon;
-    QLabel *m_disabledText;
+    Utils::InfoLabel *m_disabledText;
 };
 
 } // namespace Internal

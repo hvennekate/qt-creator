@@ -34,9 +34,7 @@ using namespace ProjectExplorer;
 
 RemoteLinuxSignalOperation::RemoteLinuxSignalOperation(
         const QSsh::SshConnectionParameters &sshParameters)
-    : DeviceProcessSignalOperation()
-    , m_sshParameters(sshParameters)
-    , m_runner(0)
+    : m_sshParameters(sshParameters)
 {}
 
 RemoteLinuxSignalOperation::~RemoteLinuxSignalOperation()
@@ -62,13 +60,13 @@ void RemoteLinuxSignalOperation::run(const QString &command)
             this, &RemoteLinuxSignalOperation::runnerProcessFinished);
     connect(m_runner, &QSsh::SshRemoteProcessRunner::connectionError,
             this, &RemoteLinuxSignalOperation::runnerConnectionError);
-    m_runner->run(command.toLatin1(), m_sshParameters);
+    m_runner->run(command, m_sshParameters);
 }
 
 void RemoteLinuxSignalOperation::finish()
 {
     delete m_runner;
-    m_runner = 0;
+    m_runner = nullptr;
     emit finished(m_errorMessage);
 }
 
@@ -96,8 +94,10 @@ QString RemoteLinuxSignalOperation::interruptProcessByNameCommandLine(const QStr
 
 void RemoteLinuxSignalOperation::killProcess(qint64 pid)
 {
-    run(QString::fromLatin1("%1; sleep 1; %2").arg(signalProcessGroupByPidCommandLine(pid, 15),
-                                                   signalProcessGroupByPidCommandLine(pid, 9)));
+    run(QString::fromLatin1("%1; sleep 1; %2 && %3")
+        .arg(signalProcessGroupByPidCommandLine(pid, 15),
+             signalProcessGroupByPidCommandLine(pid, 0),
+             signalProcessGroupByPidCommandLine(pid, 9)));
 }
 
 void RemoteLinuxSignalOperation::killProcess(const QString &filePath)

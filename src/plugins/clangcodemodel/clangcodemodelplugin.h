@@ -26,6 +26,7 @@
 #pragma once
 
 #include "clangmodelmanagersupport.h"
+#include "clangutils.h"
 
 #include <extensionsystem/iplugin.h>
 
@@ -42,9 +43,9 @@ class ClangCodeModelPlugin final: public ExtensionSystem::IPlugin
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "ClangCodeModel.json")
 
 public:
-    ~ClangCodeModelPlugin();
-    bool initialize(const QStringList &arguments, QString *errorMessage);
-    void extensionsInitialized();
+    ~ClangCodeModelPlugin() override;
+    bool initialize(const QStringList &arguments, QString *errorMessage) override;
+    void extensionsInitialized() override;
 
 private:
     void maybeHandleBatchFileAndExit() const;
@@ -54,10 +55,10 @@ private:
     void createCompilationDBButton();
 
     ClangModelManagerSupportProvider m_modelManagerSupportProvider;
-    Utils::ParameterAction *m_generateCompilationDBAction = nullptr;
-    QFutureWatcher<void> m_generatorWatcher;
+    ::Utils::ParameterAction *m_generateCompilationDBAction = nullptr;
+    QFutureWatcher<Utils::GenerateCompilationDbResult> m_generatorWatcher;
 #ifdef WITH_TESTS
-    QList<QObject *> createTestObjects() const;
+    QVector<QObject *> createTestObjects() const override;
 #endif
 };
 

@@ -27,8 +27,6 @@
 
 #include <utils/treemodel.h>
 
-#include <QAbstractTableModel>
-#include <QComboBox>
 #include <QPointer>
 
 namespace Debugger {
@@ -47,18 +45,19 @@ public:
     static EngineManager *instance();
     static QAbstractItemModel *model();
 
-    static void registerEngine(DebuggerEngine *engine);
+    static QString registerEngine(DebuggerEngine *engine);
     static void unregisterEngine(DebuggerEngine *engine);
-    static void activateEngine(DebuggerEngine *engine);
+
     static void activateDebugMode();
-    static bool isLastOf(const QString &type);
+    static void deactivateDebugMode();
 
     static QList<QPointer<DebuggerEngine> > engines();
     static QPointer<DebuggerEngine> currentEngine();
 
-    static void selectUiForCurrentEngine();
-
     static QWidget *engineChooser();
+    static void updatePerspectives();
+
+    static bool shutDown(); // Return true if some engine is being forced to shut down.
 
 signals:
     void engineStateChanged(DebuggerEngine *engine);

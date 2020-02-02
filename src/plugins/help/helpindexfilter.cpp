@@ -25,7 +25,6 @@
 
 #include "helpindexfilter.h"
 
-#include "centralwidget.h"
 #include "helpicons.h"
 #include "helpmanager.h"
 #include "topicchooser.h"
@@ -141,7 +140,7 @@ void HelpIndexFilter::accept(LocatorFilterEntry selection,
     Q_UNUSED(selectionStart)
     Q_UNUSED(selectionLength)
     const QString &key = selection.displayName;
-    const QMap<QString, QUrl> &links = HelpManager::linksForKeyword(key);
+    const QMap<QString, QUrl> &links = HelpManager::instance()->linksForKeyword(key);
     emit linksActivated(links, key);
 }
 

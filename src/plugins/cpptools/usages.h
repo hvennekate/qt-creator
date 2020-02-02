@@ -37,7 +37,7 @@ namespace CppTools {
 class Usage
 {
 public:
-    Usage() {}
+    Usage() = default;
     Usage(Utils::SmallStringView path, int line, int column)
         : path(QString::fromUtf8(path.data(), int(path.size()))),
           line(line),
@@ -49,6 +49,12 @@ public:
         return first.line == second.line
             && first.column == second.column
             && first.path == second.path;
+    }
+
+    friend bool operator<(const Usage &first, const Usage &second)
+    {
+        return std::tie(first.path, first.line, first.column)
+               < std::tie(second.path, second.line, second.column);
     }
 
 public:

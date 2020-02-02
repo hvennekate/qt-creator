@@ -47,80 +47,206 @@ class BuildDependenciesStorage final : public BuildDependenciesStorageInterface
     using WriteStatement = typename Database::WriteStatement;
 public:
     BuildDependenciesStorage(Database &database)
-        : m_transaction(database),
-          m_database(database)
+        : transaction(database),
+          database(database)
     {
-        m_transaction.commit();
+        transaction.commit();
     }
 
-    void updateSources(const SourceEntries &sourceEntries) override
+    void insertOrUpdateSources(const SourceEntries &sourceEntries, ProjectPartId projectPartId) override
     {
+        deleteAllProjectPartsFilesWithProjectPartNameStatement.write(projectPartId.projectPathId);
+
         for (const SourceEntry &entry : sourceEntries) {
-            m_updateBuildDependencyTimeStampStatement.write(static_cast<long long>(entry.lastModified),
-                                                            entry.sourceId.filePathId);
-            m_updateSourceTypeStatement.write(static_cast<uchar>(entry.sourceType),
-                                              entry.sourceId.filePathId);
+            insertOrUpdateProjectPartsFilesStatement.write(entry.sourceId.filePathId,
+                                                             projectPartId.projectPathId,
+                                                             static_cast<uchar>(entry.sourceType),
+                                                             static_cast<uchar>(
+                                                                 entry.hasMissingIncludes));
         }
     }
 
-    void insertFileStatuses(const FileStatuses &fileStatuses) override
+    FilePathIds fetchPchSources(ProjectPartId projectPartId) const override
     {
-        WriteStatement &statement = m_insertFileStatusesStatement;
+        try {
+            Sqlite::DeferredTransaction transaction{database};
+
+            FilePathIds values = fetchPchSourcesStatement
+                                     .template values<FilePathId>(1024, projectPartId.projectPathId);
+
+            transaction.commit();
+
+            return values;
+        } catch (const Sqlite::StatementIsBusy &) {
+            return fetchPchSources(projectPartId);
+        }
+    }
+
+    FilePathIds fetchSources(ProjectPartId projectPartId) const override
+    {
+        return fetchSourcesStatement.template values<FilePathId>(1024, projectPartId.projectPathId);
+    }
+
+    void insertOrUpdateFileStatuses(const FileStatuses &fileStatuses) override
+    {
+        WriteStatement &statement = insertOrUpdateFileStatusesStatement;
 
         for (const FileStatus &fileStatus : fileStatuses)
             statement.write(fileStatus.filePathId.filePathId,
                             fileStatus.size,
-                            fileStatus.lastModified,
-                            fileStatus.isInPrecompiledHeader);
+                            fileStatus.lastModified);
     }
 
     long long fetchLowestLastModifiedTime(FilePathId sourceId) const override
     {
-        ReadStatement &statement = m_getLowestLastModifiedTimeOfDependencies;
+        ReadStatement &statement = getLowestLastModifiedTimeOfDependencies;
 
         return statement.template value<long long>(sourceId.filePathId).value_or(0);
     }
 
     void insertOrUpdateUsedMacros(const UsedMacros &usedMacros) override
     {
-        WriteStatement &insertStatement = m_insertIntoNewUsedMacrosStatement;
+        WriteStatement &insertStatement = insertIntoNewUsedMacrosStatement;
         for (const UsedMacro &usedMacro : usedMacros)
-            insertStatement.write(usedMacro.filePathId.filePathId, usedMacro.macroName);
+            insertStatement.write(usedMacro.filePathId.filePathId,
+                                  usedMacro.macroName);
 
-        m_syncNewUsedMacrosStatement.execute();
-        m_deleteOutdatedUsedMacrosStatement.execute();
-        m_deleteNewUsedMacrosTableStatement.execute();
+        syncNewUsedMacrosStatement.execute();
+        deleteOutdatedUsedMacrosStatement.execute();
+        deleteNewUsedMacrosTableStatement.execute();
     }
 
     void insertOrUpdateSourceDependencies(const SourceDependencies &sourceDependencies) override
     {
-        WriteStatement &insertStatement = m_insertIntoNewSourceDependenciesStatement;
+        WriteStatement &insertStatement = insertIntoNewSourceDependenciesStatement;
         for (SourceDependency sourceDependency : sourceDependencies)
             insertStatement.write(sourceDependency.filePathId.filePathId,
                                   sourceDependency.dependencyFilePathId.filePathId);
 
-        m_syncNewSourceDependenciesStatement.execute();
-        m_deleteOutdatedSourceDependenciesStatement.execute();
-        m_deleteNewSourceDependenciesStatement.execute();
+        syncNewSourceDependenciesStatement.execute();
+        deleteOutdatedSourceDependenciesStatement.execute();
+        deleteNewSourceDependenciesStatement.execute();
     }
 
-    SourceEntries fetchDependSources(FilePathId sourceId,
-                                     Utils::SmallStringView projectPartName) const override
+    ProjectPartId fetchProjectPartId(Utils::SmallStringView projectPartName) override
     {
-        auto projectPartId = m_fetchProjectPartIdStatement.template value<int>(projectPartName);
+        auto projectPartId = fetchProjectPartIdStatement.template value<ProjectPartId>(projectPartName);
 
-        if (projectPartId) {
-           return m_fetchSourceDependenciesStatement.template values<SourceEntry, 3>(
-                       300,
-                       sourceId.filePathId,
-                       projectPartId.value());
-        }
-        return {};
+        if (projectPartId)
+            return *projectPartId;
+
+        insertProjectPartNameStatement.write(projectPartName);
+
+        return static_cast<int>(database.lastInsertedRowId());
+    }
+
+    SourceEntries fetchDependSources(FilePathId sourceId, ProjectPartId projectPartId) const override
+    {
+        return fetchSourceDependenciesStatement
+            .template values<SourceEntry, 4>(300, sourceId.filePathId, projectPartId.projectPathId);
     }
 
     UsedMacros fetchUsedMacros(FilePathId sourceId) const override
     {
-        return m_fetchUsedMacrosStatement.template values<UsedMacro, 2>(128, sourceId.filePathId);
+        return fetchUsedMacrosStatement.template values<UsedMacro, 2>(128, sourceId.filePathId);
+    }
+
+    void updatePchCreationTimeStamp(long long pchCreationTimeStamp, ProjectPartId projectPartId) override
+    {
+        Sqlite::ImmediateTransaction transaction{database};
+
+        updatePchCreationTimeStampStatement.write(pchCreationTimeStamp, projectPartId.projectPathId);
+
+        transaction.commit();
+    }
+
+    void insertOrUpdateIndexingTimeStamps(const FilePathIds &filePathIds,
+                                          TimeStamp indexingTimeStamp) override
+    {
+        try {
+            Sqlite::ImmediateTransaction transaction{database};
+
+            for (FilePathId filePathId : filePathIds) {
+                inserOrUpdateIndexingTimesStampStatement.write(filePathId.filePathId,
+                                                               indexingTimeStamp.value);
+            }
+
+            transaction.commit();
+        } catch (const Sqlite::StatementIsBusy &) {
+            insertOrUpdateIndexingTimeStamps(filePathIds, indexingTimeStamp);
+        }
+    }
+
+    void insertOrUpdateIndexingTimeStampsWithoutTransaction(const FilePathIds &filePathIds,
+                                                            TimeStamp indexingTimeStamp) override
+    {
+        for (FilePathId filePathId : filePathIds) {
+            inserOrUpdateIndexingTimesStampStatement.write(filePathId.filePathId,
+                                                           indexingTimeStamp.value);
+        }
+    }
+
+    SourceTimeStamps fetchIndexingTimeStamps() const override
+    {
+        try {
+            Sqlite::DeferredTransaction transaction{database};
+
+            auto timeStamps = fetchIndexingTimeStampsStatement.template values<SourceTimeStamp, 2>(
+                1024);
+
+            transaction.commit();
+
+            return timeStamps;
+        } catch (const Sqlite::StatementIsBusy &) {
+            return fetchIndexingTimeStamps();
+        }
+    }
+
+    SourceTimeStamps fetchIncludedIndexingTimeStamps(FilePathId sourcePathId) const override
+    {
+        try {
+            Sqlite::DeferredTransaction transaction{database};
+
+            auto timeStamps = fetchIncludedIndexingTimeStampsStatement
+                                  .template values<SourceTimeStamp, 2>(1024, sourcePathId.filePathId);
+
+            transaction.commit();
+
+            return timeStamps;
+        } catch (const Sqlite::StatementIsBusy &) {
+            return fetchIncludedIndexingTimeStamps(sourcePathId);
+        }
+    }
+
+    FilePathIds fetchDependentSourceIds(const FilePathIds &sourcePathIds) const override
+    {
+        try {
+            FilePathIds dependentSourceIds;
+
+            Sqlite::DeferredTransaction transaction{database};
+
+            for (FilePathId sourcePathId : sourcePathIds) {
+                FilePathIds newDependentSourceIds;
+                newDependentSourceIds.reserve(dependentSourceIds.size() + 1024);
+
+                auto newIds = fetchDependentSourceIdsStatement
+                                  .template values<FilePathId>(1024, sourcePathId.filePathId);
+
+                std::set_union(dependentSourceIds.begin(),
+                               dependentSourceIds.end(),
+                               newIds.begin(),
+                               newIds.end(),
+                               std::back_inserter(newDependentSourceIds));
+
+                dependentSourceIds = std::move(newDependentSourceIds);
+            }
+
+            transaction.commit();
+
+            return dependentSourceIds;
+        } catch (const Sqlite::StatementIsBusy &) {
+            return fetchDependentSourceIds(sourcePathIds);
+        }
     }
 
     static Utils::SmallString toJson(const Utils::SmallStringVector &strings)
@@ -159,7 +285,7 @@ public:
         const Sqlite::Column &macroNameColumn = table.addColumn("macroName", Sqlite::ColumnType::Text);
         table.addIndex({sourceIdColumn, macroNameColumn});
 
-        table.initialize(m_database);
+        table.initialize(database);
 
         return table;
     }
@@ -173,75 +299,112 @@ public:
         const Sqlite::Column &dependencySourceIdColumn = table.addColumn("dependencySourceId", Sqlite::ColumnType::Text);
         table.addIndex({sourceIdColumn, dependencySourceIdColumn});
 
-        table.initialize(m_database);
+        table.initialize(database);
 
         return table;
     }
 
 public:
-    Sqlite::ImmediateNonThrowingDestructorTransaction m_transaction;
-    Database &m_database;
+    Sqlite::ImmediateNonThrowingDestructorTransaction transaction;
+    Database &database;
     Sqlite::Table newUsedMacroTable{createNewUsedMacrosTable()};
     Sqlite::Table newNewSourceDependenciesTable{createNewSourceDependenciesTable()};
-    WriteStatement m_insertIntoNewUsedMacrosStatement{
+    WriteStatement insertIntoNewUsedMacrosStatement{
         "INSERT INTO newUsedMacros(sourceId, macroName) VALUES (?,?)",
-        m_database
+        database
     };
-    WriteStatement m_syncNewUsedMacrosStatement{
+    WriteStatement syncNewUsedMacrosStatement{
         "INSERT INTO usedMacros(sourceId, macroName) SELECT sourceId, macroName FROM newUsedMacros WHERE NOT EXISTS (SELECT sourceId FROM usedMacros WHERE usedMacros.sourceId == newUsedMacros.sourceId AND usedMacros.macroName == newUsedMacros.macroName)",
-        m_database
+        database
     };
-    WriteStatement m_deleteOutdatedUsedMacrosStatement{
+    WriteStatement deleteOutdatedUsedMacrosStatement{
         "DELETE FROM usedMacros WHERE sourceId IN (SELECT sourceId FROM newUsedMacros) AND NOT EXISTS (SELECT sourceId FROM newUsedMacros WHERE newUsedMacros.sourceId == usedMacros.sourceId AND newUsedMacros.macroName == usedMacros.macroName)",
-        m_database
+        database
     };
-    WriteStatement m_deleteNewUsedMacrosTableStatement{
+    WriteStatement deleteNewUsedMacrosTableStatement{
         "DELETE FROM newUsedMacros",
-        m_database
+        database
     };
-    mutable ReadStatement m_getLowestLastModifiedTimeOfDependencies{
+    mutable ReadStatement getLowestLastModifiedTimeOfDependencies{
         "WITH RECURSIVE sourceIds(sourceId) AS (VALUES(?) UNION SELECT dependencySourceId FROM sourceDependencies, sourceIds WHERE sourceDependencies.sourceId = sourceIds.sourceId) SELECT min(lastModified) FROM fileStatuses, sourceIds WHERE fileStatuses.sourceId = sourceIds.sourceId",
-        m_database
+        database
     };
-    WriteStatement m_insertIntoNewSourceDependenciesStatement{
+    WriteStatement insertIntoNewSourceDependenciesStatement{
         "INSERT INTO newSourceDependencies(sourceId, dependencySourceId) VALUES (?,?)",
-        m_database
+        database
     };
-    WriteStatement m_insertFileStatusesStatement{
-        "INSERT OR REPLACE INTO fileStatuses(sourceId, size, lastModified, isInPrecompiledHeader) VALUES (?,?,?,?)",
-        m_database
-    };
-    WriteStatement m_syncNewSourceDependenciesStatement{
+    WriteStatement insertOrUpdateFileStatusesStatement{
+        "INSERT INTO fileStatuses(sourceId, size, lastModified) VALUES "
+        "(?001,?002,?003) ON "
+        "CONFLICT(sourceId) DO UPDATE SET size = ?002, lastModified = ?003",
+        database};
+    WriteStatement syncNewSourceDependenciesStatement{
         "INSERT INTO sourceDependencies(sourceId, dependencySourceId) SELECT sourceId, dependencySourceId FROM newSourceDependencies WHERE NOT EXISTS (SELECT sourceId FROM sourceDependencies WHERE sourceDependencies.sourceId == newSourceDependencies.sourceId AND sourceDependencies.dependencySourceId == newSourceDependencies.dependencySourceId)",
-        m_database
+        database
     };
-    WriteStatement m_deleteOutdatedSourceDependenciesStatement{
+    WriteStatement deleteOutdatedSourceDependenciesStatement{
         "DELETE FROM sourceDependencies WHERE sourceId IN (SELECT sourceId FROM newSourceDependencies) AND NOT EXISTS (SELECT sourceId FROM newSourceDependencies WHERE newSourceDependencies.sourceId == sourceDependencies.sourceId AND newSourceDependencies.dependencySourceId == sourceDependencies.dependencySourceId)",
-        m_database
+        database
     };
-    WriteStatement m_deleteNewSourceDependenciesStatement{
+    WriteStatement deleteNewSourceDependenciesStatement{
         "DELETE FROM newSourceDependencies",
-        m_database
+        database
     };
-    WriteStatement m_updateBuildDependencyTimeStampStatement{
-        "UPDATE fileStatuses SET buildDependencyTimeStamp = ? WHERE sourceId == ?",
-        m_database
-    };
-    WriteStatement m_updateSourceTypeStatement{
-        "UPDATE projectPartsSources SET sourceType = ? WHERE sourceId == ?",
-        m_database
-    };
-    mutable ReadStatement m_fetchSourceDependenciesStatement{
-        "WITH RECURSIVE collectedDependencies(sourceId) AS (VALUES(?) UNION SELECT dependencySourceId FROM sourceDependencies, collectedDependencies WHERE sourceDependencies.sourceId == collectedDependencies.sourceId) SELECT sourceId, buildDependencyTimeStamp, sourceType FROM collectedDependencies NATURAL JOIN projectPartsSources NATURAL JOIN fileStatuses WHERE projectPartId = ?",
-        m_database
-    };
-    mutable ReadStatement m_fetchProjectPartIdStatement{
+    WriteStatement insertOrUpdateProjectPartsFilesStatement{
+        "INSERT INTO projectPartsFiles(sourceId, projectPartId, "
+        "sourceType, hasMissingIncludes) VALUES (?001, ?002, ?003, ?004) ON "
+        "CONFLICT(sourceId, projectPartId) DO UPDATE SET sourceType = ?003, "
+        "hasMissingIncludes = ?004",
+        database};
+    mutable ReadStatement fetchPchSourcesStatement{
+        "SELECT sourceId FROM projectPartsFiles WHERE projectPartId = ? AND sourceType IN (0, 1, "
+        "3, 4) ORDER BY sourceId",
+        database};
+    mutable ReadStatement fetchSourcesStatement{
+        "SELECT sourceId FROM projectPartsFiles WHERE projectPartId = ? ORDER BY sourceId", database};
+    mutable ReadStatement fetchSourceDependenciesStatement{
+        "WITH RECURSIVE collectedDependencies(sourceId) AS (VALUES(?) UNION "
+        "SELECT dependencySourceId FROM sourceDependencies, "
+        "collectedDependencies WHERE sourceDependencies.sourceId == "
+        "collectedDependencies.sourceId) SELECT sourceId, "
+        "pchCreationTimeStamp, sourceType, hasMissingIncludes FROM "
+        "collectedDependencies NATURAL JOIN projectPartsFiles WHERE "
+        "projectPartId = ? ORDER BY sourceId",
+        database};
+    mutable ReadStatement fetchProjectPartIdStatement{
         "SELECT projectPartId FROM projectParts WHERE projectPartName = ?",
-        m_database
+        database
     };
-    mutable ReadStatement m_fetchUsedMacrosStatement{
-        "SELECT macroName, sourceId FROM usedMacros WHERE sourceId = ?",
-        m_database
+    WriteStatement insertProjectPartNameStatement{
+        "INSERT INTO projectParts(projectPartName) VALUES (?)", database};
+    mutable ReadStatement fetchUsedMacrosStatement{
+        "SELECT macroName, sourceId FROM usedMacros WHERE sourceId = ? ORDER BY sourceId, macroName",
+        database
     };
+    WriteStatement updatePchCreationTimeStampStatement{
+        "UPDATE projectPartsFiles SET pchCreationTimeStamp = ?001 WHERE projectPartId = ?002",
+        database};
+    WriteStatement deleteAllProjectPartsFilesWithProjectPartNameStatement{
+        "DELETE FROM projectPartsFiles WHERE projectPartId = ?", database};
+    WriteStatement inserOrUpdateIndexingTimesStampStatement{
+        "INSERT INTO fileStatuses(sourceId, indexingTimeStamp) VALUES (?001, ?002) ON "
+        "CONFLICT(sourceId) DO UPDATE SET indexingTimeStamp = ?002",
+        database};
+    mutable ReadStatement fetchIncludedIndexingTimeStampsStatement{
+        "WITH RECURSIVE collectedDependencies(sourceId) AS (VALUES(?) UNION SELECT "
+        "dependencySourceId FROM sourceDependencies, collectedDependencies WHERE "
+        "sourceDependencies.sourceId == collectedDependencies.sourceId) SELECT DISTINCT sourceId, "
+        "indexingTimeStamp FROM collectedDependencies NATURAL LEFT JOIN fileStatuses ORDER BY "
+        "sourceId",
+        database};
+    mutable ReadStatement fetchIndexingTimeStampsStatement{
+        "SELECT sourceId, indexingTimeStamp FROM fileStatuses", database};
+    mutable ReadStatement fetchDependentSourceIdsStatement{
+        "WITH RECURSIVE collectedDependencies(sourceId) AS (VALUES(?) UNION SELECT "
+        "sourceDependencies.sourceId FROM sourceDependencies, collectedDependencies WHERE "
+        "sourceDependencies.dependencySourceId == collectedDependencies.sourceId) SELECT sourceId "
+        "FROM collectedDependencies WHERE sourceId NOT IN (SELECT dependencySourceId FROM "
+        "sourceDependencies) ORDER BY sourceId",
+        database};
 };
 }

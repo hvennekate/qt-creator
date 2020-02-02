@@ -34,7 +34,7 @@ QT_BEGIN_NAMESPACE
 class QStringList;
 QT_END_NAMESPACE
 
-namespace Utils { class FileName; }
+namespace Utils { class FilePath; }
 
 namespace Core {
 
@@ -68,8 +68,6 @@ public:
 
     static void expectFileChange(const QString &fileName);
     static void unexpectFileChange(const QString &fileName);
-
-    static void setAutoReloadPostponed(bool enabled);
 
     // recent files
     static void addToRecentFiles(const QString &fileName, Id editorId = Id());
@@ -125,7 +123,7 @@ public:
                                      const QString &alwaysSaveMessage = QString(),
                                      bool *alwaysSave = nullptr,
                                      QList<IDocument *> *failedToClose = nullptr);
-    static void showFilePropertiesDialog(const Utils::FileName &filePath);
+    static void showFilePropertiesDialog(const Utils::FilePath &filePath);
 
     static QString fileDialogLastVisitedDirectory();
     static void setFileDialogLastVisitedDirectory(const QString &);
@@ -138,8 +136,8 @@ public:
     static bool useProjectsDirectory();
     static void setUseProjectsDirectory(bool);
 
-    static Utils::FileName projectsDirectory();
-    static void setProjectsDirectory(const Utils::FileName &directory);
+    static Utils::FilePath projectsDirectory();
+    static void setProjectsDirectory(const Utils::FilePath &directory);
 
     /* Used to notify e.g. the code model to update the given files. Does *not*
        lead to any editors to reload or any other editor manager actions. */
@@ -153,10 +151,7 @@ signals:
     void allDocumentsRenamed(const QString &from, const QString &to);
     /// emitted if one document changed its name e.g. due to save as
     void documentRenamed(Core::IDocument *document, const QString &from, const QString &to);
-    void projectsDirectoryChanged(const Utils::FileName &directory);
-
-protected:
-    bool eventFilter(QObject *obj, QEvent *e) override;
+    void projectsDirectoryChanged(const Utils::FilePath &directory);
 
 private:
     explicit DocumentManager(QObject *parent);
@@ -166,7 +161,7 @@ private:
     void checkForNewFileName();
     void checkForReload();
     void changedFile(const QString &file);
-    void filePathChanged(const Utils::FileName &oldName, const Utils::FileName &newName);
+    void filePathChanged(const Utils::FilePath &oldName, const Utils::FilePath &newName);
 
     friend class Core::Internal::MainWindow;
     friend class Core::Internal::DocumentManagerPrivate;

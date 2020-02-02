@@ -27,6 +27,8 @@
 
 #include <projectexplorer/abstractprocessstep.h>
 
+#include <utils/fileutils.h>
+
 namespace Ios {
 namespace Internal {
 namespace Ui { class IosPresetBuildStep; }
@@ -40,29 +42,28 @@ class IosDsymBuildStep : public ProjectExplorer::AbstractProcessStep
     friend class IosDsymBuildStepConfigWidget;
 
 public:
-    IosDsymBuildStep(ProjectExplorer::BuildStepList *parent);
-
-    bool init(QList<const BuildStep *> &earlierSteps) override;
-    void run(QFutureInterface<bool> &fi) override;
+    IosDsymBuildStep(ProjectExplorer::BuildStepList *parent, Core::Id id);
 
     ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
     void setArguments(const QStringList &args);
     QStringList arguments() const;
     QStringList defaultArguments() const;
-    QString defaultCommand() const;
-    QString command() const;
-    void setCommand(const QString &command);
+    Utils::FilePath defaultCommand() const;
+    Utils::FilePath command() const;
+    void setCommand(const Utils::FilePath &command);
     bool isDefault() const;
 
-    QVariantMap toMap() const override;
-
 private:
+    bool init() override;
+    void doRun() override;
+    QVariantMap toMap() const override;
     bool fromMap(const QVariantMap &map) override;
+
     QStringList defaultCleanCmdList() const;
     QStringList defaultCmdList() const;
 
     QStringList m_arguments;
-    QString m_command;
+    Utils::FilePath m_command;
     bool m_clean;
 };
 
@@ -72,7 +73,7 @@ class IosDsymBuildStepConfigWidget : public ProjectExplorer::BuildStepConfigWidg
 
 public:
     IosDsymBuildStepConfigWidget(IosDsymBuildStep *buildStep);
-    ~IosDsymBuildStepConfigWidget();
+    ~IosDsymBuildStepConfigWidget() override;
 
 private:
     void commandChanged();

@@ -39,13 +39,11 @@ CppClassesFilter::CppClassesFilter(CppLocatorData *locatorData)
     setIncludedByDefault(false);
 }
 
-CppClassesFilter::~CppClassesFilter()
-{
-}
+CppClassesFilter::~CppClassesFilter() = default;
 
 Core::LocatorFilterEntry CppClassesFilter::filterEntryFromIndexItem(IndexItem::Ptr info)
 {
-    const QVariant id = qVariantFromValue(info);
+    const QVariant id = QVariant::fromValue(info);
     Core::LocatorFilterEntry filterEntry(this, info->symbolName(), id, info->icon());
     filterEntry.extraInfo = info->symbolScope().isEmpty()
         ? info->shortNativeFilePath()

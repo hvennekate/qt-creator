@@ -24,13 +24,15 @@
 ****************************************************************************/
 
 #include "googletest.h"
+#include "testenvironment.h"
 
 #include <symbolindexing.h>
 #include <symbolquery.h>
 #include <querysqlitestatementfactory.h>
 
 #include <filepathcaching.h>
-#include <projectpartcontainerv2.h>
+#include <projectpartcontainer.h>
+#include <projectpartsstorage.h>
 #include <refactoringdatabaseinitializer.h>
 
 #include <QDir>
@@ -45,8 +47,8 @@ using ClangBackEnd::SymbolStorage;
 using ClangBackEnd::FilePathCaching;
 using ClangBackEnd::FilePathId;
 using ClangBackEnd::RefactoringDatabaseInitializer;
-using ClangBackEnd::V2::ProjectPartContainer;
-using ClangBackEnd::V2::ProjectPartContainer;
+using ClangBackEnd::ProjectPartContainer;
+using ClangBackEnd::ProjectPartContainer;
 using ClangRefactoring::SymbolQuery;
 using ClangRefactoring::QuerySqliteStatementFactory;
 using Utils::PathString;
@@ -83,16 +85,26 @@ protected:
     FilePathCaching filePathCache{database};
     ClangBackEnd::GeneratedFiles generatedFiles;
     NiceMock<MockFunction<void(int, int)>> mockSetProgressCallback;
-    ClangBackEnd::SymbolIndexing indexing{database, filePathCache, generatedFiles, mockSetProgressCallback.AsStdFunction()};
+    ClangBackEnd::ProjectPartsStorage<Sqlite::Database> projectPartStorage{database};
+    TestEnvironment testEnvironment;
+    ClangBackEnd::SymbolIndexing indexing{database,
+                                          filePathCache,
+                                          generatedFiles,
+                                          mockSetProgressCallback.AsStdFunction(),
+                                          testEnvironment};
     StatementFactory queryFactory{database};
     Query query{queryFactory};
     PathString main1Path = TESTDATA_DIR "/symbolindexing_main1.cpp";
-    ProjectPartContainer projectPart1{"project1",
-                                      {"cc", "-I", TESTDATA_DIR, "-std=c++1z"},
-                                      {{"DEFINE", "1"}},
-                                      {"/includes"},
+    ProjectPartContainer projectPart1{projectPartStorage.fetchProjectPartId("project1"),
                                       {},
-                                      {filePathId(main1Path)}};
+                                      {{"DEFINE", "1", 1}},
+                                      {{TESTDATA_DIR, 1, ClangBackEnd::IncludeSearchPathType::System}},
+                                      {},
+                                      {},
+                                      {filePathId(main1Path)},
+                                      Utils::Language::Cxx,
+                                      Utils::LanguageVersion::CXX14,
+                                      Utils::LanguageExtension::None};
 };
 
 TEST_F(SymbolIndexing, Locations)

@@ -63,9 +63,7 @@ static bool printAliveMessage()
     return print;
 }
 
-BackendReceiver::BackendReceiver()
-{
-}
+BackendReceiver::BackendReceiver() = default;
 
 BackendReceiver::~BackendReceiver()
 {
@@ -88,15 +86,18 @@ void BackendReceiver::addExpectedCompletionsMessage(
 
 void BackendReceiver::deleteProcessorsOfEditorWidget(TextEditor::TextEditorWidget *textEditorWidget)
 {
-    QMutableHashIterator<quint64, ClangCompletionAssistProcessor *> it(m_assistProcessorsTable);
-    while (it.hasNext()) {
-        it.next();
+    QList<quint64> toRemove;
+    for (auto it = m_assistProcessorsTable.cbegin(), end = m_assistProcessorsTable.cend();
+            it != end; ++it)
+    {
         ClangCompletionAssistProcessor *assistProcessor = it.value();
         if (assistProcessor->textEditorWidget() == textEditorWidget) {
             delete assistProcessor;
-            it.remove();
+            toRemove.append(it.key());
         }
     }
+    for (quint64 item : toRemove)
+        m_assistProcessorsTable.remove(item);
 }
 
 QFuture<CppTools::CursorInfo> BackendReceiver::addExpectedReferencesMessage(
@@ -221,9 +222,9 @@ CppTools::CursorInfo::Range toCursorInfoRange(const SourceRangeContainer &source
 {
     const SourceLocationContainer &start = sourceRange.start;
     const SourceLocationContainer &end = sourceRange.end;
-    const unsigned length = end.column - start.column;
+    const int length = end.column - start.column;
 
-    return CppTools::CursorInfo::Range(start.line, start.column, length);
+    return {start.line, start.column, length};
 }
 
 static
@@ -251,10 +252,10 @@ CppTools::SymbolInfo toSymbolInfo(const FollowSymbolMessage &message)
 
     const SourceLocationContainer &start = range.start;
     const SourceLocationContainer &end = range.end;
-    result.startLine = static_cast<int>(start.line);
-    result.startColumn = static_cast<int>(start.column);
-    result.endLine = static_cast<int>(end.line);
-    result.endColumn = static_cast<int>(end.column);
+    result.startLine = start.line;
+    result.startColumn = start.column;
+    result.endLine = end.line;
+    result.endColumn = end.column;
     result.fileName = start.filePath;
 
     result.isResultOnlyForFallBack = message.result.isResultOnlyForFallBack;
@@ -279,26 +280,26 @@ void BackendReceiver::references(const ReferencesMessage &message)
     futureInterface.reportFinished();
 }
 
-static TextEditor::HelpItem::Category toHelpItemCategory(ToolTipInfo::QdocCategory category)
+static Core::HelpItem::Category toHelpItemCategory(ToolTipInfo::QdocCategory category)
 {
     switch (category) {
     case ToolTipInfo::Unknown:
-        return TextEditor::HelpItem::Unknown;
+        return Core::HelpItem::Unknown;
     case ToolTipInfo::ClassOrNamespace:
-        return TextEditor::HelpItem::ClassOrNamespace;
+        return Core::HelpItem::ClassOrNamespace;
     case ToolTipInfo::Enum:
-        return TextEditor::HelpItem::Enum;
+        return Core::HelpItem::Enum;
     case ToolTipInfo::Typedef:
-        return TextEditor::HelpItem::Typedef;
+        return Core::HelpItem::Typedef;
     case ToolTipInfo::Macro:
-        return TextEditor::HelpItem::Macro;
+        return Core::HelpItem::Macro;
     case ToolTipInfo::Brief:
-        return TextEditor::HelpItem::Brief;
+        return Core::HelpItem::Brief;
     case ToolTipInfo::Function:
-        return TextEditor::HelpItem::Function;
+        return Core::HelpItem::Function;
     }
 
-    return TextEditor::HelpItem::Unknown;
+    return Core::HelpItem::Unknown;
 }
 
 static QStringList toStringList(const Utf8StringVector &utf8StringVector)

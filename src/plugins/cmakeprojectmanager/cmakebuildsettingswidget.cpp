@@ -42,10 +42,10 @@
 #include <utils/detailswidget.h>
 #include <utils/fancylineedit.h>
 #include <utils/headerviewstretcher.h>
+#include <utils/infolabel.h>
 #include <utils/itemviews.h>
 #include <utils/pathchooser.h>
 #include <utils/progressindicator.h>
-#include <utils/utilsicons.h>
 
 #include <QBoxLayout>
 #include <QCheckBox>
@@ -59,6 +59,8 @@
 #include <QStyledItemDelegate>
 #include <QMenu>
 
+using namespace ProjectExplorer;
+
 namespace CMakeProjectManager {
 namespace Internal {
 
@@ -69,7 +71,7 @@ static QModelIndex mapToSource(const QAbstractItemView *view, const QModelIndex 
 
     QAbstractItemModel *model = view->model();
     QModelIndex result = idx;
-    while (QSortFilterProxyModel *proxy = qobject_cast<QSortFilterProxyModel *>(model)) {
+    while (auto proxy = qobject_cast<const QSortFilterProxyModel *>(model)) {
         result = proxy->mapToSource(result);
         model = proxy->sourceModel();
     }
@@ -81,17 +83,16 @@ static QModelIndex mapToSource(const QAbstractItemView *view, const QModelIndex 
 // --------------------------------------------------------------------
 
 CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) :
+    NamedWidget(tr("CMake")),
     m_buildConfiguration(bc),
     m_configModel(new ConfigModel(this)),
-    m_configFilterModel(new Utils::CategorySortFilterModel),
-    m_configTextFilterModel(new Utils::CategorySortFilterModel)
+    m_configFilterModel(new Utils::CategorySortFilterModel(this)),
+    m_configTextFilterModel(new Utils::CategorySortFilterModel(this))
 {
     QTC_CHECK(bc);
 
-    setDisplayName(tr("CMake"));
-
     auto vbox = new QVBoxLayout(this);
-    vbox->setMargin(0);
+    vbox->setContentsMargins(0, 0, 0, 0);
     auto container = new Utils::DetailsWidget;
     container->setState(Utils::DetailsWidget::NoSummary);
     vbox->addWidget(container);
@@ -100,18 +101,18 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     container->setWidget(details);
 
     auto mainLayout = new QGridLayout(details);
-    mainLayout->setMargin(0);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setColumnStretch(1, 10);
 
-    auto project = static_cast<CMakeProject *>(bc->project());
+    auto project = bc->project();
 
-    auto buildDirChooser = new Utils::PathChooser;
-    buildDirChooser->setBaseFileName(project->projectDirectory());
+    auto buildDirChooser = new Utils::PathChooser(this);
+    buildDirChooser->setBaseDirectory(project->projectDirectory());
     buildDirChooser->setFileName(bc->buildDirectory());
     connect(buildDirChooser, &Utils::PathChooser::rawPathChanged, this,
             [this](const QString &path) {
                 m_configModel->flush(); // clear out config cache...
-                m_buildConfiguration->setBuildDirectory(Utils::FileName::fromString(path));
+                m_buildConfiguration->setBuildDirectory(Utils::FilePath::fromString(path));
             });
 
     int row = 0;
@@ -123,26 +124,14 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     mainLayout->addItem(new QSpacerItem(20, 10), row, 0);
 
     ++row;
-    m_errorLabel = new QLabel;
-    m_errorLabel->setPixmap(Utils::Icons::CRITICAL.pixmap());
-    m_errorLabel->setVisible(false);
-    m_errorMessageLabel = new QLabel;
+    m_errorMessageLabel = new Utils::InfoLabel({}, Utils::InfoLabel::Error);
     m_errorMessageLabel->setVisible(false);
-    auto boxLayout = new QHBoxLayout;
-    boxLayout->addWidget(m_errorLabel);
-    boxLayout->addWidget(m_errorMessageLabel);
-    mainLayout->addLayout(boxLayout, row, 0, 1, 3, Qt::AlignHCenter);
+    mainLayout->addWidget(m_errorMessageLabel, row, 0, 1, -1, Qt::AlignHCenter);
 
     ++row;
-    m_warningLabel = new QLabel;
-    m_warningLabel->setPixmap(Utils::Icons::WARNING.pixmap());
-    m_warningLabel->setVisible(false);
-    m_warningMessageLabel = new QLabel;
+    m_warningMessageLabel = new Utils::InfoLabel({}, Utils::InfoLabel::Warning);
     m_warningMessageLabel->setVisible(false);
-    auto boxLayout2 = new QHBoxLayout;
-    boxLayout2->addWidget(m_warningLabel);
-    boxLayout2->addWidget(m_warningMessageLabel);
-    mainLayout->addLayout(boxLayout2, row, 0, 1, 3, Qt::AlignHCenter);
+    mainLayout->addWidget(m_warningMessageLabel, row, 0, 1, -1, Qt::AlignHCenter);
 
     ++row;
     mainLayout->addItem(new QSpacerItem(20, 10), row, 0);
@@ -170,6 +159,12 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     m_configTextFilterModel->setSortRole(Qt::DisplayRole);
     m_configTextFilterModel->setFilterKeyColumn(-1);
     m_configTextFilterModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
+
+    connect(m_configTextFilterModel, &QAbstractItemModel::layoutChanged, this, [this]() {
+        QModelIndex selectedIdx = m_configView->currentIndex();
+        if (selectedIdx.isValid())
+            m_configView->scrollTo(selectedIdx);
+    });
 
     m_configView->setModel(m_configTextFilterModel);
     m_configView->setMinimumHeight(300);
@@ -200,7 +195,7 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     m_addButton->setToolTip(tr("Add a new configuration value."));
     buttonLayout->addWidget(m_addButton);
     {
-        m_addButtonMenu = new QMenu;
+        m_addButtonMenu = new QMenu(this);
         m_addButtonMenu->addAction(tr("&Boolean"))->setData(
                     QVariant::fromValue(static_cast<int>(ConfigModel::DataItem::BOOLEAN)));
         m_addButtonMenu->addAction(tr("&String"))->setData(
@@ -240,21 +235,20 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
     setError(bc->error());
     setWarning(bc->warning());
 
-    connect(project, &ProjectExplorer::Project::parsingStarted, this, [this]() {
+    connect(bc->target(), &Target::parsingStarted, this, [this]() {
         updateButtonState();
         m_configView->setEnabled(false);
         m_showProgressTimer.start();
     });
 
-    if (m_buildConfiguration->isParsing())
+    if (bc->buildSystem()->isParsing())
         m_showProgressTimer.start();
     else {
         m_configModel->setConfiguration(m_buildConfiguration->configurationFromCMake());
         m_configView->expandAll();
     }
 
-    connect(project, &ProjectExplorer::Project::parsingFinished,
-            this, [this, buildDirChooser, stretcher]() {
+    connect(bc->target(), &Target::parsingFinished, this, [this, buildDirChooser, stretcher] {
         m_configModel->setConfiguration(m_buildConfiguration->configurationFromCMake());
         m_configView->expandAll();
         m_configView->setEnabled(true);
@@ -307,9 +301,14 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
             value = QString::fromLatin1("OFF");
 
         m_configModel->appendConfiguration(tr("<UNSET>"), value, type);
-        QModelIndex idx;
-        idx = m_configView->model()->index(
-                    m_configView->model()->rowCount(idx) - 1, 0);
+        const Utils::TreeItem *item = m_configModel->findNonRootItem([&value, type](Utils::TreeItem *item) {
+                ConfigModel::DataItem dataItem = ConfigModel::dataItemFromIndex(item->index());
+                return dataItem.key == tr("<UNSET>") && dataItem.type == type && dataItem.value == value;
+        });
+        QModelIndex idx = m_configModel->indexForItem(item);
+        idx = m_configTextFilterModel->mapFromSource(m_configFilterModel->mapFromSource(idx));
+        m_configView->setFocus();
+        m_configView->scrollTo(idx);
         m_configView->setCurrentIndex(idx);
         m_configView->edit(idx);
     });
@@ -334,32 +333,20 @@ CMakeBuildSettingsWidget::CMakeBuildSettingsWidget(CMakeBuildConfiguration *bc) 
 void CMakeBuildSettingsWidget::setError(const QString &message)
 {
     bool showError = !message.isEmpty();
-    m_errorLabel->setVisible(showError);
-    m_errorLabel->setToolTip(message);
     m_errorMessageLabel->setVisible(showError);
     m_errorMessageLabel->setText(message);
-    m_errorMessageLabel->setToolTip(message);
-
-    m_editButton->setEnabled(!showError);
-    m_unsetButton->setEnabled(!showError);
-    m_resetButton->setEnabled(!showError);
-    m_showAdvancedCheckBox->setEnabled(!showError);
-    m_filterEdit->setEnabled(!showError);
 }
 
 void CMakeBuildSettingsWidget::setWarning(const QString &message)
 {
     bool showWarning = !message.isEmpty();
-    m_warningLabel->setVisible(showWarning);
-    m_warningLabel->setToolTip(message);
     m_warningMessageLabel->setVisible(showWarning);
     m_warningMessageLabel->setText(message);
-    m_warningMessageLabel->setToolTip(message);
 }
 
 void CMakeBuildSettingsWidget::updateButtonState()
 {
-    const bool isParsing = m_buildConfiguration->isParsing();
+    const bool isParsing = m_buildConfiguration->buildSystem()->isParsing();
     const bool hasChanges = m_configModel->hasChanges();
     m_resetButton->setEnabled(hasChanges && !isParsing);
     m_reconfigureButton->setEnabled((hasChanges || m_configModel->hasCMakeChanges()) && !isParsing);
@@ -381,7 +368,7 @@ void CMakeBuildSettingsWidget::updateAdvancedCheckBox()
 void CMakeBuildSettingsWidget::updateFromKit()
 {
     const ProjectExplorer::Kit *k = m_buildConfiguration->target()->kit();
-    const CMakeConfig config = CMakeConfigurationKitInformation::configuration(k);
+    const CMakeConfig config = CMakeConfigurationKitAspect::configuration(k);
 
     QHash<QString, QString> configHash;
     for (const CMakeConfigItem &i : config)
@@ -404,7 +391,7 @@ void CMakeBuildSettingsWidget::setConfigurationForCMake()
 
 void CMakeBuildSettingsWidget::updateSelection(const QModelIndex &current, const QModelIndex &previous)
 {
-    Q_UNUSED(previous);
+    Q_UNUSED(previous)
 
     m_editButton->setEnabled(current.isValid() && current.flags().testFlag(Qt::ItemIsEditable));
     m_unsetButton->setEnabled(current.isValid() && current.flags().testFlag(Qt::ItemIsSelectable));
@@ -412,7 +399,7 @@ void CMakeBuildSettingsWidget::updateSelection(const QModelIndex &current, const
 
 QAction *CMakeBuildSettingsWidget::createForceAction(int type, const QModelIndex &idx)
 {
-    ConfigModel::DataItem::Type t = static_cast<ConfigModel::DataItem::Type>(type);
+    auto t = static_cast<ConfigModel::DataItem::Type>(type);
     QString typeString;
     switch (type) {
     case ConfigModel::DataItem::BOOLEAN:
@@ -448,7 +435,7 @@ bool CMakeBuildSettingsWidget::eventFilter(QObject *target, QEvent *event)
     if (!idx.isValid())
         return false;
 
-    QMenu *menu = new QMenu(this);
+    auto menu = new QMenu(this);
     connect(menu, &QMenu::triggered, menu, &QMenu::deleteLater);
 
     QAction *action = nullptr;

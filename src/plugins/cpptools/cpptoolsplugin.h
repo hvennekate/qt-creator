@@ -36,7 +36,7 @@ class QFileInfo;
 class QDir;
 QT_END_NAMESPACE
 
-namespace Utils { class FileName; }
+namespace Utils { class FilePath; }
 
 namespace CppTools {
 
@@ -63,8 +63,9 @@ public:
     static const QStringList &headerPrefixes();
     static const QStringList &sourcePrefixes();
     static void clearHeaderSourceCache();
-    static Utils::FileName licenseTemplatePath();
+    static Utils::FilePath licenseTemplatePath();
     static QString licenseTemplate();
+    static bool usePragmaOnce();
 
     bool initialize(const QStringList &arguments, QString *errorMessage) final;
     void extensionsInitialized() final;
@@ -158,6 +159,8 @@ private slots:
     void test_cpplocatorfilters_CppLocatorFilter();
     void test_cpplocatorfilters_CppLocatorFilter_data();
     void test_cpplocatorfilters_CppCurrentDocumentFilter();
+    void test_cpplocatorfilters_CppCurrentDocumentHighlighting();
+    void test_cpplocatorfilters_CppFunctionsFilterHighlighting();
 
     void test_builtinsymbolsearcher();
     void test_builtinsymbolsearcher_data();

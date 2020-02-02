@@ -39,11 +39,11 @@
 
 #include <coreplugin/helpmanager.h>
 #include <utils/qtcassert.h>
+#include <utils/algorithm.h>
 
 #include <QRegExp>
 
 namespace QmlDesigner {
-
 
 /*!
 \class QmlDesigner::AbstractView
@@ -577,10 +577,10 @@ void AbstractView::enableWidget()
         widgetInfo().widget->setEnabled(true);
 }
 
-void AbstractView::contextHelpId(const Core::IContext::HelpIdCallback &callback) const
+void AbstractView::contextHelp(const Core::IContext::HelpCallback &callback) const
 {
 #ifndef QMLDESIGNER_TEST
-    QmlDesignerPlugin::instance()->viewManager().qmlJSEditorHelpId(callback);
+    QmlDesignerPlugin::instance()->viewManager().qmlJSEditorContextHelp(callback);
 #else
     callback(QString());
 #endif
@@ -590,8 +590,6 @@ void AbstractView::activateTimeline(const ModelNode &timeline)
 {
     if (currentTimeline().isValid())
         currentTimeline().toogleRecording(false);
-
-    Internal::WriteLocker locker(m_model.data());
 
     if (model())
         model()->d->notifyCurrentTimelineChanged(timeline);
@@ -615,15 +613,34 @@ void AbstractView::deactivateTimelineRecording()
         currentTimeline().resetGroupRecording();
     }
 
-    Internal::WriteLocker locker(m_model.data());
-
     if (model())
         model()->d->notifyCurrentTimelineChanged(ModelNode());
+}
+
+bool AbstractView::executeInTransaction(const QByteArray &identifier, const AbstractView::OperationBlock &lambda)
+{
+    try {
+        RewriterTransaction transaction = beginRewriterTransaction(identifier);
+        lambda();
+        transaction.commit();
+    } catch (const Exception &e) {
+        e.showException();
+        return false;
+    }
+
+    return true;
 }
 
 QList<ModelNode> AbstractView::allModelNodes() const
 {
     return toModelNodeList(model()->d->allNodes());
+}
+
+QList<ModelNode> AbstractView::allModelNodesOfType(const TypeName &typeName) const
+{
+    return Utils::filtered(allModelNodes(), [typeName](const ModelNode &node){
+        return node.metaInfo().isValid() && node.metaInfo().isSubclassOf(typeName);
+    });
 }
 
 void AbstractView::emitDocumentMessage(const QString &error)

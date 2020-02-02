@@ -35,8 +35,7 @@ class LocalProcessList : public DeviceProcessList
     Q_OBJECT
 
 public:
-    explicit LocalProcessList(const IDevice::ConstPtr &device, QObject *parent = 0);
-    Qt::ItemFlags flags(const QModelIndex &index) const override;
+    explicit LocalProcessList(const IDevice::ConstPtr &device, QObject *parent = nullptr);
 
     static QList<DeviceProcessItem> getLocalProcesses();
 
@@ -47,8 +46,6 @@ private:
 private:
     void handleUpdate();
     void reportDelayedKillStatus(const QString &errorMessage);
-
-    const qint64 m_myPid;
 };
 
 } // namespace Internal

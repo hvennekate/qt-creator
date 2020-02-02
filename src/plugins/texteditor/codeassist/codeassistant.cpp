@@ -26,7 +26,6 @@
 #include "codeassistant.h"
 #include "completionassistprovider.h"
 #include "iassistprocessor.h"
-#include "textdocument.h"
 #include "iassistproposal.h"
 #include "iassistproposalmodel.h"
 #include "iassistproposalwidget.h"
@@ -35,11 +34,13 @@
 #include "runner.h"
 #include "textdocumentmanipulator.h"
 
+#include <texteditor/textdocument.h>
 #include <texteditor/texteditor.h>
 #include <texteditor/texteditorsettings.h>
 #include <texteditor/completionsettings.h>
 #include <coreplugin/editormanager/editormanager.h>
 #include <extensionsystem/pluginmanager.h>
+#include <utils/algorithm.h>
 #include <utils/qtcassert.h>
 
 #include <QKeyEvent>
@@ -431,22 +432,28 @@ void CodeAssistantPrivate::invalidateCurrentRequestData()
 
 CompletionAssistProvider *CodeAssistantPrivate::identifyActivationSequence()
 {
-    CompletionAssistProvider *completionProvider = m_editorWidget->textDocument()->completionAssistProvider();
-    if (!completionProvider)
-        return nullptr;
+    auto checkActivationSequence = [this](CompletionAssistProvider *provider) {
+        if (!provider)
+            return false;
+        const int length = provider->activationCharSequenceLength();
+        if (!length)
+            return false;
+        QString sequence = m_editorWidget->textAt(m_editorWidget->position() - length, length);
+        // In pretty much all cases the sequence will have the appropriate length. Only in the
+        // case of typing the very first characters in the document for providers that request a
+        // length greater than 1 (currently only C++, which specifies 3), the sequence needs to
+        // be prepended so it has the expected length.
+        const int lengthDiff = length - sequence.length();
+        for (int j = 0; j < lengthDiff; ++j)
+            sequence.prepend(m_null);
+        return provider->isActivationCharSequence(sequence);
+    };
 
-    const int length = completionProvider->activationCharSequenceLength();
-    if (length == 0)
-        return nullptr;
-    QString sequence = m_editorWidget->textAt(m_editorWidget->position() - length, length);
-    // In pretty much all cases the sequence will have the appropriate length. Only in the
-    // case of typing the very first characters in the document for providers that request a
-    // length greater than 1 (currently only C++, which specifies 3), the sequence needs to
-    // be prepended so it has the expected length.
-    const int lengthDiff = length - sequence.length();
-    for (int j = 0; j < lengthDiff; ++j)
-        sequence.prepend(m_null);
-    return completionProvider->isActivationCharSequence(sequence) ? completionProvider : nullptr;
+    auto provider = {
+        m_editorWidget->textDocument()->completionAssistProvider(),
+        m_editorWidget->textDocument()->functionHintAssistProvider()
+    };
+    return Utils::findOrDefault(provider, checkActivationSequence);
 }
 
 void CodeAssistantPrivate::notifyChange()
@@ -547,7 +554,7 @@ bool CodeAssistantPrivate::isDestroyEvent(int key, const QString &keyText)
 
 bool CodeAssistantPrivate::eventFilter(QObject *o, QEvent *e)
 {
-    Q_UNUSED(o);
+    Q_UNUSED(o)
 
     if (isWaitingForProposal()) {
         QEvent::Type type = e->type();

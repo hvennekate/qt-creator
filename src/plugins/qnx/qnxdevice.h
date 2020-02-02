@@ -30,19 +30,17 @@
 #include <remotelinux/linuxdevice.h>
 
 namespace Qnx {
+namespace Internal {
 
-class QNX_EXPORT QnxDevice : public RemoteLinux::LinuxDevice
+class QnxDevice final : public RemoteLinux::LinuxDevice
 {
     Q_DECLARE_TR_FUNCTIONS(Qnx::Internal::QnxDevice)
 
 public:
-    typedef QSharedPointer<QnxDevice> Ptr;
-    typedef QSharedPointer<const QnxDevice> ConstPtr;
+    using Ptr = QSharedPointer<QnxDevice>;
+    using ConstPtr = QSharedPointer<const QnxDevice>;
 
-    static Ptr create();
-    static Ptr create(const QString &name, Core::Id type, MachineType machineType,
-                      Origin origin = ManuallyAdded, Core::Id id = Core::Id());
-    ProjectExplorer::IDevice::Ptr clone() const override;
+    static Ptr create() { return Ptr(new QnxDevice); }
 
     ProjectExplorer::PortsGatheringMethod::Ptr portsGatheringMethod() const override;
     ProjectExplorer::DeviceProcessList *createProcessListModel(QObject *parent) const override;
@@ -51,31 +49,30 @@ public:
     ProjectExplorer::DeviceTester *createDeviceTester() const override;
     ProjectExplorer::DeviceProcess *createProcess(QObject *parent) const override;
 
-    QList<Core::Id> actionIds() const override;
-    QString displayNameForActionId(Core::Id actionId) const override;
-    void executeAction(Core::Id actionId, QWidget *parent) override;
-
-    QString displayType() const override;
-    Utils::OsType osType() const override;
-
     int qnxVersion() const;
 
     void fromMap(const QVariantMap &map) override;
     QVariantMap toMap() const override;
 
 protected:
-    QnxDevice();
-    QnxDevice(const QString &name, Core::Id type, MachineType machineType,
-                           Origin origin, Core::Id id);
-    QnxDevice(const QnxDevice &other);
-
     QString interruptProcessByNameCommandLine(const QString &filePath) const;
     QString killProcessByNameCommandLine(const QString &filePath) const;
 
 private:
+    QnxDevice();
+
     void updateVersionNumber() const;
 
-    mutable int m_versionNumber;
+    mutable int m_versionNumber = 0;
 };
 
+class QnxDeviceFactory final : public ProjectExplorer::IDeviceFactory
+{
+public:
+    QnxDeviceFactory();
+
+    ProjectExplorer::IDevice::Ptr create() const override;
+};
+
+} // namespace Internal
 } // namespace Qnx

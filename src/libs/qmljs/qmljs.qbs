@@ -28,7 +28,6 @@ Project {
                 "qmljscompletioncontextfinder.cpp", "qmljscompletioncontextfinder.h",
                 "qmljsconstants.h",
                 "qmljscontext.cpp", "qmljscontext.h",
-                "qmljsdescribevalue.cpp", "qmljsdescribevalue.h",
                 "qmljsdocument.cpp", "qmljsdocument.h",
                 "qmljsevaluate.cpp", "qmljsevaluate.h",
                 "qmljsfindexportedcpptypes.cpp", "qmljsfindexportedcpptypes.h",
@@ -43,7 +42,6 @@ Project {
                 "qmljsmodelmanagerinterface.cpp", "qmljsmodelmanagerinterface.h",
                 "qmljsplugindumper.cpp", "qmljsplugindumper.h",
                 "qmljspropertyreader.cpp", "qmljspropertyreader.h",
-                "qmljsqrcparser.cpp", "qmljsqrcparser.h",
                 "qmljsreformatter.cpp", "qmljsreformatter.h",
                 "qmljsrewriter.cpp", "qmljsrewriter.h",
                 "qmljsscanner.cpp", "qmljsscanner.h",
@@ -55,7 +53,7 @@ Project {
                 "qmljstypedescriptionreader.cpp", "qmljstypedescriptionreader.h",
                 "qmljsutils.cpp", "qmljsutils.h",
                 "qmljsvalueowner.cpp", "qmljsvalueowner.h",
-                "qmljsviewercontext.cpp", "qmljsviewercontext.h"
+                "qmljsviewercontext.h"
             ]
         }
 

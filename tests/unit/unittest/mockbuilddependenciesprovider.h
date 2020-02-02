@@ -32,6 +32,18 @@
 class MockBuildDependenciesProvider : public ClangBackEnd::BuildDependenciesProviderInterface
 {
 public:
-    MOCK_CONST_METHOD1(create,
-                       ClangBackEnd::BuildDependency (const ClangBackEnd::V2::ProjectPartContainer &projectPart));
+    MOCK_METHOD1(
+        create,
+        ClangBackEnd::BuildDependency(const ClangBackEnd::ProjectPartContainer &projectPart));
+    MOCK_METHOD2(create,
+                 ClangBackEnd::BuildDependency(const ClangBackEnd::ProjectPartContainer &projectPart,
+                                               const ClangBackEnd::SourceEntries &sourceEntries));
+    MOCK_CONST_METHOD2(createSourceEntriesFromStorage,
+                       ClangBackEnd::SourceEntries(const ClangBackEnd::FilePathIds &sourcePathIds,
+                                                   ClangBackEnd::ProjectPartId projectPartId));
+    ClangBackEnd::BuildDependency create(const ClangBackEnd::ProjectPartContainer &projectPart,
+                                         ClangBackEnd::SourceEntries &&sourceEntries) override
+    {
+        return create(projectPart, sourceEntries);
+    }
 };

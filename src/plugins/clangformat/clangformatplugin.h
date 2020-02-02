@@ -27,26 +27,15 @@
 
 #include <extensionsystem/iplugin.h>
 
-#include <memory>
-
 namespace ClangFormat {
-
-class ClangFormatOptionsPage;
 
 class ClangFormatPlugin : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "ClangFormat.json")
 
-public:
-    ClangFormatPlugin();
-    ~ClangFormatPlugin();
-
-private:
     bool initialize(const QStringList &arguments, QString *errorString) final;
     void extensionsInitialized() final {}
-
-    std::unique_ptr<ClangFormatOptionsPage> m_optionsPage;
 };
 
 } // namespace ClangTools

@@ -50,7 +50,7 @@ class BranchNameValidator : public QValidator
 public:
     BranchNameValidator(const QStringList &localBranches, QObject *parent = nullptr) :
         QValidator(parent),
-        m_invalidChars(GitPlugin::invalidBranchAndRemoteNamePattern()),
+        m_invalidChars(GitPluginPrivate::invalidBranchAndRemoteNamePattern()),
         m_localBranches(localBranches)
     {
     }
@@ -105,12 +105,31 @@ QWidget *BranchValidationDelegate::createEditor(QWidget *parent,
     return lineEdit;
 }
 
-BranchAddDialog::BranchAddDialog(const QStringList &localBranches, bool addBranch, QWidget *parent) :
+BranchAddDialog::BranchAddDialog(const QStringList &localBranches, Type type, QWidget *parent) :
     QDialog(parent),
     m_ui(new Ui::BranchAddDialog)
 {
     m_ui->setupUi(this);
-    setWindowTitle(addBranch ? tr("Add Branch") : tr("Rename Branch"));
+    m_ui->trackingCheckBox->setVisible(false);
+    setCheckoutVisible(false);
+
+    switch (type) {
+    case BranchAddDialog::AddBranch:
+        setWindowTitle(tr("Add Branch"));
+        break;
+    case BranchAddDialog::RenameBranch:
+        setWindowTitle(tr("Rename Branch"));
+        break;
+    case BranchAddDialog::AddTag:
+        setWindowTitle(tr("Add Tag"));
+        m_ui->branchNameLabel->setText(tr("Tag name:"));
+        break;
+    case BranchAddDialog::RenameTag:
+        setWindowTitle(tr("Rename Tag"));
+        m_ui->branchNameLabel->setText(tr("Tag name:"));
+        break;
+    }
+
     m_ui->branchNameEdit->setValidator(new BranchNameValidator(localBranches, this));
     connect(m_ui->branchNameEdit, &QLineEdit::textChanged, this, &BranchAddDialog::updateButtonStatus);
 }
@@ -133,20 +152,31 @@ QString BranchAddDialog::branchName() const
 
 void BranchAddDialog::setTrackedBranchName(const QString &name, bool remote)
 {
-    m_ui->trackingCheckBox->setVisible(true);
-    if (!name.isEmpty()) {
-        m_ui->trackingCheckBox->setText(remote ? tr("Track remote branch \'%1\'").arg(name) :
-                                                 tr("Track local branch \'%1\'").arg(name));
-        m_ui->trackingCheckBox->setChecked(remote);
-    } else {
+    if (name.isEmpty()) {
         m_ui->trackingCheckBox->setVisible(false);
         m_ui->trackingCheckBox->setChecked(false);
+    } else {
+        m_ui->trackingCheckBox->setText(remote ? tr("Track remote branch \"%1\"").arg(name) :
+                                                 tr("Track local branch \"%1\"").arg(name));
+        m_ui->trackingCheckBox->setVisible(true);
+        m_ui->trackingCheckBox->setChecked(remote);
     }
 }
 
 bool BranchAddDialog::track() const
 {
     return m_ui->trackingCheckBox->isChecked();
+}
+
+void BranchAddDialog::setCheckoutVisible(bool visible)
+{
+    m_ui->checkoutCheckBox->setVisible(visible);
+    m_ui->checkoutCheckBox->setChecked(visible);
+}
+
+bool BranchAddDialog::checkout() const
+{
+    return m_ui->checkoutCheckBox->isChecked();
 }
 
 /*! Updates the ok button enabled state of the dialog according to the validity of the branch name. */

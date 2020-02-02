@@ -40,7 +40,9 @@ class AbstractRemoteLinuxDeployStepPrivate
 {
 public:
     bool hasError;
-    QFutureInterface<bool> future;
+    std::function<CheckResult()> internalInit;
+    std::function<void()> runPreparer;
+    AbstractRemoteLinuxDeployService *deployService = nullptr;
 };
 
 } // namespace Internal
@@ -48,11 +50,26 @@ public:
 AbstractRemoteLinuxDeployStep::AbstractRemoteLinuxDeployStep(BuildStepList *bsl, Core::Id id)
     : BuildStep(bsl, id), d(new Internal::AbstractRemoteLinuxDeployStepPrivate)
 {
-    setRunInGuiThread(true);
+}
+
+void AbstractRemoteLinuxDeployStep::setInternalInitializer(const std::function<CheckResult ()> &init)
+{
+    d->internalInit = init;
+}
+
+void AbstractRemoteLinuxDeployStep::setRunPreparer(const std::function<void ()> &prep)
+{
+    d->runPreparer = prep;
+}
+
+void AbstractRemoteLinuxDeployStep::setDeployService(AbstractRemoteLinuxDeployService *service)
+{
+    d->deployService = service;
 }
 
 AbstractRemoteLinuxDeployStep::~AbstractRemoteLinuxDeployStep()
 {
+    delete d->deployService;
     delete d;
 }
 
@@ -60,47 +77,51 @@ bool AbstractRemoteLinuxDeployStep::fromMap(const QVariantMap &map)
 {
     if (!BuildStep::fromMap(map))
         return false;
-    deployService()->importDeployTimes(map);
+    d->deployService->importDeployTimes(map);
     return true;
 }
 
 QVariantMap AbstractRemoteLinuxDeployStep::toMap() const
 {
-    return BuildStep::toMap().unite(deployService()->exportDeployTimes());
+    return BuildStep::toMap().unite(d->deployService->exportDeployTimes());
 }
 
-bool AbstractRemoteLinuxDeployStep::init(QList<const BuildStep *> &earlierSteps)
+bool AbstractRemoteLinuxDeployStep::init()
 {
-    Q_UNUSED(earlierSteps);
-    QString error;
-    deployService()->setTarget(target());
-    const bool canDeploy = initInternal(&error);
-    if (!canDeploy)
-        emit addOutput(tr("Cannot deploy: %1").arg(error), OutputFormat::ErrorMessage);
+    d->deployService->setTarget(target());
+
+    QTC_ASSERT(d->internalInit, return false);
+    const CheckResult canDeploy = d->internalInit();
+    if (!canDeploy) {
+        emit addOutput(tr("Cannot deploy: %1").arg(canDeploy.errorMessage()),
+                       OutputFormat::ErrorMessage);
+    }
     return canDeploy;
 }
 
-void AbstractRemoteLinuxDeployStep::run(QFutureInterface<bool> &fi)
+void AbstractRemoteLinuxDeployStep::doRun()
 {
-    connect(deployService(), &AbstractRemoteLinuxDeployService::errorMessage,
+    if (d->runPreparer)
+        d->runPreparer();
+
+    connect(d->deployService, &AbstractRemoteLinuxDeployService::errorMessage,
             this, &AbstractRemoteLinuxDeployStep::handleErrorMessage);
-    connect(deployService(), &AbstractRemoteLinuxDeployService::progressMessage,
+    connect(d->deployService, &AbstractRemoteLinuxDeployService::progressMessage,
             this, &AbstractRemoteLinuxDeployStep::handleProgressMessage);
-    connect(deployService(), &AbstractRemoteLinuxDeployService::warningMessage,
+    connect(d->deployService, &AbstractRemoteLinuxDeployService::warningMessage,
             this, &AbstractRemoteLinuxDeployStep::handleWarningMessage);
-    connect(deployService(), &AbstractRemoteLinuxDeployService::stdOutData,
+    connect(d->deployService, &AbstractRemoteLinuxDeployService::stdOutData,
             this, &AbstractRemoteLinuxDeployStep::handleStdOutData);
-    connect(deployService(), &AbstractRemoteLinuxDeployService::stdErrData,
+    connect(d->deployService, &AbstractRemoteLinuxDeployService::stdErrData,
             this, &AbstractRemoteLinuxDeployStep::handleStdErrData);
-    connect(deployService(), &AbstractRemoteLinuxDeployService::finished,
+    connect(d->deployService, &AbstractRemoteLinuxDeployService::finished,
             this, &AbstractRemoteLinuxDeployStep::handleFinished);
 
     d->hasError = false;
-    d->future = fi;
-    deployService()->start();
+    d->deployService->start();
 }
 
-void AbstractRemoteLinuxDeployStep::cancel()
+void AbstractRemoteLinuxDeployStep::doCancel()
 {
     if (d->hasError)
         return;
@@ -108,12 +129,7 @@ void AbstractRemoteLinuxDeployStep::cancel()
     emit addOutput(tr("User requests deployment to stop; cleaning up."),
                    OutputFormat::NormalMessage);
     d->hasError = true;
-    deployService()->stop();
-}
-
-RemoteLinuxDeployConfiguration *AbstractRemoteLinuxDeployStep::deployConfiguration() const
-{
-    return qobject_cast<RemoteLinuxDeployConfiguration *>(BuildStep::deployConfiguration());
+    d->deployService->stop();
 }
 
 void AbstractRemoteLinuxDeployStep::handleProgressMessage(const QString &message)
@@ -123,18 +139,14 @@ void AbstractRemoteLinuxDeployStep::handleProgressMessage(const QString &message
 
 void AbstractRemoteLinuxDeployStep::handleErrorMessage(const QString &message)
 {
-    ProjectExplorer::Task task = Task(Task::Error, message, Utils::FileName(), -1,
-                                      Constants::TASK_CATEGORY_DEPLOYMENT);
-    emit addTask(task, 1); // TODO correct?
+    emit addTask(DeploymentTask(Task::Error, message), 1); // TODO correct?
     emit addOutput(message, OutputFormat::ErrorMessage);
     d->hasError = true;
 }
 
 void AbstractRemoteLinuxDeployStep::handleWarningMessage(const QString &message)
 {
-    ProjectExplorer::Task task = Task(Task::Warning, message, Utils::FileName(), -1,
-                                      Constants::TASK_CATEGORY_DEPLOYMENT);
-    emit addTask(task, 1); // TODO correct?
+    emit addTask(DeploymentTask(Task::Warning, message), 1); // TODO correct?
     emit addOutput(message, OutputFormat::ErrorMessage);
 }
 
@@ -144,8 +156,8 @@ void AbstractRemoteLinuxDeployStep::handleFinished()
         emit addOutput(tr("Deploy step failed."), OutputFormat::ErrorMessage);
     else
         emit addOutput(tr("Deploy step finished."), OutputFormat::NormalMessage);
-    disconnect(deployService(), 0, this, 0);
-    reportRunResult(d->future, !d->hasError);
+    disconnect(d->deployService, nullptr, this, nullptr);
+    emit finished(!d->hasError);
 }
 
 void AbstractRemoteLinuxDeployStep::handleStdOutData(const QString &data)

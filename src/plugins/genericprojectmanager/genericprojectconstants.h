@@ -30,11 +30,17 @@ namespace Constants {
 
 const char GENERICMIMETYPE[]    = "text/x-generic-project"; // ### FIXME
 
+const char GENERIC_MS_ID[] = "GenericProjectManager.GenericMakeStep";
+
 // Contexts
 const char FILES_EDITOR_ID[]    = "QT4.FilesEditor";
 
 // Project
 const char GENERICPROJECT_ID[]  = "GenericProjectManager.GenericProject";
+
+// File Templates
+const char GENERICPROJECT_CXXFLAGS_FILE_TEMPLATE[] = "-std=c++17";
+const char GENERICPROJECT_CFLAGS_FILE_TEMPLATE[] = "-std=c17";
 
 } // namespace Constants
 } // namespace GenericProjectManager

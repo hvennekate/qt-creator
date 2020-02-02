@@ -37,8 +37,8 @@
 
 #include <utils/qtcassert.h>
 #include <utils/environment.h>
-#include <utils/elidinglabel.h>
 #include <utils/hostosinfo.h>
+#include <utils/infolabel.h>
 #include <utils/pathchooser.h>
 #include <utils/runextensions.h>
 #include <utils/utilsicons.h>
@@ -49,22 +49,94 @@
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtversionmanager.h>
 
-#include <QFile>
-#include <QTextStream>
-#include <QProcess>
-#include <QTimer>
-#include <QTime>
-
+#include <QAbstractTableModel>
 #include <QDesktopServices>
-#include <QFileDialog>
+#include <QFutureWatcher>
+#include <QList>
 #include <QMessageBox>
 #include <QModelIndex>
-#include <QtCore/QUrl>
+#include <QSettings>
+#include <QString>
+#include <QTimer>
+#include <QUrl>
+#include <QWidget>
+
+#include <memory>
 
 namespace Android {
 namespace Internal {
 
-namespace {
+class AndroidSdkManagerWidget;
+
+class AndroidAvdManager;
+
+class AvdModel final : public QAbstractTableModel
+{
+    Q_DECLARE_TR_FUNCTIONS(Android::Internal::AvdModel)
+
+public:
+    void setAvdList(const AndroidDeviceInfoList &list);
+    QString avdName(const QModelIndex &index) const;
+    QModelIndex indexForAvdName(const QString &avdName) const;
+
+protected:
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const final;
+    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const final;
+    int rowCount(const QModelIndex &parent = QModelIndex()) const final;
+    int columnCount(const QModelIndex &parent = QModelIndex()) const final;
+
+private:
+    AndroidDeviceInfoList m_list;
+};
+
+class AndroidSettingsWidget final : public Core::IOptionsPageWidget
+{
+    Q_DECLARE_TR_FUNCTIONS(Android::Internal::AndroidSettingsWidget)
+
+public:
+    // Todo: This would be so much simpler if it just used Utils::PathChooser!!!
+    AndroidSettingsWidget();
+    ~AndroidSettingsWidget() final;
+
+private:
+    void apply() final { AndroidConfigurations::setConfig(m_androidConfig); }
+
+    void validateJdk();
+    Utils::FilePath findJdkInCommonPaths();
+    void validateNdk();
+    void onSdkPathChanged();
+    void validateSdk();
+    void openSDKDownloadUrl();
+    void openNDKDownloadUrl();
+    void openOpenJDKDownloadUrl();
+    void addAVD();
+    void avdAdded();
+    void removeAVD();
+    void startAVD();
+    void avdActivated(const QModelIndex &);
+    void dataPartitionSizeEditingFinished();
+    void manageAVD();
+    void createKitToggled();
+
+    void updateUI();
+    void updateAvds();
+
+    void startUpdateAvd();
+    void enableAvdControls();
+    void disableAvdControls();
+
+    Ui_AndroidSettingsWidget *m_ui;
+    AndroidSdkManagerWidget *m_sdkManagerWidget = nullptr;
+    AndroidConfig m_androidConfig;
+    AvdModel m_AVDModel;
+    QFutureWatcher<CreateAvdInfo> m_futureWatcher;
+
+    QFutureWatcher<AndroidDeviceInfoList> m_virtualDevicesWatcher;
+    QString m_lastAddedAvd;
+    std::unique_ptr<AndroidAvdManager> m_avdManager;
+    std::unique_ptr<AndroidSdkManager> m_sdkManager;
+};
+
 enum JavaValidation {
     JavaPathExistsRow,
     JavaJdkValidRow
@@ -72,22 +144,22 @@ enum JavaValidation {
 
 enum AndroidValidation {
     SdkPathExistsRow,
+    SdkPathWritableRow,
     SdkToolsInstalledRow,
     PlatformToolsInstalledRow,
     BuildToolsInstalledRow,
+    SdkManagerSuccessfulRow,
     PlatformSdkInstalledRow,
     NdkPathExistsRow,
     NdkDirStructureRow,
     NdkinstallDirOkRow
 };
-}
 
 class SummaryWidget : public QWidget
 {
     class RowData {
     public:
-        QLabel *m_iconLabel = nullptr;
-        Utils::ElidingLabel *m_textLabel = nullptr;
+        Utils::InfoLabel *m_infoLabel = nullptr;
         bool m_valid = false;
     };
 
@@ -100,20 +172,14 @@ public:
         m_detailsWidget(detailsWidget)
     {
         QTC_CHECK(m_detailsWidget);
-        auto layout = new QGridLayout(this);
-        layout->setMargin(12);
-        int row = 0;
+        auto layout = new QVBoxLayout(this);
+        layout->setContentsMargins(12, 12, 12, 12);
         for (auto itr = validationPoints.cbegin(); itr != validationPoints.cend(); ++itr) {
             RowData data;
-            data.m_iconLabel = new QLabel(this);
-            layout->addWidget(data.m_iconLabel, row, 0, 1, 1);
-            data.m_textLabel = new Utils::ElidingLabel(itr.value(), this);
-            data.m_textLabel->setElideMode(Qt::ElideRight);
-            data.m_textLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-            layout->addWidget(data.m_textLabel, row, 1, 1, 1);
+            data.m_infoLabel = new Utils::InfoLabel(itr.value());
+            layout->addWidget(data.m_infoLabel);
             m_validationData[itr.key()] = data;
             setPointValid(itr.key(), true);
-            ++row;
         }
     }
 
@@ -123,8 +189,7 @@ public:
             return;
         RowData& data = m_validationData[key];
         data.m_valid = valid;
-        data.m_iconLabel->setPixmap(data.m_valid ? Utils::Icons::OK.pixmap() :
-                                                   Utils::Icons::BROKEN.pixmap());
+        data.m_infoLabel->setType(valid ? Utils::InfoLabel::Ok : Utils::InfoLabel::NotOk);
         updateUi();
     }
 
@@ -183,15 +248,24 @@ QVariant AvdModel::data(const QModelIndex &index, int role) const
 {
     if (role != Qt::DisplayRole || !index.isValid())
         return QVariant();
+
+    const AndroidDeviceInfo currentRow = m_list.at(index.row());
     switch (index.column()) {
         case 0:
-            return m_list[index.row()].avdname;
+            return currentRow.avdname;
         case 1:
-            return QString::fromLatin1("API %1").arg(m_list[index.row()].sdk);
+            return currentRow.sdk;
         case 2: {
-            QStringList cpuAbis = m_list[index.row()].cpuAbi;
+            QStringList cpuAbis = currentRow.cpuAbi;
             return cpuAbis.isEmpty() ? QVariant() : QVariant(cpuAbis.first());
         }
+        case 3:
+            return currentRow.avdDevice.isEmpty() ? QVariant("Custom")
+                                                  : currentRow.avdDevice;
+        case 4:
+            return currentRow.avdTarget;
+        case 5:
+            return currentRow.avdSdcardSize;
     }
     return QVariant();
 }
@@ -204,9 +278,15 @@ QVariant AvdModel::headerData(int section, Qt::Orientation orientation, int role
                 //: AVD - Android Virtual Device
                 return tr("AVD Name");
             case 1:
-                return tr("AVD Target");
+                return tr("API");
             case 2:
                 return tr("CPU/ABI");
+            case 3:
+                return tr("Device type");
+            case 4:
+                return tr("Target");
+            case 5:
+                return tr("SD-card size");
         }
     }
     return QAbstractItemModel::headerData(section, orientation, role );
@@ -219,12 +299,11 @@ int AvdModel::rowCount(const QModelIndex &/*parent*/) const
 
 int AvdModel::columnCount(const QModelIndex &/*parent*/) const
 {
-    return 3;
+    return 6;
 }
 
-AndroidSettingsWidget::AndroidSettingsWidget(QWidget *parent)
-    : QWidget(parent),
-      m_ui(new Ui_AndroidSettingsWidget),
+AndroidSettingsWidget::AndroidSettingsWidget()
+    : m_ui(new Ui_AndroidSettingsWidget),
       m_androidConfig(AndroidConfigurations::currentConfig()),
       m_avdManager(new AndroidAvdManager(m_androidConfig)),
       m_sdkManager(new AndroidSdkManager(m_androidConfig))
@@ -233,7 +312,7 @@ AndroidSettingsWidget::AndroidSettingsWidget(QWidget *parent)
     m_sdkManagerWidget = new AndroidSdkManagerWidget(m_androidConfig, m_sdkManager.get(),
                                                      m_ui->sdkManagerTab);
     auto sdkMangerLayout = new QVBoxLayout(m_ui->sdkManagerTab);
-    sdkMangerLayout->setMargin(0);
+    sdkMangerLayout->setContentsMargins(0, 0, 0, 0);
     sdkMangerLayout->addWidget(m_sdkManagerWidget);
     connect(m_sdkManagerWidget, &AndroidSdkManagerWidget::updatingSdk, [this]() {
         m_ui->SDKLocationPathChooser->setEnabled(false);
@@ -255,8 +334,11 @@ AndroidSettingsWidget::AndroidSettingsWidget(QWidget *parent)
 
     QMap<int, QString> androidValidationPoints;
     androidValidationPoints[SdkPathExistsRow] = tr("Android SDK path exists.");
+    androidValidationPoints[SdkPathWritableRow] = tr("Android SDK path writable.");
     androidValidationPoints[SdkToolsInstalledRow] = tr("SDK tools installed.");
     androidValidationPoints[PlatformToolsInstalledRow] = tr("Platform tools installed.");
+    androidValidationPoints[SdkManagerSuccessfulRow] = tr(
+        "SDK manager runs (requires exactly Java 1.8).");
     androidValidationPoints[BuildToolsInstalledRow] = tr("Build tools installed.");
     androidValidationPoints[PlatformSdkInstalledRow] = tr("Platform SDK installed.");
     androidValidationPoints[NdkPathExistsRow] = tr("Android NDK path exists.");
@@ -273,7 +355,11 @@ AndroidSettingsWidget::AndroidSettingsWidget(QWidget *parent)
     m_ui->NDKLocationPathChooser->setFileName(m_androidConfig.ndkLocation());
     m_ui->NDKLocationPathChooser->setPromptDialogTitle(tr("Select Android NDK folder"));
 
-    m_ui->OpenJDKLocationPathChooser->setFileName(m_androidConfig.openJDKLocation());
+    Utils::FilePath currentJdkPath = m_androidConfig.openJDKLocation();
+    if (currentJdkPath.isEmpty())
+        currentJdkPath = findJdkInCommonPaths();
+
+    m_ui->OpenJDKLocationPathChooser->setFileName(currentJdkPath);
     m_ui->OpenJDKLocationPathChooser->setPromptDialogTitle(tr("Select JDK Path"));
     m_ui->DataPartitionSizeSpinBox->setValue(m_androidConfig.partitionSize());
     m_ui->CreateKitCheckBox->setChecked(m_androidConfig.automaticKitCreation());
@@ -283,8 +369,15 @@ AndroidSettingsWidget::AndroidSettingsWidget(QWidget *parent)
 
     m_ui->downloadOpenJDKToolButton->setVisible(!Utils::HostOsInfo::isLinuxHost());
 
+    const QIcon downloadIcon = Utils::Icons::DOWNLOAD.icon();
+    m_ui->downloadSDKToolButton->setIcon(downloadIcon);
+    m_ui->downloadNDKToolButton->setIcon(downloadIcon);
+    m_ui->downloadOpenJDKToolButton->setIcon(downloadIcon);
+
     connect(&m_virtualDevicesWatcher, &QFutureWatcherBase::finished,
             this, &AndroidSettingsWidget::updateAvds);
+    connect(m_ui->AVDRefreshPushButton, &QAbstractButton::clicked,
+            this, &AndroidSettingsWidget::startUpdateAvd);
     connect(&m_futureWatcher, &QFutureWatcherBase::finished,
             this, &AndroidSettingsWidget::avdAdded);
     connect(m_ui->NDKLocationPathChooser, &Utils::PathChooser::rawPathChanged,
@@ -323,6 +416,8 @@ AndroidSettingsWidget::AndroidSettingsWidget(QWidget *parent)
     // Reloading SDK packages is still synchronous. Use zero timer to let settings dialog open
     // first.
     QTimer::singleShot(0, std::bind(&AndroidSdkManager::reloadPackages, m_sdkManager.get(), false));
+
+    startUpdateAvd();
 }
 
 AndroidSettingsWidget::~AndroidSettingsWidget()
@@ -364,39 +459,77 @@ void AndroidSettingsWidget::updateAvds()
     enableAvdControls();
 }
 
-void AndroidSettingsWidget::saveSettings()
-{
-    AndroidConfigurations::setConfig(m_androidConfig);
-}
-
 void AndroidSettingsWidget::validateJdk()
 {
-    auto javaPath = Utils::FileName::fromUserInput(m_ui->OpenJDKLocationPathChooser->rawPath());
+    auto javaPath = Utils::FilePath::fromUserInput(m_ui->OpenJDKLocationPathChooser->rawPath());
     m_androidConfig.setOpenJDKLocation(javaPath);
     bool jdkPathExists = m_androidConfig.openJDKLocation().exists();
     auto summaryWidget = static_cast<SummaryWidget *>(m_ui->javaDetailsWidget->widget());
     summaryWidget->setPointValid(JavaPathExistsRow, jdkPathExists);
 
-    Utils::FileName bin = m_androidConfig.openJDKLocation();
-    bin.appendPath(QLatin1String("bin/javac" QTC_HOST_EXE_SUFFIX));
+    const Utils::FilePath bin = m_androidConfig.openJDKLocation().pathAppended("bin/javac" QTC_HOST_EXE_SUFFIX);
     summaryWidget->setPointValid(JavaJdkValidRow, jdkPathExists && bin.exists());
     updateUI();
 }
 
+Utils::FilePath AndroidSettingsWidget::findJdkInCommonPaths()
+{
+    QString jdkFromEnvVar = QString::fromLocal8Bit(getenv("JAVA_HOME"));
+    if (!jdkFromEnvVar.isEmpty())
+        return Utils::FilePath::fromString(jdkFromEnvVar);
+
+    if (Utils::HostOsInfo::isWindowsHost()) {
+        QString jdkRegisteryPath = "HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK\\";
+        QSettings jdkSettings(jdkRegisteryPath, QSettings::NativeFormat);
+
+        QStringList jdkVersions = jdkSettings.childGroups();
+        Utils::FilePath jdkHome;
+
+        for (const QString &version : jdkVersions) {
+            jdkSettings.beginGroup(version);
+            jdkHome = Utils::FilePath::fromString(jdkSettings.value("JavaHome").toString());
+            jdkSettings.endGroup();
+            if (version.startsWith("1.8"))
+                return jdkHome;
+        }
+
+        return jdkHome;
+    }
+
+    QProcess findJdkPathProc;
+
+    QString cmd;
+    QStringList args;
+
+    if (Utils::HostOsInfo::isMacHost()) {
+        cmd = "sh";
+        args << "-c" << "/usr/libexec/java_home";
+    } else {
+        cmd = "sh";
+        args << "-c" << "readlink -f $(which java)";
+    }
+
+    findJdkPathProc.start(cmd, args);
+    findJdkPathProc.waitForFinished();
+    QByteArray jdkPath = findJdkPathProc.readAllStandardOutput().trimmed();
+
+    if (Utils::HostOsInfo::isMacHost())
+        return Utils::FilePath::fromUtf8(jdkPath);
+    else
+        return Utils::FilePath::fromUtf8(jdkPath.replace("jre/bin/java", ""));
+}
+
 void AndroidSettingsWidget::validateNdk()
 {
-    auto ndkPath = Utils::FileName::fromUserInput(m_ui->NDKLocationPathChooser->rawPath());
+    auto ndkPath = Utils::FilePath::fromUserInput(m_ui->NDKLocationPathChooser->rawPath());
     m_androidConfig.setNdkLocation(ndkPath);
 
     auto summaryWidget = static_cast<SummaryWidget *>(m_ui->androidDetailsWidget->widget());
     summaryWidget->setPointValid(NdkPathExistsRow, m_androidConfig.ndkLocation().exists());
 
-    Utils::FileName ndkPlatformsDir(ndkPath);
-    ndkPlatformsDir.appendPath("platforms");
-    Utils::FileName ndkToolChainsDir(ndkPath);
-    ndkToolChainsDir.appendPath("toolchains");
-    Utils::FileName ndkSourcesDir(ndkPath);
-    ndkSourcesDir.appendPath("sources/cxx-stl");
+    const Utils::FilePath ndkPlatformsDir = ndkPath.pathAppended("platforms");
+    const Utils::FilePath ndkToolChainsDir = ndkPath.pathAppended("toolchains");
+    const Utils::FilePath ndkSourcesDir = ndkPath.pathAppended("sources/cxx-stl");
     summaryWidget->setPointValid(NdkDirStructureRow,
                                  ndkPlatformsDir.exists()
                                  && ndkToolChainsDir.exists()
@@ -409,7 +542,7 @@ void AndroidSettingsWidget::validateNdk()
 
 void AndroidSettingsWidget::onSdkPathChanged()
 {
-    auto sdkPath = Utils::FileName::fromUserInput(m_ui->SDKLocationPathChooser->rawPath());
+    auto sdkPath = Utils::FilePath::fromUserInput(m_ui->SDKLocationPathChooser->rawPath());
     m_androidConfig.setSdkLocation(sdkPath);
     // Package reload will trigger validateSdk.
     m_sdkManager->reloadPackages();
@@ -419,6 +552,7 @@ void AndroidSettingsWidget::validateSdk()
 {
     auto summaryWidget = static_cast<SummaryWidget *>(m_ui->androidDetailsWidget->widget());
     summaryWidget->setPointValid(SdkPathExistsRow, m_androidConfig.sdkLocation().exists());
+    summaryWidget->setPointValid(SdkPathWritableRow, m_androidConfig.sdkLocation().isWritablePath());
     summaryWidget->setPointValid(SdkToolsInstalledRow,
                                  !m_androidConfig.sdkToolsVersion().isNull());
     summaryWidget->setPointValid(PlatformToolsInstalledRow,
@@ -426,12 +560,14 @@ void AndroidSettingsWidget::validateSdk()
     summaryWidget->setPointValid(BuildToolsInstalledRow,
                                  !m_androidConfig.buildToolsVersion().isNull());
 
+    summaryWidget->setPointValid(SdkManagerSuccessfulRow, m_sdkManager->packageListingSuccessful());
     // installedSdkPlatforms should not trigger a package reload as validate SDK is only called
     // after AndroidSdkManager::packageReloadFinished.
     summaryWidget->setPointValid(PlatformSdkInstalledRow,
                                  !m_sdkManager->installedSdkPlatforms().isEmpty());
     updateUI();
-    bool sdkToolsOk = summaryWidget->rowsOk({SdkPathExistsRow, SdkToolsInstalledRow});
+    bool sdkToolsOk = summaryWidget->rowsOk(
+        {SdkPathExistsRow, SdkPathWritableRow, SdkToolsInstalledRow, SdkManagerSuccessfulRow});
     bool componentsOk = summaryWidget->rowsOk({PlatformToolsInstalledRow,
                                                       BuildToolsInstalledRow,
                                                       PlatformSdkInstalledRow});
@@ -467,7 +603,7 @@ void AndroidSettingsWidget::openOpenJDKDownloadUrl()
 void AndroidSettingsWidget::addAVD()
 {
     disableAvdControls();
-    CreateAvdInfo info = AvdDialog::gatherCreateAVDInfo(this, m_sdkManager.get());
+    CreateAvdInfo info = AvdDialog::gatherCreateAVDInfo(this, m_sdkManager.get(), m_androidConfig);
 
     if (!info.isValid()) {
         enableAvdControls();
@@ -532,7 +668,7 @@ void AndroidSettingsWidget::updateUI()
     auto javaSummaryWidget = static_cast<SummaryWidget *>(m_ui->javaDetailsWidget->widget());
     auto androidSummaryWidget = static_cast<SummaryWidget *>(m_ui->androidDetailsWidget->widget());
     bool javaSetupOk = javaSummaryWidget->allRowsOk();
-    bool sdkToolsOk = androidSummaryWidget->rowsOk({SdkPathExistsRow, SdkToolsInstalledRow});
+    bool sdkToolsOk = androidSummaryWidget->rowsOk({SdkPathExistsRow, SdkPathWritableRow, SdkToolsInstalledRow});
     bool androidSetupOk = androidSummaryWidget->allRowsOk();
 
     m_ui->avdManagerTab->setEnabled(javaSetupOk && androidSetupOk);
@@ -548,7 +684,6 @@ void AndroidSettingsWidget::updateUI()
                                                     Utils::DetailsWidget::Expanded);
     m_ui->androidDetailsWidget->setState(androidSetupOk ? Utils::DetailsWidget::Collapsed :
                                                           Utils::DetailsWidget::Expanded);
-    startUpdateAvd();
 }
 
 void AndroidSettingsWidget::manageAVD()
@@ -564,6 +699,15 @@ void AndroidSettingsWidget::manageAVD()
     }
 }
 
+// AndroidSettingsPage
+
+AndroidSettingsPage::AndroidSettingsPage()
+{
+    setId(Constants::ANDROID_SETTINGS_ID);
+    setDisplayName(AndroidSettingsWidget::tr("Android"));
+    setCategory(ProjectExplorer::Constants::DEVICE_SETTINGS_CATEGORY);
+    setWidgetCreator([] { return new AndroidSettingsWidget; });
+}
 
 } // namespace Internal
 } // namespace Android

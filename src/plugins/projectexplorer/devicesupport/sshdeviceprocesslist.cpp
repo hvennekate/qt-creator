@@ -54,7 +54,7 @@ void SshDeviceProcessList::doUpdate()
             this, &SshDeviceProcessList::handleConnectionError);
     connect(&d->process, &SshRemoteProcessRunner::processClosed,
             this, &SshDeviceProcessList::handleListProcessFinished);
-    d->process.run(listProcessesCommandLine().toUtf8(), device()->sshParameters());
+    d->process.run(listProcessesCommandLine(), device()->sshParameters());
 }
 
 void SshDeviceProcessList::doKillProcess(const DeviceProcessItem &process)
@@ -72,31 +72,21 @@ void SshDeviceProcessList::handleConnectionError()
     reportError(tr("Connection failure: %1").arg(d->process.lastConnectionErrorString()));
 }
 
-void SshDeviceProcessList::handleListProcessFinished(int exitStatus)
+void SshDeviceProcessList::handleListProcessFinished(const QString &error)
 {
     setFinished();
-    switch (exitStatus) {
-    case SshRemoteProcess::FailedToStart:
-        handleProcessError(tr("Error: Process listing command failed to start: %1")
-                .arg(d->process.processErrorString()));
-        break;
-    case SshRemoteProcess::CrashExit:
-        handleProcessError(tr("Error: Process listing command crashed: %1")
-                .arg(d->process.processErrorString()));
-        break;
-    case SshRemoteProcess::NormalExit:
-        if (d->process.processExitCode() == 0) {
-            const QByteArray remoteStdout = d->process.readAllStandardOutput();
-            const QString stdoutString
-                    = QString::fromUtf8(remoteStdout.data(), remoteStdout.count());
-            reportProcessListUpdated(buildProcessList(stdoutString));
-        } else {
-            handleProcessError(tr("Process listing command failed with exit code %1.")
-                    .arg(d->process.processExitCode()));
-        }
-        break;
-    default:
-        Q_ASSERT_X(false, Q_FUNC_INFO, "Invalid exit status");
+    if (!error.isEmpty()) {
+        handleProcessError(error);
+        return;
+    }
+    if (d->process.processExitCode() == 0) {
+        const QByteArray remoteStdout = d->process.readAllStandardOutput();
+        const QString stdoutString
+                = QString::fromUtf8(remoteStdout.data(), remoteStdout.count());
+        reportProcessListUpdated(buildProcessList(stdoutString));
+    } else {
+        handleProcessError(tr("Process listing command failed with exit code %1.")
+                           .arg(d->process.processExitCode()));
     }
 }
 

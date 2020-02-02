@@ -24,61 +24,24 @@
 ****************************************************************************/
 
 #include "qmlprojectnodes.h"
-#include "qmlproject.h"
 
-#include <coreplugin/idocument.h>
 #include <coreplugin/fileiconprovider.h>
-#include <projectexplorer/projectexplorer.h>
 
-#include <utils/algorithm.h>
+#include <projectexplorer/project.h>
+#include <projectexplorer/projectexplorer.h>
 
 using namespace ProjectExplorer;
 
 namespace QmlProjectManager {
 namespace Internal {
 
-QmlProjectNode::QmlProjectNode(QmlProject *project) : ProjectNode(project->projectDirectory()),
-    m_project(project)
+QmlProjectNode::QmlProjectNode(Project *project)
+    : ProjectNode(project->projectDirectory())
 {
     setDisplayName(project->projectFilePath().toFileInfo().completeBaseName());
 
     static QIcon qmlProjectIcon = Core::FileIconProvider::directoryIcon(":/projectexplorer/images/fileoverlay_qml.png");
     setIcon(qmlProjectIcon);
-}
-
-bool QmlProjectNode::showInSimpleTree() const
-{
-    return true;
-}
-
-bool QmlProjectNode::supportsAction(ProjectAction action, const Node *node) const
-{
-    if (action == AddNewFile || action == EraseFile)
-        return true;
-    QTC_ASSERT(node, return false);
-
-    if (action == Rename && node->nodeType() == NodeType::File) {
-        const FileNode *fileNode = node->asFileNode();
-        QTC_ASSERT(fileNode, return false);
-        return fileNode->fileType() != FileType::Project;
-    }
-
-    return false;
-}
-
-bool QmlProjectNode::addFiles(const QStringList &filePaths, QStringList * /*notAdded*/)
-{
-    return m_project->addFiles(filePaths);
-}
-
-bool QmlProjectNode::deleteFiles(const QStringList & /*filePaths*/)
-{
-    return true;
-}
-
-bool QmlProjectNode::renameFile(const QString & /*filePath*/, const QString & /*newFilePath*/)
-{
-    return true;
 }
 
 } // namespace Internal

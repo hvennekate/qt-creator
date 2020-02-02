@@ -59,7 +59,7 @@ static Core::Id cartegoryForSeverity(QmlJS::Severity::Enum kind)
     return isWarning(kind) ? QMLJS_WARNING : QMLJS_ERROR;
 }
 
-QmlJSTextMark::QmlJSTextMark(const FileName &fileName,
+QmlJSTextMark::QmlJSTextMark(const FilePath &fileName,
                              const QmlJS::DiagnosticMessage &diagnostic,
                              const QmlJSTextMark::RemovedFromEditorHandler &removedHandler)
     : TextEditor::TextMark(fileName, int(diagnostic.loc.startLine),
@@ -70,7 +70,7 @@ QmlJSTextMark::QmlJSTextMark(const FileName &fileName,
     init(isWarning(diagnostic.kind), diagnostic.message);
 }
 
-QmlJSTextMark::QmlJSTextMark(const FileName &fileName,
+QmlJSTextMark::QmlJSTextMark(const FilePath &fileName,
                              const QmlJS::StaticAnalysis::Message &message,
                              const QmlJSTextMark::RemovedFromEditorHandler &removedHandler)
     : TextEditor::TextMark(fileName, int(message.location.startLine),
@@ -86,7 +86,7 @@ void QmlJSTextMark::removedFromEditor()
     m_removedFromEditorHandler(this);
 }
 
-void QmlJSTextMark::init(bool warning, const QString message)
+void QmlJSTextMark::init(bool warning, const QString &message)
 {
     setIcon(warning ? Utils::Icons::CODEMODEL_WARNING.icon()
                     : Utils::Icons::CODEMODEL_ERROR.icon());

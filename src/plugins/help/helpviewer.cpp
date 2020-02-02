@@ -91,6 +91,16 @@ HelpViewer::~HelpViewer()
     restoreOverrideCursor();
 }
 
+void HelpViewer::setScrollWheelZoomingEnabled(bool enabled)
+{
+    m_scrollWheelZoomingEnabled = enabled;
+}
+
+bool HelpViewer::isScrollWheelZoomingEnabled() const
+{
+    return m_scrollWheelZoomingEnabled;
+}
+
 void HelpViewer::setActionVisible(Action action, bool visible)
 {
     if (visible)
@@ -135,6 +145,10 @@ bool HelpViewer::launchWithExternalApp(const QUrl &url)
         const QUrl &resolvedUrl = helpEngine.findFile(url);
         if (!resolvedUrl.isValid())
             return false;
+        // Workaround QTBUG-71833
+        // QHelpEngineCore::findFile returns a valid url even though the file does not exist
+        if (resolvedUrl.scheme() == "about" && resolvedUrl.path() == "blank")
+            return false;
 
         const QString& path = resolvedUrl.path();
         if (!canOpenPage(path)) {
@@ -156,6 +170,16 @@ bool HelpViewer::launchWithExternalApp(const QUrl &url)
 void HelpViewer::home()
 {
     setSource(LocalHelpManager::homePage());
+}
+
+void HelpViewer::wheelEvent(QWheelEvent *event)
+{
+    if (m_scrollWheelZoomingEnabled && event->modifiers() == Qt::ControlModifier) {
+        event->accept();
+        event->angleDelta().y() > 0 ? scaleUp() : scaleDown();
+    } else {
+        QWidget::wheelEvent(event);
+    }
 }
 
 void HelpViewer::slotLoadStarted()

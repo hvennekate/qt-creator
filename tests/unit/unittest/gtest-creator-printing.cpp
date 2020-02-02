@@ -35,36 +35,45 @@
 #include <builddependency.h>
 #include <clangcodemodelclientmessages.h>
 #include <clangcodemodelservermessages.h>
-#include <clangdocumentsuspenderresumer.h>
 #include <clangpathwatcher.h>
 #include <clangrefactoringmessages.h>
-#include <clangreferencescollector.h>
-#include <filestatus.h>
+#include <coreplugin/find/searchresultitem.h>
+#include <coreplugin/locator/ilocatorfilter.h>
+#include <cpptools/usages.h>
 #include <filepath.h>
-#include <fulltokeninfo.h>
+#include <filepathcaching.h>
+#include <filepathview.h>
+#include <filestatus.h>
+#include <includesearchpath.h>
 #include <nativefilepath.h>
-#include <pchcreator.h>
+#include <pchpaths.h>
 #include <pchtask.h>
 #include <precompiledheadersupdatedmessage.h>
+#include <projectexplorer/headerpath.h>
+#include <projectexplorer/projectmacro.h>
 #include <projectpartartefact.h>
+#include <projectpartentry.h>
+#include <projectpartpch.h>
 #include <sourcedependency.h>
 #include <sourcelocationentry.h>
 #include <sourcelocationscontainer.h>
-#include <tokenprocessor.h>
-#include <filepathview.h>
+#include <symbol.h>
 #include <symbolentry.h>
 #include <symbolindexertaskqueue.h>
-#include <symbol.h>
+#include <toolchainargumentscache.h>
 #include <tooltipinfo.h>
-#include <projectpartentry.h>
 #include <usedmacro.h>
-
+#include <utils/link.h>
 #include <cpptools/usages.h>
-
 #include <projectexplorer/projectmacro.h>
-
+#include <projectexplorer/headerpath.h>
 #include <coreplugin/find/searchresultitem.h>
 #include <coreplugin/locator/ilocatorfilter.h>
+#include <clangtools/clangtoolsdiagnostic.h>
+
+namespace {
+ClangBackEnd::FilePathCaching *filePathCache = nullptr;
+}
 
 void PrintTo(const Utf8String &text, ::std::ostream *os)
 {
@@ -141,6 +150,32 @@ std::ostream &operator<<(std::ostream &out, const Macro &macro)
   return out;
 }
 
+static const char *typeToString(const HeaderPathType &type)
+{
+    switch (type) {
+    case HeaderPathType::User:
+        return "User";
+    case HeaderPathType::System:
+        return "System";
+    case HeaderPathType::BuiltIn:
+        return "BuiltIn";
+    case HeaderPathType::Framework:
+        return "Framework";
+    }
+
+    return "";
+}
+
+std::ostream &operator<<(std::ostream &out, const HeaderPathType &headerPathType)
+{
+    return out << "HeaderPathType::" << typeToString(headerPathType);
+}
+
+std::ostream &operator<<(std::ostream &out, const HeaderPath &headerPath)
+{
+    return out << "(" << headerPath.path << ", " << headerPath.type << ")";
+}
+
 } // namespace ProjectExplorer
 
 namespace Utils {
@@ -148,6 +183,110 @@ namespace Utils {
 std::ostream &operator<<(std::ostream &out, const LineColumn &lineColumn)
 {
     return out << "(" << lineColumn.line << ", " << lineColumn.column << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const Link &link)
+{
+    return out << "(" << link.targetFileName << ", " << link.targetLine << ", " << link.targetColumn
+               << ", " << link.linkTextStart << ", " << link.linkTextEnd << ")";
+}
+
+const char * toText(Utils::Language language)
+{
+    using Utils::Language;
+
+    switch (language) {
+    case Language::C:
+        return "C";
+    case Language::Cxx:
+        return "Cxx";
+    case Language::None:
+        return "None";
+    }
+
+    return "";
+}
+
+std::ostream &operator<<(std::ostream &out, const Utils::Language &language)
+{
+    return out << "Utils::" << toText(language);
+}
+
+const char * toText(Utils::LanguageVersion languageVersion)
+{
+    using Utils::LanguageVersion;
+
+    switch (languageVersion) {
+    case LanguageVersion::C11:
+        return "C11";
+    case LanguageVersion::C18:
+        return "C18";
+    case LanguageVersion::C89:
+        return "C89";
+    case LanguageVersion::C99:
+        return "C99";
+    case LanguageVersion::CXX03:
+        return "CXX03";
+    case LanguageVersion::CXX11:
+        return "CXX11";
+    case LanguageVersion::CXX14:
+        return "CXX14";
+    case LanguageVersion::CXX17:
+        return "CXX17";
+    case LanguageVersion::CXX2a:
+        return "CXX2a";
+    case LanguageVersion::CXX98:
+        return "CXX98";
+    case LanguageVersion::None:
+        return "None";
+    }
+
+    return "";
+}
+
+std::ostream &operator<<(std::ostream &out, const Utils::LanguageVersion &languageVersion)
+{
+     return out << "Utils::" << toText(languageVersion);
+}
+
+const std::string toText(Utils::LanguageExtension extension, std::string prefix = {})
+{
+    std::stringstream out;
+    using Utils::LanguageExtension;
+
+    if (extension == LanguageExtension::None) {
+        out << prefix << "None";
+    } else if (extension == LanguageExtension::All) {
+        out << prefix << "All";
+    } else {
+        std::string split = "";
+        if (extension == LanguageExtension::Gnu) {
+            out << prefix << "Gnu";
+            split = " | ";
+        }
+        if (extension == LanguageExtension::Microsoft) {
+            out << split << prefix << "Microsoft";
+            split = " | ";
+        }
+        if (extension == LanguageExtension::Borland) {
+            out << split << prefix << "Borland";
+            split = " | ";
+        }
+        if (extension == LanguageExtension::OpenMP) {
+            out << split << prefix << "OpenMP";
+            split = " | ";
+        }
+        if (extension == LanguageExtension::ObjectiveC) {
+            out << split << prefix << "ObjectiveC";
+        }
+    }
+
+    return out.str();
+}
+
+std::ostream &operator<<(std::ostream &out, const Utils::LanguageExtension &languageExtension)
+{
+    return out << toText(languageExtension, "Utils::");
 }
 
 void PrintTo(Utils::SmallStringView text, ::std::ostream *os)
@@ -171,7 +310,10 @@ namespace ClangBackEnd {
 
 std::ostream &operator<<(std::ostream &out, const FilePathId &id)
 {
-    return out << "(" << id.filePathId << ")";
+    if (filePathCache)
+        return out << "(" << id.filePathId << ", " << filePathCache->filePath(id) << ")";
+
+    return out << id.filePathId;
 }
 
 std::ostream &operator<<(std::ostream &out, const FilePathView &filePathView)
@@ -223,9 +365,8 @@ std::ostream &operator<<(std::ostream &out, const SourceLocationEntry &entry)
 
 std::ostream &operator<<(std::ostream &out, const WatcherEntry &entry)
 {
-    out << "("
-        << entry.id << ", "
-        << entry.pathId
+    out << "(" << entry.directoryPathId << ", " << entry.filePathId << ", " << entry.id << ", "
+        << entry.lastModified << ", "
         << ")";
 
     return out;
@@ -267,7 +408,6 @@ std::ostream &operator<<(std::ostream &os, const RequestCompletionsMessage &mess
        << message.filePath << ", "
        << message.line << ", "
        << message.column << ", "
-       << message.projectPartId << ", "
        << message.ticketNumber << ", "
        << message.funcNameStartLine << ", "
        << message.funcNameStartColumn
@@ -583,18 +723,14 @@ std::ostream &operator<<(std::ostream &out, const NativeFilePath &filePath)
 
 std::ostream &operator<<(std::ostream &out, const PrecompiledHeadersUpdatedMessage &message)
 {
-    out << "("
-        << message.projectPartPchs
-        << ")";
+    out << "(" << message.projectPartIds << ")";
 
     return out;
 }
 
 std::ostream &operator<<(std::ostream &out, const ProjectPartPch &projectPartPch)
 {
-    out << "("
-        << projectPartPch.projectPartId << ", "
-        << projectPartPch.pchPath << ", "
+    out << "(" << projectPartPch.projectPartId << ", " << projectPartPch.pchPath << ", "
         << projectPartPch.lastModified << ")";
 
     return out;
@@ -679,19 +815,6 @@ std::ostream &operator<<(std::ostream &out, const ToolTipInfo &info)
     return out;
 }
 
-std::ostream &operator<<(std::ostream &os, const RequestSourceLocationsForRenamingMessage &message)
-{
-    os << "("
-       << message.filePath << ", "
-       << message.line << ", "
-       << message.column << ", "
-       << message.unsavedContent << ", "
-       << message.commandLine
-       << ")";
-
-    return os;
-}
-
 std::ostream &operator<<(std::ostream &os, const RequestSourceRangesAndDiagnosticsForQueryMessage &message)
 {
     os << "("
@@ -718,17 +841,6 @@ std::ostream &operator<<(std::ostream &os, const SourceLocationContainer &contai
        << container.line << ", "
        << container.column
        << ")";
-
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const SourceLocationsForRenamingMessage &message)
-{
-    os << "("
-        << message.symbolName << ", "
-        << message.textDocumentRevision << ", "
-        << message.sourceLocations
-        << ")";
 
     return os;
 }
@@ -818,35 +930,6 @@ std::ostream &operator<<(std::ostream &os, const DocumentVisibilityChangedMessag
     return os;
 }
 
-std::ostream &operator<<(std::ostream &os, const TokenInfo &tokenInfo)
-{
-    os << "(type: " << tokenInfo.types() << ", "
-       << " line: " << tokenInfo.line() << ", "
-       << " column: " << tokenInfo.column() << ", "
-       << " length: " << tokenInfo.length()
-       << ")";
-
-    return  os;
-}
-
-template<class T>
-std::ostream &operator<<(std::ostream &out, const TokenProcessor<T> &tokenInfos)
-{
-    out << "[";
-
-    for (const T &entry : tokenInfos)
-        out << entry;
-
-    out << "]";
-
-    return out;
-}
-
-template
-std::ostream &operator<<(std::ostream &out, const TokenProcessor<TokenInfo> &tokenInfos);
-template
-std::ostream &operator<<(std::ostream &out, const TokenProcessor<FullTokenInfo> &tokenInfos);
-
 std::ostream &operator<<(std::ostream &out, const FilePath &filePath)
 {
     return out << "(" << filePath.path() << ", " << filePath.slashIndex() << ")";
@@ -892,18 +975,16 @@ std::ostream &operator<<(std::ostream &out, const SourceDependency &sourceDepend
 
 std::ostream &operator<<(std::ostream &out, const ProjectPartArtefact &projectPartArtefact)
 {
-    return out << "("
-               << projectPartArtefact.compilerArguments << ", "
-               << projectPartArtefact.compilerMacros
-               <<")";
+    return out << "(" << projectPartArtefact.projectPartId << ", "
+               << projectPartArtefact.toolChainArguments << ", " << projectPartArtefact.compilerMacros
+               << ", " << projectPartArtefact.language << ", " << projectPartArtefact.languageVersion
+               << ", " << projectPartArtefact.languageExtension << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, const CompilerMacro &compilerMacro)
 {
-    return out << "("
-               << compilerMacro.key << ", "
-               << compilerMacro.value
-               << ")";
+    return out << "(" << compilerMacro.key << ", " << compilerMacro.value << ", "
+               << compilerMacro.index << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, const SymbolEntry &entry)
@@ -974,30 +1055,6 @@ std::ostream &operator<<(std::ostream &out, const RemoveGeneratedFilesMessage &m
     return out << "(" << message.generatedFiles << ")";
 }
 
-std::ostream &operator<<(std::ostream &out, const SuspendResumeJobsEntry &entry)
-{
-    return out << "("
-               << entry.document.filePath() << ", "
-               << entry.jobRequestType << ", "
-               << entry.preferredTranslationUnit
-               << ")";
-}
-
-std::ostream &operator<<(std::ostream &os, const ReferencesResult &value)
-{
-    os << "ReferencesResult(";
-    os << value.isLocalVariable << ", {";
-    for (const SourceRangeContainer &r : value.references) {
-        os << r.start.line << ",";
-        os << r.start.column << ",";
-        EXPECT_THAT(r.start.line, testing::Eq(r.end.line));
-        os << r.end.column - r.start.column << ",";
-    }
-    os << "})";
-
-    return os;
-}
-
 std::ostream &operator<<(std::ostream &out, const SymbolIndexerTask &task)
 {
     return out << "(" << task.filePathId << ", " << task.projectPartId << ")";
@@ -1006,9 +1063,14 @@ std::ostream &operator<<(std::ostream &out, const SymbolIndexerTask &task)
 const char* progressTypeToString(ClangBackEnd::ProgressType type)
 {
     switch (type) {
-        case ProgressType::Invalid: return "Invalid";
-        case ProgressType::PrecompiledHeader: return "PrecompiledHeader";
-        case ProgressType::Indexing: return "Indexing";
+    case ProgressType::Invalid:
+        return "Invalid";
+    case ProgressType::PrecompiledHeader:
+        return "PrecompiledHeader";
+    case ProgressType::Indexing:
+        return "Indexing";
+    case ProgressType::DependencyCreation:
+        return "Indexing";
     }
 
     return nullptr;
@@ -1021,31 +1083,66 @@ std::ostream &operator<<(std::ostream &out, const ProgressMessage &message)
                << message.total << ")";
 }
 
-std::ostream &operator<<(std::ostream &out, const PchCreatorIncludes &includes)
-{
-    return out << "(" << includes.includeIds << ", " << includes.topIncludeIds << ", " << includes.topSystemIncludeIds << ")";
-}
 std::ostream &operator<<(std::ostream &out, const PchTask &task)
 {
-    return out << "(" << task.ids << ", " << task.buildDependency << ")";
+    return out << "(" << task.projectPartIds << ", " << task.includes << ", " << task.compilerMacros
+               << toText(task.language) << ", " << task.systemIncludeSearchPaths << ", "
+               << task.projectIncludeSearchPaths << ", " << task.toolChainArguments << ", "
+               << toText(task.languageVersion) << ", " << toText(task.languageExtension) << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const PchTaskSet &taskSet)
+{
+    return out << "(" << taskSet.system << ", " << taskSet.project << ")";
 }
 
 std::ostream &operator<<(std::ostream &out, const BuildDependency &dependency)
 {
-    return out << "("
-               << dependency.includes << ", "
-               << dependency.topsSystemIncludeIds << ", "
-               << dependency.topIncludeIds << ")";
+    return out << "(\n"
+               << "includes: " << dependency.sources << ",\n"
+               << "usedMacros: " << dependency.usedMacros << ",\n"
+               << "fileStatuses: " << dependency.fileStatuses << ",\n"
+               << "sourceFiles: " << dependency.sourceFiles << ",\n"
+               << "sourceDependencies: " << dependency.sourceDependencies << ",\n"
+               << ")";
 }
 
-const char *sourceTypeString(SourceType sourceType)
+std::ostream &operator<<(std::ostream &out, const SlotUsage &slotUsage)
+{
+    return out << "(" << slotUsage.free << ", " << slotUsage.used << ")";
+}
+
+const char *typeToString(SourceType sourceType)
 {
     using ClangBackEnd::SymbolTag;
 
     switch (sourceType) {
-    case SourceType::Any: return "Any";
-    case SourceType::TopInclude: return "TopInclude";
-    case SourceType::TopSystemInclude: return "TopSystemInclude";
+    case SourceType::TopProjectInclude:
+        return "TopProjectInclude";
+    case SourceType::TopSystemInclude:
+        return "TopSystemInclude";
+    case SourceType::SystemInclude:
+        return "SystemInclude";
+    case SourceType::ProjectInclude:
+        return "ProjectInclude";
+    case SourceType::UserInclude:
+        return "UserInclude";
+    case SourceType::Source:
+        return "Source";
+    }
+
+    return "";
+}
+
+const char *typeToString(HasMissingIncludes hasMissingIncludes)
+{
+    using ClangBackEnd::SymbolTag;
+
+    switch (hasMissingIncludes) {
+    case HasMissingIncludes::No:
+        return "HasMissingIncludes::No";
+    case HasMissingIncludes::Yes:
+        return "HasMissingIncludes::Yes";
     }
 
     return "";
@@ -1053,7 +1150,82 @@ const char *sourceTypeString(SourceType sourceType)
 
 std::ostream &operator<<(std::ostream &out, const SourceEntry &entry)
 {
-    return out  << "(" << entry.sourceId << ", " << sourceTypeString(entry.sourceType) << ")";
+    return out << "(" << entry.sourceId << ", " << typeToString(entry.sourceType) << ", "
+               << typeToString(entry.hasMissingIncludes) << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const SourceTimeStamp &sourceTimeStamp)
+{
+    return out << "(" << sourceTimeStamp.sourceId << ", " << sourceTimeStamp.timeStamp << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const TimeStamp &timeStamp)
+{
+    return out << timeStamp.value;
+}
+
+const char *typeToString(IncludeSearchPathType type)
+{
+    switch (type) {
+    case IncludeSearchPathType::Invalid:
+        return "Invalid";
+    case IncludeSearchPathType::User:
+        return "User";
+    case IncludeSearchPathType::System:
+        return "System";
+    case IncludeSearchPathType::BuiltIn:
+        return "BuiltIn";
+    case IncludeSearchPathType::Framework:
+        return "Framework";
+    }
+
+    return nullptr;
+}
+
+std::ostream &operator<<(std::ostream &out, const IncludeSearchPathType &pathType)
+{
+    return out << "IncludeSearchPathType::" << typeToString(pathType);
+}
+
+std::ostream &operator<<(std::ostream &out, const IncludeSearchPath &path)
+{
+    return out << "(" << path.path << ", " << path.index << ", " << typeToString(path.type) << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const ArgumentsEntry &entry)
+{
+    return out << "(" << entry.ids << ", " << entry.arguments << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const ProjectPartContainer &container)
+{
+    out << "(" << container.projectPartId << ", " << container.toolChainArguments << ", "
+        << container.headerPathIds << ", " << container.sourcePathIds << ", "
+        << container.compilerMacros << ", " << container.systemIncludeSearchPaths << ", "
+        << container.projectIncludeSearchPaths << ", " << toText(container.language) << ", "
+        << toText(container.languageVersion) << ", " << toText(container.languageExtension) << ")";
+
+    return out;
+}
+
+std::ostream &operator<<(std::ostream &out, const ProjectPartId &projectPathId)
+{
+    return out << projectPathId.projectPathId;
+}
+
+std::ostream &operator<<(std::ostream &out, const PchPaths &pchPaths)
+{
+    return out << "(" << pchPaths.projectPchPath << ", " << pchPaths.systemPchPath << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const ProjectChunkId &chunk)
+{
+    return out << "(" << chunk.id << ", " << typeToString(chunk.sourceType) << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const DirectoryPathId &id)
+{
+    return out << id.directoryPathId;
 }
 
 void PrintTo(const FilePath &filePath, ::std::ostream *os)
@@ -1087,19 +1259,6 @@ std::ostream &operator<<(std::ostream &os, const FileContainer &container)
     os << "\")";
 
     return os;
-}
-
-std::ostream &operator<<(std::ostream &out, const ProjectPartContainer &container)
-{
-    out << "("
-        << container.projectPartId << ", "
-        << container.arguments << ", "
-        << container.headerPathIds << ", "
-        << container.sourcePathIds << ", "
-        << container.compilerMacros << ", "
-        << container.includeSearchPaths << ")";
-
-    return out;
 }
 
 std::ostream &operator<<(std::ostream &os, const SourceLocationContainer &container)
@@ -1149,3 +1308,40 @@ std::ostream &operator<<(std::ostream &out, const Usage &usage)
     return out << "(" << usage.path << ", " << usage.line << ", " << usage.column <<")";
 }
 } // namespace CppTools
+
+namespace Debugger {
+std::ostream &operator<<(std::ostream &out, const DiagnosticLocation &loc)
+{
+    return out << "(" << loc.filePath << ", " << loc.line << ", " << loc.column << ")";
+}
+} // namespace Debugger
+
+namespace ClangTools {
+namespace Internal {
+std::ostream &operator<<(std::ostream &out, const ExplainingStep &step)
+{
+    return out << "("
+               << step.message << ", "
+               << step.location << ", "
+               << step.ranges << ", "
+               << step.isFixIt
+               << ")";
+}
+
+std::ostream &operator<<(std::ostream &out, const Diagnostic &diag) {
+    return out << "("
+               << diag.description << ", "
+               << diag.category << ", "
+               << diag.type << ", "
+               << diag.location << ", "
+               << diag.explainingSteps << ", "
+               << diag.hasFixits
+               << ")";
+}
+} // namespace Internal
+} // namespace ClangTools
+
+void setFilePathCache(ClangBackEnd::FilePathCaching *cache)
+{
+    filePathCache = cache;
+}

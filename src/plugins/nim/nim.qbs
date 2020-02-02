@@ -27,7 +27,9 @@ QtcPlugin {
         files: [
             "nimeditorfactory.h", "nimeditorfactory.cpp",
             "nimhighlighter.h", "nimhighlighter.cpp",
-            "nimindenter.h", "nimindenter.cpp"
+            "nimindenter.h", "nimindenter.cpp",
+            "nimtexteditorwidget.h", "nimtexteditorwidget.cpp",
+            "nimcompletionassistprovider.h", "nimcompletionassistprovider.cpp"
         ]
     }
 
@@ -35,17 +37,24 @@ QtcPlugin {
         name: "Project"
         prefix: "project/"
         files: [
+            "nimbuildsystem.cpp", "nimbuildsystem.h",
             "nimbuildconfiguration.h", "nimbuildconfiguration.cpp",
-            "nimbuildconfigurationwidget.h", "nimbuildconfigurationwidget.cpp",
             "nimcompilerbuildstep.h", "nimcompilerbuildstep.cpp",
             "nimcompilerbuildstepconfigwidget.h", "nimcompilerbuildstepconfigwidget.cpp", "nimcompilerbuildstepconfigwidget.ui",
             "nimcompilercleanstep.h", "nimcompilercleanstep.cpp",
-            "nimcompilercleanstepconfigwidget.h", "nimcompilercleanstepconfigwidget.cpp", "nimcompilercleanstepconfigwidget.ui",
             "nimproject.h", "nimproject.cpp",
             "nimprojectnode.h", "nimprojectnode.cpp",
             "nimrunconfiguration.h", "nimrunconfiguration.cpp",
             "nimtoolchain.h", "nimtoolchain.cpp",
             "nimtoolchainfactory.h", "nimtoolchainfactory.cpp",
+            "nimblebuildstep.h", "nimblebuildstep.cpp",
+            "nimblebuildstepwidget.h", "nimblebuildstepwidget.cpp", "nimblebuildstepwidget.ui",
+            "nimbleproject.h", "nimbleproject.cpp",
+            "nimblerunconfiguration.h", "nimblerunconfiguration.cpp",
+            "nimbletaskstep.h", "nimbletaskstep.cpp",
+            "nimbletaskstepwidget.h", "nimbletaskstepwidget.cpp", "nimbletaskstepwidget.ui",
+            "nimblebuildsystem.h", "nimblebuildsystem.cpp",
+            "nimblebuildconfiguration.h", "nimblebuildconfiguration.cpp",
         ]
     }
 
@@ -57,6 +66,7 @@ QtcPlugin {
             "nimcodestylepreferenceswidget.h", "nimcodestylepreferenceswidget.cpp", "nimcodestylepreferenceswidget.ui",
             "nimcodestylesettingspage.h", "nimcodestylesettingspage.cpp",
             "nimsettings.h", "nimsettings.cpp",
+            "nimtoolssettingspage.h", "nimtoolssettingspage.cpp", "nimtoolssettingswidget.ui"
         ]
     }
 
@@ -66,6 +76,20 @@ QtcPlugin {
         files: [
             "nimlexer.h", "nimlexer.cpp",
             "sourcecodestream.h"
+        ]
+    }
+
+    Group {
+        name: "Suggest"
+        prefix: "suggest/"
+        files: [
+            "client.h", "client.cpp",
+            "clientrequests.h", "clientrequests.cpp",
+            "nimsuggest.h", "nimsuggest.cpp",
+            "nimsuggestcache.h", "nimsuggestcache.cpp",
+            "server.h", "server.cpp",
+            "sexprlexer.h",
+            "sexprparser.h",
         ]
     }
 }

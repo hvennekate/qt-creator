@@ -31,7 +31,6 @@
 #include "commonsettingspage.h"
 #include "nicknamedialog.h"
 #include "vcsoutputwindow.h"
-#include "vcsprojectcache.h"
 #include "wizard/vcscommandpage.h"
 #include "wizard/vcsconfigurationpage.h"
 #include "wizard/vcsjsextension.h"
@@ -72,9 +71,9 @@ VcsPlugin::VcsPlugin()
 
 VcsPlugin::~VcsPlugin()
 {
-    VcsProjectCache::destroy();
     VcsOutputWindow::destroy();
     m_instance = nullptr;
+    delete d;
 }
 
 bool VcsPlugin::initialize(const QStringList &arguments, QString *errorMessage)
@@ -100,7 +99,7 @@ bool VcsPlugin::initialize(const QStringList &arguments, QString *errorMessage)
     JsonWizardFactory::registerPageFactory(new Internal::VcsConfigurationPageFactory);
     JsonWizardFactory::registerPageFactory(new Internal::VcsCommandPageFactory);
 
-    JsExpander::registerQObjectForJs(QLatin1String("Vcs"), new VcsJsExtension);
+    JsExpander::registerGlobalObject<VcsJsExtension>("Vcs");
 
     Utils::MacroExpander *expander = Utils::globalMacroExpander();
     expander->registerVariable(Constants::VAR_VCS_NAME,
@@ -138,7 +137,6 @@ bool VcsPlugin::initialize(const QStringList &arguments, QString *errorMessage)
 
 void VcsPlugin::extensionsInitialized()
 {
-    VcsProjectCache::create();
 }
 
 VcsPlugin *VcsPlugin::instance()

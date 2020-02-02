@@ -49,7 +49,7 @@ using namespace CppTools::Tests;
 using namespace CppTools::Internal;
 using ProjectExplorer::HeaderPathType;
 
-typedef Document::Include Include;
+using Include = Document::Include;
 
 class SourcePreprocessor
 {
@@ -60,7 +60,7 @@ public:
         cleanUp();
     }
 
-    Document::Ptr run(const QString &filePath)
+    Document::Ptr run(const QString &filePath) const
     {
         QScopedPointer<CppSourceProcessor> sourceProcessor(
                     CppModelManager::createSourceProcessor());
@@ -179,11 +179,11 @@ void CppToolsPlugin::test_cppsourceprocessor_macroUses()
     const QList<Document::MacroUse> macroUses = document->macroUses();
     QCOMPARE(macroUses.size(), 1);
     const Document::MacroUse macroUse = macroUses.at(0);
-    QCOMPARE(macroUse.bytesBegin(), 25U);
-    QCOMPARE(macroUse.bytesEnd(), 35U);
-    QCOMPARE(macroUse.utf16charsBegin(), 25U);
-    QCOMPARE(macroUse.utf16charsEnd(), 35U);
-    QCOMPARE(macroUse.beginLine(), 2U);
+    QCOMPARE(macroUse.bytesBegin(), 25);
+    QCOMPARE(macroUse.bytesEnd(), 35);
+    QCOMPARE(macroUse.utf16charsBegin(), 25);
+    QCOMPARE(macroUse.utf16charsEnd(), 35);
+    QCOMPARE(macroUse.beginLine(), 2);
 }
 
 static bool isMacroDefinedInDocument(const QByteArray &macroName, const Document::Ptr &document)

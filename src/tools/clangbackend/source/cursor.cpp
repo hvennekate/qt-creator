@@ -107,11 +107,7 @@ bool Cursor::isDeclaration() const
 
 bool Cursor::isInvalidDeclaration() const
 {
-#ifdef IS_INVALIDDECL_SUPPORTED
     return clang_isInvalidDeclaration(m_cxCursor);
-#else
-    return false;
-#endif
 }
 
 bool Cursor::isLocalVariable() const
@@ -217,6 +213,11 @@ bool Cursor::isUnexposed() const
     return clang_isUnexposed(kind());
 }
 
+bool Cursor::isAnonymous() const
+{
+    return clang_Cursor_isAnonymous(m_cxCursor);
+}
+
 ClangString Cursor::unifiedSymbolResolution() const
 {
     return ClangString(clang_getCursorUSR(m_cxCursor));
@@ -232,9 +233,12 @@ ClangString Cursor::spelling() const
     return ClangString(clang_getCursorSpelling(m_cxCursor));
 }
 
-ClangString Cursor::displayName() const
+Utf8String Cursor::displayName() const
 {
-    return ClangString(clang_getCursorDisplayName(m_cxCursor));
+    Utf8String result = ClangString(clang_getCursorDisplayName(m_cxCursor));
+    if (!result.hasContent() && isAnonymous())
+        result = Utf8String("(anonymous)");
+    return result;
 }
 
 ClangString Cursor::briefComment() const

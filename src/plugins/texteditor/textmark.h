@@ -30,10 +30,13 @@
 #include <coreplugin/id.h>
 #include <utils/theme/theme.h>
 #include <utils/fileutils.h>
+#include <utils/optional.h>
 
 #include <QIcon>
+#include <QVector>
 
 QT_BEGIN_NAMESPACE
+class QAction;
 class QGridLayout;
 class QLayout;
 class QPainter;
@@ -48,7 +51,7 @@ class TextDocument;
 class TEXTEDITOR_EXPORT TextMark
 {
 public:
-    TextMark(const Utils::FileName &fileName,
+    TextMark(const Utils::FilePath &fileName,
              int lineNumber,
              Core::Id category,
              double widthFactor = 1.0);
@@ -63,7 +66,7 @@ public:
         HighPriority // shown on top.
     };
 
-    Utils::FileName fileName() const;
+    Utils::FilePath fileName() const;
     int lineNumber() const;
 
     virtual void paintIcon(QPainter *painter, const QRect &rect) const;
@@ -82,7 +85,7 @@ public:
     AnnotationRects annotationRects(const QRectF &boundingRect, const QFontMetrics &fm,
                                     const qreal fadeInOffset, const qreal fadeOutOffset) const;
     /// called if the filename of the document changed
-    virtual void updateFileName(const Utils::FileName &fileName);
+    virtual void updateFileName(const Utils::FilePath &fileName);
     virtual void updateLineNumber(int lineNumber);
     virtual void updateBlock(const QTextBlock &block);
     virtual void move(int line);
@@ -106,9 +109,8 @@ public:
     double widthFactor() const;
     void setWidthFactor(double factor);
 
-    Utils::Theme::Color color() const;
+    Utils::optional<Utils::Theme::Color> color() const;
     void setColor(const Utils::Theme::Color &color);
-    bool hasColor() const { return m_hasColor; }
 
     QString defaultToolTip() const { return m_defaultToolTip; }
     void setDefaultToolTip(const QString &toolTip) { m_defaultToolTip = toolTip; }
@@ -122,22 +124,25 @@ public:
     QString toolTip() const { return m_toolTip; }
     void setToolTip(const QString &toolTip) { m_toolTip = toolTip; }
 
+    QVector<QAction *> actions() const;
+    void setActions(const QVector<QAction *> &actions); // Takes ownership
+
 private:
     Q_DISABLE_COPY(TextMark)
 
     TextDocument *m_baseTextDocument = nullptr;
-    Utils::FileName m_fileName;
+    Utils::FilePath m_fileName;
     int m_lineNumber = 0;
     Priority m_priority = LowPriority;
     QIcon m_icon;
-    Utils::Theme::Color m_color = Utils::Theme::TextColorNormal;
+    Utils::optional<Utils::Theme::Color> m_color;
     bool m_visible = false;
-    bool m_hasColor = false;
     Core::Id m_category;
     double m_widthFactor = 1.0;
     QString m_lineAnnotation;
     QString m_toolTip;
     QString m_defaultToolTip;
+    QVector<QAction *> m_actions;
 };
 
 } // namespace TextEditor

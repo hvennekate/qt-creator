@@ -72,8 +72,6 @@ GerritDialog::GerritDialog(const QSharedPointer<GerritParameters> &p,
     auto completer = new QCompleter(this);
     completer->setModel(m_queryModel);
     m_ui->queryLineEdit->setSpecialCompleter(completer);
-    m_ui->queryLineEdit->setOkColor(Utils::creatorTheme()->color(Utils::Theme::TextColorNormal));
-    m_ui->queryLineEdit->setErrorColor(Utils::creatorTheme()->color(Utils::Theme::TextColorError));
     m_ui->queryLineEdit->setValidationFunction([this](Utils::FancyLineEdit *, QString *) {
                                                return m_model->state() != GerritModel::Error;
                                            });
@@ -141,7 +139,7 @@ void GerritDialog::setCurrentPath(const QString &path)
     if (path == m_repository)
         return;
     m_repository = path;
-    m_ui->repositoryLabel->setText(Git::Internal::GitPlugin::msgRepositoryLabel(path));
+    m_ui->repositoryLabel->setText(Git::Internal::GitPluginPrivate::msgRepositoryLabel(path));
     updateRemotes();
 }
 
@@ -213,7 +211,7 @@ void GerritDialog::refresh()
     const QString &query = m_ui->queryLineEdit->text().trimmed();
     updateCompletions(query);
     m_model->refresh(m_server, query);
-    m_ui->treeView->sortByColumn(-1);
+    m_ui->treeView->sortByColumn(-1, Qt::DescendingOrder);
 }
 
 void GerritDialog::scheduleUpdateRemotes()

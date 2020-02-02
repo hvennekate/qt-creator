@@ -45,9 +45,7 @@ QmlJSHighlighter::QmlJSHighlighter(QTextDocument *parent)
     setDefaultTextFormatCategories();
 }
 
-QmlJSHighlighter::~QmlJSHighlighter()
-{
-}
+QmlJSHighlighter::~QmlJSHighlighter() = default;
 
 bool QmlJSHighlighter::isQmlEnabled() const
 {
@@ -167,8 +165,7 @@ void QmlJSHighlighter::highlightBlock(const QString &text)
     }
 
     int previousTokenEnd = 0;
-    for (int index = 0; index < tokens.size(); ++index) {
-        const Token &token = tokens.at(index);
+    for (const auto &token : tokens) {
         setFormat(previousTokenEnd, token.begin() - previousTokenEnd, formatForCategory(C_VISUAL_WHITESPACE));
 
         switch (token.kind) {
@@ -290,7 +287,7 @@ int QmlJSHighlighter::onBlockStart()
     m_braceDepth = 0;
     m_foldingIndent = 0;
     m_inMultilineComment = false;
-    if (TextBlockUserData *userData = TextDocumentLayout::testUserData(currentBlock())) {
+    if (TextBlockUserData *userData = TextDocumentLayout::textUserData(currentBlock())) {
         userData->setFoldingIndent(0);
         userData->setFoldingStartIncluded(false);
         userData->setFoldingEndIncluded(false);

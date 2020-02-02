@@ -36,10 +36,10 @@
 #include <memory>
 
 QT_BEGIN_NAMESPACE
-class QToolButton;
-class QButtonGroup;
 class QAbstractButton;
+class QButtonGroup;
 class QComboBox;
+class QToolButton;
 QT_END_NAMESPACE
 
 namespace Core { class OutputWindow; }
@@ -47,10 +47,10 @@ namespace Core { class OutputWindow; }
 namespace SerialTerminal {
 namespace Internal {
 
-class SerialControl;
-class TabWidget;
 class ComboBox;
 class ConsoleLineEdit;
+class SerialControl;
+class TabWidget;
 
 class SerialOutputPane : public Core::IOutputPane
 {
@@ -70,22 +70,22 @@ public:
     explicit SerialOutputPane(Settings &settings);
 
     // IOutputPane
-    QWidget *outputWidget(QWidget *parent) override final;
-    QList<QWidget *> toolBarWidgets() const override final;
-    QString displayName() const override final;
+    QWidget *outputWidget(QWidget *parent) final;
+    QList<QWidget *> toolBarWidgets() const final;
+    QString displayName() const final;
 
-    int priorityInStatusBar() const override final;
-    void clearContents() override final;
-    void visibilityChanged(bool) override final;
-    bool canFocus() const override final;
-    bool hasFocus() const override final;
-    void setFocus() override final;
+    int priorityInStatusBar() const final;
+    void clearContents() final;
+    void visibilityChanged(bool) final;
+    bool canFocus() const final;
+    bool hasFocus() const final;
+    void setFocus() final;
 
-    bool canNext() const override final;
-    bool canPrevious() const override final;
-    void goToNext() override final;
-    void goToPrev() override final;
-    bool canNavigate() const override final;
+    bool canNext() const final;
+    bool canPrevious() const final;
+    void goToNext() final;
+    void goToPrev() final;
+    bool canNavigate() const final;
 
     void createNewOutputWindow(SerialControl *rc);
 
@@ -114,6 +114,7 @@ private:
 
     void createToolButtons();
     void updateLineEndingsComboBox();
+    void updatePortsList();
 
     void contextMenuRequested(const QPoint &pos, int index);
 
@@ -144,7 +145,6 @@ private:
     void handleOldOutput(Core::OutputWindow *window) const;
 
     void updateCloseActions();
-
 
     std::unique_ptr<QWidget> m_mainWidget;
     ConsoleLineEdit *m_inputLine = nullptr;

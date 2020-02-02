@@ -34,8 +34,7 @@
 namespace Todo {
 namespace Internal {
 
-OptionsDialog::OptionsDialog(QWidget *parent) :
-    QWidget(parent),
+OptionsDialog::OptionsDialog() :
     ui(new Ui::OptionsDialog)
 {
     ui->setupUi(this);
@@ -75,7 +74,7 @@ void OptionsDialog::addToKeywordsList(const Keyword &keyword)
     QListWidgetItem *item = new QListWidgetItem(
                 icon(keyword.iconType), keyword.name);
     item->setData(Qt::UserRole, static_cast<int>(keyword.iconType));
-    item->setTextColor(keyword.color);
+    item->setForeground(keyword.color);
     ui->keywordsList->addItem(item);
 }
 
@@ -116,7 +115,7 @@ void OptionsDialog::editKeyword(QListWidgetItem *item)
     Keyword keyword;
     keyword.name = item->text();
     keyword.iconType = static_cast<IconType>(item->data(Qt::UserRole).toInt());
-    keyword.color = item->textColor();
+    keyword.color = item->foreground().color();
 
     QSet<QString> keywordNamesButThis = keywordNames();
     keywordNamesButThis.remove(keyword.name);
@@ -127,7 +126,7 @@ void OptionsDialog::editKeyword(QListWidgetItem *item)
         item->setIcon(icon(keyword.iconType));
         item->setText(keyword.name);
         item->setData(Qt::UserRole, static_cast<int>(keyword.iconType));
-        item->setTextColor(keyword.color);
+        item->setForeground(keyword.color);
     }
 }
 
@@ -145,7 +144,7 @@ void OptionsDialog::resetKeywordsButtonClicked()
 
 void OptionsDialog::setKeywordsButtonsEnabled()
 {
-    bool isSomethingSelected = ui->keywordsList->selectedItems().count() != 0;
+    const bool isSomethingSelected = !ui->keywordsList->selectedItems().isEmpty();
     ui->removeKeywordButton->setEnabled(isSomethingSelected);
     ui->editKeywordButton->setEnabled(isSomethingSelected);
 }
@@ -179,7 +178,7 @@ Settings OptionsDialog::settingsFromUi()
         Keyword keyword;
         keyword.name = item->text();
         keyword.iconType = static_cast<IconType>(item->data(Qt::UserRole).toInt());
-        keyword.color = item->textColor();
+        keyword.color = item->foreground().color();
 
         settings.keywords << keyword;
     }

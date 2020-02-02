@@ -27,8 +27,12 @@
 
 #include <extensionsystem/iplugin.h>
 
+namespace ProjectExplorer { class ProjectPanelFactory; }
+
 namespace ClangTools {
 namespace Internal {
+
+ProjectExplorer::ProjectPanelFactory *projectPanelFactory();
 
 class ClangToolsPlugin : public ExtensionSystem::IPlugin
 {
@@ -42,7 +46,7 @@ public:
 private:
     bool initialize(const QStringList &arguments, QString *errorString) final;
     void extensionsInitialized() final {}
-    QList<QObject *> createTestObjects() const final;
+    QVector<QObject *> createTestObjects() const final;
 
     class ClangToolsPluginPrivate *d = nullptr;
 };

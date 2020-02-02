@@ -77,22 +77,20 @@ QStringList CallgrindToolRunner::toolArguments() const
 {
     QStringList arguments = {"--tool=callgrind"};
 
-    QTC_ASSERT(m_settings, return arguments);
+    if (m_settings.enableCacheSim())
+        arguments << "--cache-sim=yes";
 
-    if (m_settings->enableCacheSim())
-        arguments << QLatin1String("--cache-sim=yes");
+    if (m_settings.enableBranchSim())
+        arguments << "--branch-sim=yes";
 
-    if (m_settings->enableBranchSim())
-        arguments << QLatin1String("--branch-sim=yes");
+    if (m_settings.collectBusEvents())
+        arguments << "--collect-bus=yes";
 
-    if (m_settings->collectBusEvents())
-        arguments << QLatin1String("--collect-bus=yes");
-
-    if (m_settings->collectSystime())
-        arguments << QLatin1String("--collect-systime=yes");
+    if (m_settings.collectSystime())
+        arguments << "--collect-systime=yes";
 
     if (m_markAsPaused)
-        arguments << QLatin1String("--instr-atstart=no");
+        arguments << "--instr-atstart=no";
 
     // add extra arguments
     if (!m_argumentForToggleCollect.isEmpty())
@@ -108,7 +106,7 @@ QString CallgrindToolRunner::progressTitle() const
 
 void CallgrindToolRunner::start()
 {
-    appendMessage(tr("Profiling %1").arg(executable()), Utils::NormalMessageFormat);
+    appendMessage(tr("Profiling %1").arg(executable().toUserOutput()), Utils::NormalMessageFormat);
     return ValgrindToolRunner::start();
 }
 
@@ -136,7 +134,7 @@ void CallgrindToolRunner::setToggleCollectFunction(const QString &toggleCollectF
     if (toggleCollectFunction.isEmpty())
         return;
 
-    m_argumentForToggleCollect = QLatin1String("--toggle-collect=") + toggleCollectFunction;
+    m_argumentForToggleCollect = "--toggle-collect=" + toggleCollectFunction;
 }
 
 void CallgrindToolRunner::reset()

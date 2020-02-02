@@ -39,11 +39,9 @@ enum State { Inactive, Running };
 class RemoteLinuxCustomCommandDeployservicePrivate
 {
 public:
-    RemoteLinuxCustomCommandDeployservicePrivate() : state(Inactive), runner(0) { }
-
     QString commandLine;
-    State state;
-    SshRemoteProcessRunner *runner;
+    State state = Inactive;
+    SshRemoteProcessRunner *runner = nullptr;
 };
 
 } // namespace Internal
@@ -68,19 +66,14 @@ void RemoteLinuxCustomCommandDeployService::setCommandLine(const QString &comman
     d->commandLine = commandLine;
 }
 
-bool RemoteLinuxCustomCommandDeployService::isDeploymentPossible(QString *whyNot) const
+CheckResult RemoteLinuxCustomCommandDeployService::isDeploymentPossible() const
 {
-    QTC_ASSERT(d->state == Inactive, return false);
+    QTC_ASSERT(d->state == Inactive, return CheckResult::failure());
 
-    if (!AbstractRemoteLinuxDeployService::isDeploymentPossible(whyNot))
-        return false;
-    if (d->commandLine.isEmpty()) {
-        if (whyNot)
-            *whyNot = tr("No command line given.");
-        return false;
-    }
+    if (d->commandLine.isEmpty())
+        return CheckResult::failure(tr("No command line given."));
 
-    return true;
+    return AbstractRemoteLinuxDeployService::isDeploymentPossible();
 }
 
 void RemoteLinuxCustomCommandDeployService::doDeploy()
@@ -98,14 +91,14 @@ void RemoteLinuxCustomCommandDeployService::doDeploy()
 
     emit progressMessage(tr("Starting remote command \"%1\"...").arg(d->commandLine));
     d->state = Running;
-    d->runner->run(d->commandLine.toUtf8(), deviceConfiguration()->sshParameters());
+    d->runner->run(d->commandLine, deviceConfiguration()->sshParameters());
 }
 
 void RemoteLinuxCustomCommandDeployService::stopDeployment()
 {
     QTC_ASSERT(d->state == Running, return);
 
-    disconnect(d->runner, 0, this, 0);
+    disconnect(d->runner, nullptr, this, nullptr);
     d->runner->cancel();
     d->state = Inactive;
     handleDeploymentDone();
@@ -121,14 +114,12 @@ void RemoteLinuxCustomCommandDeployService::handleStderr()
     emit stdErrData(QString::fromUtf8(d->runner->readAllStandardError()));
 }
 
-void RemoteLinuxCustomCommandDeployService::handleProcessClosed(int exitStatus)
+void RemoteLinuxCustomCommandDeployService::handleProcessClosed(const QString &error)
 {
     QTC_ASSERT(d->state == Running, return);
 
-    if (exitStatus == SshRemoteProcess::FailedToStart) {
-        emit errorMessage(tr("Remote process failed to start."));
-    } else if (exitStatus == SshRemoteProcess::CrashExit) {
-        emit errorMessage(tr("Remote process was killed by a signal."));
+    if (!error.isEmpty()) {
+        emit errorMessage(tr("Remote process failed: %1").arg(error));
     } else if (d->runner->processExitCode() != 0) {
         emit errorMessage(tr("Remote process finished with exit code %1.")
             .arg(d->runner->processExitCode()));

@@ -75,7 +75,12 @@ bool IoUtils::isRelativePath(const QString &path)
         && (path.at(2) == QLatin1Char('/') || path.at(2) == QLatin1Char('\\'))) {
         return false;
     }
-    // (... unless, of course, they're UNC, which qmake fails on anyway)
+    // ... unless, of course, they're UNC:
+    if (path.length() >= 2
+        && (path.at(0).unicode() == '\\' || path.at(0).unicode() == '/')
+        && path.at(1) == path.at(0)) {
+            return false;
+    }
 #else
     if (path.startsWith(QLatin1Char('/')))
         return false;
@@ -101,8 +106,8 @@ QString IoUtils::resolvePath(const QString &baseDir, const QString &fileName)
         return QDir::cleanPath(fileName);
 #ifdef Q_OS_WIN // Add drive to otherwise-absolute path:
     if (fileName.at(0).unicode() == '/' || fileName.at(0).unicode() == '\\') {
-        Q_ASSERT(isAbsolutePath(baseDir));
-        return QDir::cleanPath(baseDir.left(2) + fileName);
+        return isAbsolutePath(baseDir) ? QDir::cleanPath(baseDir.left(2) + fileName)
+                                       : QDir::cleanPath(fileName);
     }
 #endif // Q_OS_WIN
     return QDir::cleanPath(baseDir + QLatin1Char('/') + fileName);
@@ -134,7 +139,7 @@ QString IoUtils::shellQuoteUnix(const QString &arg)
         0x00, 0x00, 0x00, 0x38, 0x01, 0x00, 0x00, 0x78
     }; // 0-32 \'"$`<>|;&(){}*?#!~[]
 
-    if (!arg.length())
+    if (arg.isEmpty())
         return QString::fromLatin1("''");
 
     QString ret(arg);
@@ -162,7 +167,7 @@ QString IoUtils::shellQuoteWin(const QString &arg)
         0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x10
     }; // &()<>^|
 
-    if (!arg.length())
+    if (arg.isEmpty())
         return QString::fromLatin1("\"\"");
 
     QString ret(arg);

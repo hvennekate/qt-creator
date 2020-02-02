@@ -55,7 +55,7 @@ bool RemoteModel::removeRemote(int row)
 {
     QString output;
     QString error;
-    bool success = GitPlugin::client()->synchronousRemoteCmd(
+    bool success = GitPluginPrivate::client()->synchronousRemoteCmd(
                 m_workingDirectory, {"rm", remoteName(row)}, &output, &error);
     if (success)
         success = refresh(m_workingDirectory, &error);
@@ -69,7 +69,7 @@ bool RemoteModel::addRemote(const QString &name, const QString &url)
     if (name.isEmpty() || url.isEmpty())
         return false;
 
-    bool success = GitPlugin::client()->synchronousRemoteCmd(
+    bool success = GitPluginPrivate::client()->synchronousRemoteCmd(
                 m_workingDirectory, {"add", name, url}, &output, &error);
     if (success)
         success = refresh(m_workingDirectory, &error);
@@ -80,7 +80,7 @@ bool RemoteModel::renameRemote(const QString &oldName, const QString &newName)
 {
     QString output;
     QString error;
-    bool success = GitPlugin::client()->synchronousRemoteCmd(
+    bool success = GitPluginPrivate::client()->synchronousRemoteCmd(
                 m_workingDirectory, {"rename", oldName, newName}, &output, &error);
     if (success)
         success = refresh(m_workingDirectory, &error);
@@ -91,7 +91,7 @@ bool RemoteModel::updateUrl(const QString &name, const QString &newUrl)
 {
     QString output;
     QString error;
-    bool success = GitPlugin::client()->synchronousRemoteCmd(
+    bool success = GitPluginPrivate::client()->synchronousRemoteCmd(
                 m_workingDirectory, {"set-url", name, newUrl}, &output, &error);
     if (success)
         success = refresh(m_workingDirectory, &error);
@@ -110,13 +110,13 @@ int RemoteModel::remoteCount() const
 
 int RemoteModel::rowCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    Q_UNUSED(parent)
     return remoteCount();
 }
 
 int RemoteModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    Q_UNUSED(parent)
     return 2;
 }
 
@@ -167,7 +167,7 @@ bool RemoteModel::setData(const QModelIndex &index, const QVariant &value, int r
 
 Qt::ItemFlags RemoteModel::flags(const QModelIndex &index) const
 {
-    Q_UNUSED(index);
+    Q_UNUSED(index)
     return m_flags;
 }
 
@@ -186,7 +186,7 @@ bool RemoteModel::refresh(const QString &workingDirectory, QString *errorMessage
 
     // get list of remotes.
     QMap<QString,QString> remotesList
-            = GitPlugin::client()->synchronousRemotesList(workingDirectory, errorMessage);
+            = GitPluginPrivate::client()->synchronousRemotesList(workingDirectory, errorMessage);
 
     beginResetModel();
     m_remotes.clear();

@@ -59,7 +59,7 @@ enum ItemRole {
 
 QStandardItem *itemForClass(const CppClass &cppClass)
 {
-    QStandardItem *item = new QStandardItem;
+    auto item = new QStandardItem;
     item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
     item->setData(cppClass.name, Qt::DisplayRole);
     if (cppClass.name != cppClass.qualifiedName)
@@ -88,11 +88,10 @@ namespace CppEditor {
 namespace Internal {
 
 // CppTypeHierarchyWidget
-CppTypeHierarchyWidget::CppTypeHierarchyWidget() :
-    QWidget(0)
+CppTypeHierarchyWidget::CppTypeHierarchyWidget()
 {
     m_inspectedClass = new TextEditor::TextEditorLinkLabel(this);
-    m_inspectedClass->setMargin(5);
+    m_inspectedClass->setContentsMargins(5, 5, 5, 5);
     m_model = new CppTypeHierarchyModel(this);
     m_treeView = new NavigationTreeView(this);
     m_treeView->setActivationMode(SingleClickActivation);
@@ -114,8 +113,8 @@ CppTypeHierarchyWidget::CppTypeHierarchyWidget() :
     m_noTypeHierarchyAvailableLabel->setBackgroundRole(QPalette::Base);
 
     m_hierarchyWidget = new QWidget(this);
-    QVBoxLayout *layout = new QVBoxLayout;
-    layout->setMargin(0);
+    auto layout = new QVBoxLayout;
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(m_inspectedClass);
     layout->addWidget(Core::ItemViewFind::createSearchableWrapper(m_treeView));
@@ -130,18 +129,17 @@ CppTypeHierarchyWidget::CppTypeHierarchyWidget() :
     connect(CppEditorPlugin::instance(), &CppEditorPlugin::typeHierarchyRequested, this, &CppTypeHierarchyWidget::perform);
 }
 
-CppTypeHierarchyWidget::~CppTypeHierarchyWidget()
-{}
+CppTypeHierarchyWidget::~CppTypeHierarchyWidget() = default;
 
 void CppTypeHierarchyWidget::perform()
 {
     showNoTypeHierarchyLabel();
 
-    CppEditor *editor = qobject_cast<CppEditor *>(Core::EditorManager::currentEditor());
+    auto editor = qobject_cast<CppEditor *>(Core::EditorManager::currentEditor());
     if (!editor)
         return;
 
-    CppEditorWidget *widget = qobject_cast<CppEditorWidget *>(editor->widget());
+    auto widget = qobject_cast<CppEditorWidget *>(editor->widget());
     if (!widget)
         return;
 

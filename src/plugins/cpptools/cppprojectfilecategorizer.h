@@ -26,7 +26,8 @@
 #pragma once
 
 #include "cppprojectfile.h"
-#include "cpprawprojectpart.h"
+
+#include <projectexplorer/rawprojectpart.h>
 
 #include <QString>
 #include <QVector>
@@ -36,12 +37,14 @@ namespace CppTools {
 class ProjectFileCategorizer
 {
 public:
-    using FileClassifier = RawProjectPart::FileClassifier;
+    using FileIsActive = ProjectExplorer::RawProjectPart::FileIsActive;
+    using GetMimeType = ProjectExplorer::RawProjectPart::GetMimeType;
 
 public:
     ProjectFileCategorizer(const QString &projectPartName,
                            const QStringList &filePaths,
-                           FileClassifier fileClassifier = FileClassifier());
+                           const FileIsActive &fileIsActive = {},
+                           const GetMimeType &getMimeType = {});
 
     bool hasCSources() const { return !m_cSources.isEmpty(); }
     bool hasCxxSources() const { return !m_cxxSources.isEmpty(); }
@@ -59,8 +62,10 @@ public:
     QString partName(const QString &languageName) const;
 
 private:
-    QStringList classifyFiles(const QStringList &filePaths, FileClassifier fileClassifier);
-    void expandSourcesWithAmbiguousHeaders(const QStringList &ambiguousHeaders);
+    ProjectFiles classifyFiles(const QStringList &filePaths,
+                               const FileIsActive &fileIsActive,
+                               const GetMimeType &getMimeType);
+    void expandSourcesWithAmbiguousHeaders(const ProjectFiles &ambiguousHeaders);
 
 private:
     QString m_partName;

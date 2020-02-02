@@ -63,7 +63,7 @@ bool hasFixItAt(const QVector<ClangBackEnd::FixItContainer> &fixits,
 {
     const auto isFixitForLocation = [filePath, line] (const ClangBackEnd::FixItContainer &fixit) {
         const ClangBackEnd::SourceLocationContainer &location = fixit.range.start;
-        return location.filePath == filePath && location.line == uint(line);
+        return location.filePath == filePath && location.line == line;
     };
 
     return Utils::anyOf(fixits, isFixitForLocation);
@@ -72,6 +72,7 @@ bool hasFixItAt(const QVector<ClangBackEnd::FixItContainer> &fixits,
 } // anonymous namespace
 
 namespace ClangCodeModel {
+namespace Internal {
 
 ClangFixItOperationsExtractor::ClangFixItOperationsExtractor(
         const QVector<DiagnosticContainer> &diagnosticContainers)
@@ -114,4 +115,5 @@ void ClangFixItOperationsExtractor::extractFromDiagnostic(
     }
 }
 
+} // namespace Internal
 } // namespace ClangCodeModel

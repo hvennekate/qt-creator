@@ -26,25 +26,43 @@
 #pragma once
 
 #include "pchtask.h"
+#include "pchtaskgeneratorinterface.h"
 
-#include <projectpartcontainerv2.h>
+#include <projectpartcontainer.h>
 
 namespace ClangBackEnd {
 
-class BuildDependenciesProviderInterface;
+class PchTasksMergerInterface;
 
-class PchTaskGenerator
+class BuildDependenciesProviderInterface;
+class PchTaskQueueInterface;
+class ProgressCounter;
+
+class PchTaskGenerator : public PchTaskGeneratorInterface
 {
 public:
-    PchTaskGenerator(BuildDependenciesProviderInterface &buildDependenciesProvider)
+    PchTaskGenerator(BuildDependenciesProviderInterface &buildDependenciesProvider,
+                     PchTasksMergerInterface &pchTasksMergerInterface,
+                     ProgressCounter &progressCounter,
+                     PchTaskQueueInterface &pchTaskQueue)
         : m_buildDependenciesProvider(buildDependenciesProvider)
+        , m_pchTasksMergerInterface(pchTasksMergerInterface)
+        , m_progressCounter(progressCounter)
+        , m_pchTaskQueue(pchTaskQueue)
+
     {}
 
-    PchTasks create(V2::ProjectPartContainers &&projectParts);
+    void addProjectParts(ProjectPartContainers &&projectParts,
+                         Utils::SmallStringVector &&toolChainArguments) override;
+    void removeProjectParts(const ProjectPartIds &projectsPartIds) override;
+    void addNonSystemProjectParts(ProjectPartContainers &&projectParts,
+                                  Utils::SmallStringVector &&toolChainArguments) override;
 
 private:
     BuildDependenciesProviderInterface &m_buildDependenciesProvider;
+    PchTasksMergerInterface &m_pchTasksMergerInterface;
+    ProgressCounter &m_progressCounter;
+    PchTaskQueueInterface &m_pchTaskQueue;
 };
-
 
 } // namespace ClangBackEnd

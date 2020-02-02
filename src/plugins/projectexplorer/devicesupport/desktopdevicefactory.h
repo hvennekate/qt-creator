@@ -30,7 +30,7 @@
 namespace ProjectExplorer {
 namespace Internal {
 
-class DesktopDeviceFactory : public IDeviceFactory
+class DesktopDeviceFactory final : public IDeviceFactory
 {
 public:
     DesktopDeviceFactory();

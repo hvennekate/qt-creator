@@ -56,6 +56,11 @@
 #include <QStyle>
 #include <QStyledItemDelegate>
 
+const int kInitialWidth = 750;
+const int kInitialHeight = 450;
+const int kMaxMinimumWidth = 250;
+const int kMaxMinimumHeight = 250;
+
 static const char pageKeyC[] = "General/LastPreferencePage";
 const int categoryIconSize = 24;
 
@@ -362,8 +367,8 @@ private:
             QSize minSize = inner->minimumSizeHint();
             minSize += QSize(fw, fw);
             minSize += QSize(scrollBarWidth(), 0);
-            minSize.setHeight(qMin(minSize.height(), 450));
-            minSize.setWidth(qMin(minSize.width(), 810));
+            minSize.setWidth(qMin(minSize.width(), kMaxMinimumWidth));
+            minSize.setHeight(qMin(minSize.height(), kMaxMinimumHeight));
             return minSize;
         }
         return QSize(0, 0);
@@ -545,9 +550,8 @@ void SettingsDialog::createGui()
     headerHLayout->addSpacerItem(new QSpacerItem(leftMargin, 0, QSizePolicy::Fixed, QSizePolicy::Ignored));
     headerHLayout->addWidget(m_headerLabel);
 
-    m_stackedLayout->setMargin(0);
+    m_stackedLayout->setContentsMargins(0, 0, 0, 0);
     QWidget *emptyWidget = new QWidget(this);
-    emptyWidget->setMinimumSize(QSize(500, 500));
     m_stackedLayout->addWidget(emptyWidget); // no category selected, for example when filtering
 
     QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok |
@@ -722,7 +726,7 @@ void SettingsDialog::done(int val)
     QSettings *settings = ICore::settings();
     settings->setValue(QLatin1String(pageKeyC), m_currentPage.toSetting());
 
-    ICore::saveSettings(); // save all settings
+    ICore::saveSettings(ICore::SettingsDialogDone); // save all settings
 
     // exit event loops in reverse order of addition
     for (QEventLoop *eventLoop : m_eventLoops)
@@ -740,6 +744,8 @@ bool SettingsDialog::execDialog()
         static const QLatin1String kPreferenceDialogSize("Core/PreferenceDialogSize");
         if (ICore::settings()->contains(kPreferenceDialogSize))
             resize(ICore::settings()->value(kPreferenceDialogSize).toSize());
+        else
+            resize(kInitialWidth, kInitialHeight);
         exec();
         m_running = false;
         m_instance = nullptr;

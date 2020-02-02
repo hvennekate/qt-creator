@@ -39,6 +39,8 @@
 #include <QObject>
 #include <QPointer>
 
+#include <functional>
+
 QT_BEGIN_NAMESPACE
 class QStyle;
 class QToolButton;
@@ -48,7 +50,6 @@ namespace QmlDesigner {
     namespace Internal {
         class InternalNode;
         using InternalNodePointer = QSharedPointer<InternalNode>;
-        using InternalNodeWeakPointer = QWeakPointer<InternalNode>;
     }
 }
 
@@ -163,6 +164,7 @@ public:
     bool hasModelNodeForInternalId(qint32 internalId) const;
 
     QList<ModelNode> allModelNodes() const;
+    QList<ModelNode> allModelNodesOfType(const TypeName &typeName) const;
 
     void emitDocumentMessage(const QList<DocumentMessage> &errors, const QList<DocumentMessage> &warnings = QList<DocumentMessage>());
     void emitDocumentMessage(const QString &error);
@@ -257,11 +259,14 @@ public:
     virtual void disableWidget();
     virtual void enableWidget();
 
-    virtual void contextHelpId(const Core::IContext::HelpIdCallback &callback) const;
+    virtual void contextHelp(const Core::IContext::HelpCallback &callback) const;
 
     void activateTimeline(const ModelNode &timeline);
     void activateTimelineRecording(const ModelNode &timeline);
     void deactivateTimelineRecording();
+
+    using OperationBlock = std::function<void()>;
+    bool executeInTransaction(const QByteArray &identifier, const OperationBlock &lambda);
 
 protected:
     void setModel(Model * model);

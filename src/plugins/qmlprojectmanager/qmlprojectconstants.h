@@ -31,6 +31,8 @@ namespace QmlProjectManager {
 namespace Constants {
 
 const char * const QMLPROJECT_MIMETYPE = QmlJSTools::Constants::QMLPROJECT_MIMETYPE;
+const char customFileSelectorsData[] = "CustomFileSelectorsData";
+const char customForceFreeTypeData[] = "CustomForceFreeType";
 
 } // namespace Constants
 } // namespace QmlProjectManager

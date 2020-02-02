@@ -58,7 +58,7 @@ public:
 
     QWidget *outputWidget(QWidget *) override;
     QList<QWidget *> toolBarWidgets() const override;
-    QString displayName() const override { return tr("Debugger Console"); }
+    QString displayName() const override { return tr("QML Debugger Console"); }
     int priorityInStatusBar() const override;
     void clearContents() override;
     void visibilityChanged(bool visible) override;
@@ -100,7 +100,6 @@ private:
 };
 
 Console *debuggerConsole();
-void destroyDebuggerConsole();
 
 } // namespace Internal
 } // namespace Debugger

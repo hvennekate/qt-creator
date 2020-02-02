@@ -28,41 +28,183 @@
 #include "buildprogress.h"
 #include "buildsteplist.h"
 #include "compileoutputwindow.h"
+#include "deployconfiguration.h"
 #include "kit.h"
+#include "kitinformation.h"
 #include "project.h"
 #include "projectexplorer.h"
 #include "projectexplorersettings.h"
+#include "runcontrol.h"
+#include "session.h"
 #include "target.h"
 #include "task.h"
-#include "taskwindow.h"
 #include "taskhub.h"
+#include "taskwindow.h"
+#include "waitforstopdialog.h"
 
 #include <coreplugin/icore.h>
-#include <coreplugin/progressmanager/progressmanager.h>
 #include <coreplugin/progressmanager/futureprogress.h>
-#include <projectexplorer/session.h>
+#include <coreplugin/progressmanager/progressmanager.h>
 #include <extensionsystem/pluginmanager.h>
-
-#include <QPointer>
-#include <QTime>
-#include <QTimer>
-#include <QList>
-#include <QHash>
-#include <QFutureWatcher>
-#include <QElapsedTimer>
-
 #include <utils/runextensions.h>
 
 #include <QApplication>
+#include <QElapsedTimer>
+#include <QFutureWatcher>
+#include <QHash>
+#include <QList>
+#include <QMessageBox>
+#include <QPointer>
+#include <QTime>
+#include <QTimer>
 
 using namespace Core;
 
 namespace ProjectExplorer {
+using namespace Internal;
 
 static QString msgProgress(int progress, int total)
 {
     return BuildManager::tr("Finished %1 of %n steps", nullptr, total).arg(progress);
 }
+
+static const QList<Target *> targetsForSelection(const Project *project,
+                                                 ConfigSelection targetSelection)
+{
+    if (targetSelection == ConfigSelection::All)
+        return project->targets();
+    return {project->activeTarget()};
+}
+
+static const QList<BuildConfiguration *> buildConfigsForSelection(const Target *target,
+                                                                  ConfigSelection configSelection)
+{
+    if (configSelection == ConfigSelection::All)
+        return target->buildConfigurations();
+    else if (target->activeBuildConfiguration())
+        return {target->activeBuildConfiguration()};
+    return {};
+}
+
+static int queue(const QList<Project *> &projects, const QList<Id> &stepIds,
+                 ConfigSelection configSelection, const RunConfiguration *forRunConfig = nullptr)
+{
+    if (!ProjectExplorerPlugin::saveModifiedFiles())
+        return -1;
+
+    const ProjectExplorerSettings &settings = ProjectExplorerPlugin::projectExplorerSettings();
+    if (settings.stopBeforeBuild != StopBeforeBuild::None
+            && stepIds.contains(Constants::BUILDSTEPS_BUILD)) {
+        StopBeforeBuild stopCondition = settings.stopBeforeBuild;
+        if (stopCondition == StopBeforeBuild::SameApp && !forRunConfig)
+            stopCondition = StopBeforeBuild::SameBuildDir;
+        const auto isStoppableRc = [&projects, stopCondition, configSelection, forRunConfig](RunControl *rc) {
+            if (!rc->isRunning())
+                return false;
+
+            switch (stopCondition) {
+            case StopBeforeBuild::None:
+                return false;
+            case StopBeforeBuild::All:
+                return true;
+            case StopBeforeBuild::SameProject:
+                return projects.contains(rc->project());
+            case StopBeforeBuild::SameBuildDir:
+                return Utils::contains(projects, [rc, configSelection](Project *p) {
+                    IDevice::ConstPtr device = rc->runnable().device;
+                    for (const Target * const t : targetsForSelection(p, configSelection)) {
+                        if (device.isNull())
+                            device = DeviceKitAspect::device(t->kit());
+                        if (device.isNull() || device->type() != Constants::DESKTOP_DEVICE_TYPE)
+                            continue;
+                        for (const BuildConfiguration * const bc
+                             : buildConfigsForSelection(t, configSelection)) {
+                            if (rc->runnable().executable.isChildOf(bc->buildDirectory()))
+                                return true;
+                        }
+                    }
+                    return false;
+                });
+            case StopBeforeBuild::SameApp:
+                QTC_ASSERT(forRunConfig, return false);
+                return forRunConfig->buildTargetInfo().targetFilePath
+                        == rc->targetFilePath();
+            }
+            return false; // Can't get here!
+        };
+        const QList<RunControl *> toStop
+                = Utils::filtered(ProjectExplorerPlugin::allRunControls(), isStoppableRc);
+
+        if (!toStop.isEmpty()) {
+            bool stopThem = true;
+            if (settings.prompToStopRunControl) {
+                QStringList names = Utils::transform(toStop, &RunControl::displayName);
+                if (QMessageBox::question(ICore::mainWindow(),
+                        BuildManager::tr("Stop Applications"),
+                        BuildManager::tr("Stop these applications before building?")
+                        + "\n\n" + names.join('\n'))
+                        == QMessageBox::No) {
+                    stopThem = false;
+                }
+            }
+
+            if (stopThem) {
+                foreach (RunControl *rc, toStop)
+                    rc->initiateStop();
+
+                WaitForStopDialog dialog(toStop);
+                dialog.exec();
+
+                if (dialog.canceled())
+                    return -1;
+            }
+        }
+    }
+
+    QList<BuildStepList *> stepLists;
+    QStringList preambleMessage;
+
+    foreach (Project *pro, projects) {
+        if (pro && pro->needsConfiguration()) {
+            preambleMessage.append(
+                        BuildManager::tr("The project %1 is not configured, skipping it.")
+                        .arg(pro->displayName()) + QLatin1Char('\n'));
+        }
+    }
+    foreach (Id id, stepIds) {
+        const bool isBuild = id == Constants::BUILDSTEPS_BUILD;
+        const bool isClean = id == Constants::BUILDSTEPS_CLEAN;
+        const bool isDeploy = id == Constants::BUILDSTEPS_DEPLOY;
+        foreach (Project *pro, projects) {
+            if (!pro || pro->needsConfiguration())
+                continue;
+            BuildStepList *bsl = nullptr;
+            for (const Target * target : targetsForSelection(pro, configSelection)) {
+                if (isBuild || isClean) {
+                    for (const BuildConfiguration * const bc
+                         : buildConfigsForSelection(target, configSelection)) {
+                        bsl = isBuild ? bc->buildSteps() : bc->cleanSteps();
+                        if (bsl && !bsl->isEmpty())
+                            stepLists << bsl;
+                    }
+                    continue;
+                }
+                if (isDeploy && target->activeDeployConfiguration())
+                    bsl = target->activeDeployConfiguration()->stepList();
+                if (bsl && !bsl->isEmpty())
+                    stepLists << bsl;
+            }
+        }
+    }
+
+    if (stepLists.isEmpty())
+        return 0;
+
+    if (!BuildManager::buildLists(stepLists, preambleMessage))
+        return -1;
+    return stepLists.count();
+}
+
 
 class BuildManagerPrivate
 {
@@ -76,12 +218,13 @@ public:
     int m_progress = 0;
     int m_maxProgress = 0;
     bool m_running = false;
+    bool m_isDeploying = false;
     // is set to true while canceling, so that nextBuildStep knows that the BuildStep finished because of canceling
     bool m_skipDisabled = false;
     bool m_canceling = false;
-    QFutureWatcher<bool> m_watcher;
-    QFutureInterface<bool> m_futureInterfaceForAysnc;
-    BuildStep *m_currentBuildStep;
+    bool m_lastStepSucceeded = true;
+    bool m_allStepsSucceeded = true;
+    BuildStep *m_currentBuildStep = nullptr;
     QString m_currentConfiguration;
     // used to decide if we are building a project to decide when to emit buildStateChanged(Project *)
     QHash<Project *, int>  m_activeBuildSteps;
@@ -106,16 +249,6 @@ BuildManager::BuildManager(QObject *parent, QAction *cancelBuildAction)
     QTC_CHECK(!m_instance);
     m_instance = this;
     d = new BuildManagerPrivate;
-
-    connect(&d->m_watcher, &QFutureWatcherBase::finished,
-            this, &BuildManager::nextBuildQueue, Qt::QueuedConnection);
-
-    connect(&d->m_watcher, &QFutureWatcherBase::progressValueChanged,
-            this, &BuildManager::progressChanged);
-    connect(&d->m_watcher, &QFutureWatcherBase::progressTextChanged,
-            this, &BuildManager::progressTextChanged);
-    connect(&d->m_watcher, &QFutureWatcherBase::progressRangeChanged,
-            this, &BuildManager::progressChanged);
 
     connect(SessionManager::instance(), &SessionManager::aboutToRemoveProject,
             this, &BuildManager::aboutToRemoveProject);
@@ -154,6 +287,104 @@ void BuildManager::extensionsInitialized()
                          tr("Build System", "Category for build system issues listed under 'Issues'"));
     TaskHub::addCategory(Constants::TASK_CATEGORY_DEPLOYMENT,
                          tr("Deployment", "Category for deployment issues listed under 'Issues'"));
+    TaskHub::addCategory(Constants::TASK_CATEGORY_AUTOTEST,
+                         tr("Autotests", "Category for autotest issues listed under 'Issues'"));
+}
+
+void BuildManager::buildProjectWithoutDependencies(Project *project)
+{
+    queue({project}, {Id(Constants::BUILDSTEPS_BUILD)}, ConfigSelection::Active);
+}
+
+void BuildManager::cleanProjectWithoutDependencies(Project *project)
+{
+    queue({project}, {Id(Constants::BUILDSTEPS_CLEAN)}, ConfigSelection::Active);
+}
+
+void BuildManager::rebuildProjectWithoutDependencies(Project *project)
+{
+    queue({project}, {Id(Constants::BUILDSTEPS_CLEAN), Id(Constants::BUILDSTEPS_BUILD)},
+          ConfigSelection::Active);
+}
+
+void BuildManager::buildProjectWithDependencies(Project *project, ConfigSelection configSelection)
+{
+    queue(SessionManager::projectOrder(project), {Id(Constants::BUILDSTEPS_BUILD)},
+          configSelection);
+}
+
+void BuildManager::cleanProjectWithDependencies(Project *project, ConfigSelection configSelection)
+{
+    queue(SessionManager::projectOrder(project), {Id(Constants::BUILDSTEPS_CLEAN)},
+          configSelection);
+}
+
+void BuildManager::rebuildProjectWithDependencies(Project *project, ConfigSelection configSelection)
+{
+    queue(SessionManager::projectOrder(project),
+          {Id(Constants::BUILDSTEPS_CLEAN), Id(Constants::BUILDSTEPS_BUILD)},
+          configSelection);
+}
+
+void BuildManager::buildProjects(const QList<Project *> &projects, ConfigSelection configSelection)
+{
+    queue(projects, {Id(Constants::BUILDSTEPS_BUILD)}, configSelection);
+}
+
+void BuildManager::cleanProjects(const QList<Project *> &projects, ConfigSelection configSelection)
+{
+    queue(projects, {Id(Constants::BUILDSTEPS_CLEAN)}, configSelection);
+}
+
+void BuildManager::rebuildProjects(const QList<Project *> &projects,
+                                   ConfigSelection configSelection)
+{
+    queue(projects, {Id(Constants::BUILDSTEPS_CLEAN), Id(Constants::BUILDSTEPS_BUILD)},
+          configSelection);
+}
+
+void BuildManager::deployProjects(const QList<Project *> &projects)
+{
+    QList<Id> steps;
+    if (ProjectExplorerPlugin::projectExplorerSettings().buildBeforeDeploy != BuildBeforeRunMode::Off)
+        steps << Id(Constants::BUILDSTEPS_BUILD);
+    steps << Id(Constants::BUILDSTEPS_DEPLOY);
+    queue(projects, steps, ConfigSelection::Active);
+}
+
+BuildForRunConfigStatus BuildManager::potentiallyBuildForRunConfig(RunConfiguration *rc)
+{
+    QList<Id> stepIds;
+    const ProjectExplorerSettings &settings = ProjectExplorerPlugin::projectExplorerSettings();
+    if (settings.deployBeforeRun) {
+        if (!isBuilding()) {
+            switch (settings.buildBeforeDeploy) {
+            case BuildBeforeRunMode::AppOnly:
+                if (rc->target()->activeBuildConfiguration())
+                    rc->target()->activeBuildConfiguration()->restrictNextBuild(rc);
+                Q_FALLTHROUGH();
+            case BuildBeforeRunMode::WholeProject:
+                stepIds << Id(Constants::BUILDSTEPS_BUILD);
+                break;
+            case BuildBeforeRunMode::Off:
+                break;
+            }
+        }
+        if (!isDeploying())
+            stepIds << Id(Constants::BUILDSTEPS_DEPLOY);
+    }
+
+    Project * const pro = rc->target()->project();
+    const int queueCount = queue(SessionManager::projectOrder(pro), stepIds,
+                                 ConfigSelection::Active, rc);
+    if (rc->target()->activeBuildConfiguration())
+        rc->target()->activeBuildConfiguration()->restrictNextBuild(nullptr);
+
+    if (queueCount < 0)
+        return BuildForRunConfigStatus::BuildFailed;
+    if (queueCount > 0 || isBuilding(rc->project()))
+        return BuildForRunConfigStatus::Building;
+    return BuildForRunConfigStatus::NotBuilding;
 }
 
 BuildManager::~BuildManager()
@@ -188,6 +419,11 @@ bool BuildManager::isBuilding()
     return !d->m_buildQueue.isEmpty() || d->m_running;
 }
 
+bool BuildManager::isDeploying()
+{
+    return d->m_isDeploying;
+}
+
 int BuildManager::getErrorTaskCount()
 {
     const int errors =
@@ -197,20 +433,23 @@ int BuildManager::getErrorTaskCount()
     return errors;
 }
 
+void BuildManager::setCompileOutputSettings(const Internal::CompileOutputSettings &settings)
+{
+    d->m_outputWindow->setSettings(settings);
+}
+
+const Internal::CompileOutputSettings &BuildManager::compileOutputSettings()
+{
+    return d->m_outputWindow->settings();
+}
+
 void BuildManager::cancel()
 {
     if (d->m_running) {
         if (d->m_canceling)
             return;
         d->m_canceling = true;
-        d->m_watcher.cancel();
-        if (d->m_currentBuildStep->runInGuiThread()) {
-            d->m_currentBuildStep->cancel();
-            while (d->m_canceling)
-                QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        } else {
-            d->m_watcher.waitForFinished();
-        }
+        d->m_currentBuildStep->cancel();
     }
 }
 
@@ -224,8 +463,8 @@ void BuildManager::updateTaskCount()
 void BuildManager::finish()
 {
     const QTime format = QTime(0, 0, 0, 0).addMSecs(d->m_elapsed.elapsed() + 500);
-    QString time = format.toString(QLatin1String("h:mm:ss"));
-    if (time.startsWith(QLatin1String("0:")))
+    QString time = format.toString("h:mm:ss");
+    if (time.startsWith("0:"))
         time.remove(0, 2); // Don't display zero hours
     m_instance->addToOutputWindow(tr("Elapsed time: %1.") .arg(time), BuildStep::OutputFormat::NormalMessage);
 
@@ -239,7 +478,7 @@ void BuildManager::emitCancelMessage()
 
 void BuildManager::clearBuildQueue()
 {
-    foreach (BuildStep *bs, d->m_buildQueue) {
+    for (BuildStep *bs : qAsConst(d->m_buildQueue)) {
         decrementActiveBuildSteps(bs);
         disconnectOutput(bs);
     }
@@ -248,6 +487,7 @@ void BuildManager::clearBuildQueue()
     d->m_buildQueue.clear();
     d->m_enabledState.clear();
     d->m_running = false;
+    d->m_isDeploying = false;
     d->m_previousBuildStepProject = nullptr;
     d->m_currentBuildStep = nullptr;
 
@@ -311,6 +551,7 @@ void BuildManager::startBuildQueue()
         d->m_progressFutureInterface->setProgressRange(0, d->m_maxProgress * 100);
 
         d->m_running = true;
+        d->m_allStepsSucceeded = true;
         d->m_progressFutureInterface->reportStarted();
         nextStep();
     } else {
@@ -342,18 +583,16 @@ void BuildManager::addToOutputWindow(const QString &string, BuildStep::OutputFor
     QString stringToWrite;
     if (format == BuildStep::OutputFormat::NormalMessage || format == BuildStep::OutputFormat::ErrorMessage) {
         stringToWrite = QTime::currentTime().toString();
-        stringToWrite += QLatin1String(": ");
+        stringToWrite += ": ";
     }
     stringToWrite += string;
     if (newlineSettings == BuildStep::DoAppendNewline)
-        stringToWrite += QLatin1Char('\n');
+        stringToWrite += '\n';
     d->m_outputWindow->appendText(stringToWrite, format);
 }
 
 void BuildManager::nextBuildQueue()
 {
-    d->m_futureInterfaceForAysnc = QFutureInterface<bool>();
-
     d->m_outputWindow->flush();
     if (d->m_canceling) {
         d->m_canceling = false;
@@ -375,50 +614,51 @@ void BuildManager::nextBuildQueue()
     d->m_progressFutureInterface->setProgressValueAndText(d->m_progress*100, msgProgress(d->m_progress, d->m_maxProgress));
     decrementActiveBuildSteps(d->m_currentBuildStep);
 
-    const bool success = d->m_skipDisabled || d->m_watcher.result();
+    const bool success = d->m_skipDisabled || d->m_lastStepSucceeded;
     if (success) {
         nextStep();
     } else {
         // Build Failure
+        d->m_allStepsSucceeded = false;
         Target *t = d->m_currentBuildStep->target();
         const QString projectName = d->m_currentBuildStep->project()->displayName();
         const QString targetName = t->displayName();
         addToOutputWindow(tr("Error while building/deploying project %1 (kit: %2)").arg(projectName, targetName), BuildStep::OutputFormat::Stderr);
-        const QList<Task> kitTasks = t->kit()->validate();
+        const Tasks kitTasks = t->kit()->validate();
         if (!kitTasks.isEmpty()) {
             addToOutputWindow(tr("The kit %1 has configuration issues which might be the root cause for this problem.")
                               .arg(targetName), BuildStep::OutputFormat::Stderr);
         }
         addToOutputWindow(tr("When executing step \"%1\"").arg(d->m_currentBuildStep->displayName()), BuildStep::OutputFormat::Stderr);
-        // NBS TODO fix in qtconcurrent
-        d->m_progressFutureInterface->setProgressValueAndText(d->m_progress*100, tr("Error while building/deploying project %1 (kit: %2)").arg(projectName, targetName));
 
-        clearBuildQueue();
+        bool abort = ProjectExplorerPlugin::projectExplorerSettings().abortBuildAllOnError;
+        if (!abort) {
+            while (!d->m_buildQueue.isEmpty()
+                   && d->m_buildQueue.front()->target() == t) {
+                BuildStep * const nextStepForFailedTarget = d->m_buildQueue.takeFirst();
+                disconnectOutput(nextStepForFailedTarget);
+                decrementActiveBuildSteps(nextStepForFailedTarget);
+            }
+            if (d->m_buildQueue.isEmpty())
+                abort = true;
+        }
+
+        if (abort) {
+            // NBS TODO fix in qtconcurrent
+            d->m_progressFutureInterface->setProgressValueAndText(d->m_progress * 100,
+                    tr("Error while building/deploying project %1 (kit: %2)")
+                        .arg(projectName, targetName));
+            clearBuildQueue();
+        } else {
+            nextStep();
+        }
     }
 }
 
-void BuildManager::progressChanged()
+void BuildManager::progressChanged(int percent, const QString &text)
 {
-    if (!d->m_progressFutureInterface)
-        return;
-    int range = d->m_watcher.progressMaximum() - d->m_watcher.progressMinimum();
-    if (range != 0) {
-        int percent = (d->m_watcher.progressValue() - d->m_watcher.progressMinimum()) * 100 / range;
-        d->m_progressFutureInterface->setProgressValueAndText(d->m_progress * 100 + percent, msgProgress(d->m_progress, d->m_maxProgress)
-                                                              + QLatin1Char('\n') + d->m_watcher.progressText());
-    }
-}
-
-void BuildManager::progressTextChanged()
-{
-    if (!d->m_progressFutureInterface)
-        return;
-    int range = d->m_watcher.progressMaximum() - d->m_watcher.progressMinimum();
-    int percent = 0;
-    if (range != 0)
-        percent = (d->m_watcher.progressValue() - d->m_watcher.progressMinimum()) * 100 / range;
-    d->m_progressFutureInterface->setProgressValueAndText(d->m_progress*100 + percent, msgProgress(d->m_progress, d->m_maxProgress) +
-                                                          QLatin1Char('\n') + d->m_watcher.progressText());
+    if (d->m_progressFutureInterface)
+        d->m_progressFutureInterface->setProgressValueAndText(percent, text);
 }
 
 void BuildManager::nextStep()
@@ -445,14 +685,19 @@ void BuildManager::nextStep()
             return;
         }
 
-        if (d->m_currentBuildStep->runInGuiThread()) {
-            d->m_watcher.setFuture(d->m_futureInterfaceForAysnc.future());
-            d->m_currentBuildStep->run(d->m_futureInterfaceForAysnc);
-        } else {
-            d->m_watcher.setFuture(Utils::runAsync(&BuildStep::run, d->m_currentBuildStep));
-        }
+        static const auto finishedHandler = [](bool success)  {
+            d->m_lastStepSucceeded = success;
+            disconnect(d->m_currentBuildStep, nullptr, instance(), nullptr);
+            BuildManager::nextBuildQueue();
+        };
+        connect(d->m_currentBuildStep, &BuildStep::finished, instance(), finishedHandler,
+                Qt::QueuedConnection);
+        connect(d->m_currentBuildStep, &BuildStep::progress,
+                instance(), &BuildManager::progressChanged);
+        d->m_currentBuildStep->run();
     } else {
         d->m_running = false;
+        d->m_isDeploying = false;
         d->m_previousBuildStepProject = nullptr;
         d->m_progressFutureInterface->reportFinished();
         d->m_progressWatcher.setFuture(QFuture<void>());
@@ -460,7 +705,7 @@ void BuildManager::nextStep()
         delete d->m_progressFutureInterface;
         d->m_progressFutureInterface = nullptr;
         d->m_maxProgress = 0;
-        emit m_instance->buildQueueFinished(true);
+        emit m_instance->buildQueueFinished(d->m_allStepsSucceeded);
     }
 }
 
@@ -468,15 +713,17 @@ bool BuildManager::buildQueueAppend(const QList<BuildStep *> &steps, QStringList
 {
     if (!d->m_running) {
         d->m_outputWindow->clearContents();
-        TaskHub::clearTasks(Constants::TASK_CATEGORY_COMPILE);
-        TaskHub::clearTasks(Constants::TASK_CATEGORY_BUILDSYSTEM);
-        TaskHub::clearTasks(Constants::TASK_CATEGORY_DEPLOYMENT);
+        if (ProjectExplorerPlugin::projectExplorerSettings().clearIssuesOnRebuild) {
+            TaskHub::clearTasks(Constants::TASK_CATEGORY_COMPILE);
+            TaskHub::clearTasks(Constants::TASK_CATEGORY_BUILDSYSTEM);
+            TaskHub::clearTasks(Constants::TASK_CATEGORY_DEPLOYMENT);
+            TaskHub::clearTasks(Constants::TASK_CATEGORY_AUTOTEST);
+        }
 
-        foreach (const QString &str, preambleMessage)
+        for (const QString &str : preambleMessage)
             addToOutputWindow(str, BuildStep::OutputFormat::NormalMessage, BuildStep::DontAppendNewline);
     }
 
-    QList<const BuildStep *> earlierSteps;
     int count = steps.size();
     bool init = true;
     int i = 0;
@@ -485,10 +732,9 @@ bool BuildManager::buildQueueAppend(const QList<BuildStep *> &steps, QStringList
         connect(bs, &BuildStep::addTask, m_instance, &BuildManager::addToTaskWindow);
         connect(bs, &BuildStep::addOutput, m_instance, &BuildManager::addToOutputWindow);
         if (bs->enabled()) {
-            init = bs->init(earlierSteps);
+            init = bs->init();
             if (!init)
                 break;
-            earlierSteps.append(bs);
         }
     }
     if (!init) {
@@ -525,13 +771,14 @@ bool BuildManager::buildList(BuildStepList *bsl)
     return buildLists({bsl});
 }
 
-bool BuildManager::buildLists(QList<BuildStepList *> bsls, const QStringList &preambelMessage)
+bool BuildManager::buildLists(const QList<BuildStepList *> bsls, const QStringList &preambelMessage)
 {
     QList<BuildStep *> steps;
     QStringList stepListNames;
-    foreach (BuildStepList *list, bsls) {
+    for (BuildStepList *list : bsls) {
         steps.append(list->steps());
         stepListNames.append(ProjectExplorerPlugin::displayNameForStepId(list->id()));
+        d->m_isDeploying = d->m_isDeploying || list->id() == Constants::BUILDSTEPS_DEPLOY;
     }
 
     QStringList names;
@@ -547,7 +794,7 @@ bool BuildManager::buildLists(QList<BuildStepList *> bsls, const QStringList &pr
         return false;
     }
 
-    if (ProjectExplorerPlugin::projectExplorerSettings().showCompilerOutput)
+    if (d->m_outputWindow->settings().popUp)
         d->m_outputWindow->popup(IOutputPane::NoModeSwitch);
     startBuildQueue();
     return true;
@@ -555,12 +802,12 @@ bool BuildManager::buildLists(QList<BuildStepList *> bsls, const QStringList &pr
 
 void BuildManager::appendStep(BuildStep *step, const QString &name)
 {
-    bool success = buildQueueAppend(QList<BuildStep *>() << step, QStringList() << name);
+    bool success = buildQueueAppend({step}, {name});
     if (!success) {
         d->m_outputWindow->popup(IOutputPane::NoModeSwitch);
         return;
     }
-    if (ProjectExplorerPlugin::projectExplorerSettings().showCompilerOutput)
+    if (d->m_outputWindow->settings().popUp)
         d->m_outputWindow->popup(IOutputPane::NoModeSwitch);
     startBuildQueue();
 }

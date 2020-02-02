@@ -63,13 +63,13 @@ QWidget *NimCodeStylePreferencesFactory::createEditor(TextEditor::ICodeStylePref
                                                       QWidget *parent) const
 {
     auto result = new NimCodeStylePreferencesWidget(preferences, parent);
-    result->layout()->setMargin(0);
+    result->layout()->setContentsMargins(0, 0, 0, 0);
     return result;
 }
 
-TextEditor::Indenter *NimCodeStylePreferencesFactory::createIndenter() const
+TextEditor::Indenter *NimCodeStylePreferencesFactory::createIndenter(QTextDocument *doc) const
 {
-    return new NimIndenter();
+    return new NimIndenter(doc);
 }
 
 QString NimCodeStylePreferencesFactory::snippetProviderGroupId() const

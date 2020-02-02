@@ -24,10 +24,11 @@
 ****************************************************************************/
 
 #include "docsettingspage.h"
+
 #include "helpconstants.h"
 #include "helpmanager.h"
+#include "ui_docsettingspage.h"
 
-#include <coreplugin/helpmanager.h>
 #include <utils/algorithm.h>
 
 #include <QFileDialog>
@@ -66,12 +67,13 @@ static DocEntry createEntry(const QString &nameSpace, const QString &fileName, b
     return result;
 }
 
-class DocModel : public QAbstractListModel {
+class DocModel : public QAbstractListModel
+{
 public:
     using DocEntries = QVector<DocEntry>;
 
-    explicit DocModel(const DocEntries &e = DocEntries(), QObject *parent = nullptr)
-        : QAbstractListModel(parent), m_docEntries(e) {}
+    DocModel() = default;
+    void setEntries(const DocEntries &e) { m_docEntries = e; }
 
     int rowCount(const QModelIndex & = QModelIndex()) const override { return m_docEntries.size(); }
     QVariant data(const QModelIndex &index, int role) const override;
@@ -124,25 +126,24 @@ void DocModel::removeAt(int row)
 }
 
 } // namespace Internal
-} // namespace Help
 
 using namespace Help::Internal;
 
-DocSettingsPage::DocSettingsPage()
+class DocSettingsPageWidget : public Core::IOptionsPageWidget
 {
-    setId("B.Documentation");
-    setDisplayName(tr("Documentation"));
-    setCategory(Help::Constants::HELP_CATEGORY);
-}
+    Q_DECLARE_TR_FUNCTIONS(Help::DocSettingsPage)
 
-QWidget *DocSettingsPage::widget()
-{
-    if (!m_widget) {
+public:
+    DocSettingsPageWidget()
+    {
+        m_ui.setupUi(this);
+
         const QStringList nameSpaces = HelpManager::registeredNamespaces();
         const QSet<QString> userDocumentationPaths = HelpManager::userDocumentationPaths();
+
         DocModel::DocEntries entries;
         entries.reserve(nameSpaces.size());
-        foreach (const QString &nameSpace, nameSpaces) {
+        for (const QString &nameSpace : nameSpaces) {
             const QString filePath = HelpManager::fileFromNamespace(nameSpace);
             bool user = userDocumentationPaths.contains(filePath);
             entries.append(createEntry(nameSpace, filePath, user));
@@ -150,29 +151,45 @@ QWidget *DocSettingsPage::widget()
             m_filesToRegisterUserManaged.insert(nameSpace, user);
         }
         std::stable_sort(entries.begin(), entries.end());
+        m_model.setEntries(entries);
 
-        m_filesToUnregister.clear();
-
-        m_widget = new QWidget;
-        m_ui.setupUi(m_widget);
-        m_model = new DocModel(entries, m_ui.docsListView);
-        m_proxyModel = new QSortFilterProxyModel(m_ui.docsListView);
-        m_proxyModel->setSourceModel(m_model);
-        m_ui.docsListView->setModel(m_proxyModel);
+        m_proxyModel.setSourceModel(&m_model);
+        m_ui.docsListView->setModel(&m_proxyModel);
         m_ui.filterLineEdit->setFiltering(true);
         connect(m_ui.filterLineEdit, &QLineEdit::textChanged,
-                m_proxyModel, &QSortFilterProxyModel::setFilterFixedString);
+                &m_proxyModel, &QSortFilterProxyModel::setFilterFixedString);
 
-        connect(m_ui.addButton, &QAbstractButton::clicked, this, &DocSettingsPage::addDocumentation);
+        connect(m_ui.addButton, &QAbstractButton::clicked, this, &DocSettingsPageWidget::addDocumentation);
         connect(m_ui.removeButton, &QAbstractButton::clicked, this,
                 [this] () { removeDocumentation(currentSelection()); });
 
         m_ui.docsListView->installEventFilter(this);
     }
-    return m_widget;
-}
 
-void DocSettingsPage::addDocumentation()
+private:
+    void apply() final;
+
+    void addDocumentation();
+
+    bool eventFilter(QObject *object, QEvent *event) final;
+    void removeDocumentation(const QList<QModelIndex> &items);
+
+    QList<QModelIndex> currentSelection() const;
+
+    Ui::DocSettingsPage m_ui;
+
+    QString m_recentDialogPath;
+
+    using NameSpaceToPathHash = QHash<QString, QString>;
+    NameSpaceToPathHash m_filesToRegister;
+    QHash<QString, bool> m_filesToRegisterUserManaged;
+    NameSpaceToPathHash m_filesToUnregister;
+
+    QSortFilterProxyModel m_proxyModel;
+    DocModel m_model;
+};
+
+void DocSettingsPageWidget::addDocumentation()
 {
     const QStringList &files =
         QFileDialog::getOpenFileNames(m_ui.addButton->parentWidget(),
@@ -183,7 +200,7 @@ void DocSettingsPage::addDocumentation()
     m_recentDialogPath = QFileInfo(files.first()).canonicalPath();
 
     NameSpaceToPathHash docsUnableToRegister;
-    foreach (const QString &file, files) {
+    for (const QString &file : files) {
         const QString filePath = QDir::cleanPath(file);
         const QString &nameSpace = HelpManager::namespaceFromFile(filePath);
         if (nameSpace.isEmpty()) {
@@ -196,7 +213,7 @@ void DocSettingsPage::addDocumentation()
             continue;
         }
 
-        m_model->insertEntry(createEntry(nameSpace, file, true /* user managed */));
+        m_model.insertEntry(createEntry(nameSpace, file, true /* user managed */));
 
         m_filesToRegister.insert(nameSpace, filePath);
         m_filesToRegisterUserManaged.insert(nameSpace, true/*user managed*/);
@@ -210,7 +227,7 @@ void DocSettingsPage::addDocumentation()
         // file with the same namespace but a different path, we need to unregister the namespace before
         // we can register the new one. Help engine allows just one registered namespace.
         if (m_filesToUnregister.contains(nameSpace)) {
-            QSet<QString> values = m_filesToUnregister.values(nameSpace).toSet();
+            QSet<QString> values = Utils::toSet(m_filesToUnregister.values(nameSpace));
             values.remove(filePath);
             m_filesToUnregister.remove(nameSpace);
             foreach (const QString &value, values)
@@ -242,9 +259,9 @@ void DocSettingsPage::addDocumentation()
     }
 }
 
-void DocSettingsPage::apply()
+void DocSettingsPageWidget::apply()
 {
-    Core::HelpManager::unregisterDocumentation(m_filesToUnregister.keys());
+    HelpManager::unregisterNamespaces(m_filesToUnregister.keys());
     QStringList files;
     auto it = m_filesToRegisterUserManaged.constBegin();
     while (it != m_filesToRegisterUserManaged.constEnd()) {
@@ -257,15 +274,10 @@ void DocSettingsPage::apply()
     m_filesToUnregister.clear();
 }
 
-void DocSettingsPage::finish()
-{
-    delete m_widget;
-}
-
-bool DocSettingsPage::eventFilter(QObject *object, QEvent *event)
+bool DocSettingsPageWidget::eventFilter(QObject *object, QEvent *event)
 {
     if (object != m_ui.docsListView)
-        return IOptionsPage::eventFilter(object, event);
+        return IOptionsPageWidget::eventFilter(object, event);
 
     if (event->type() == QEvent::KeyPress) {
         auto ke = static_cast<const QKeyEvent*>(event);
@@ -277,10 +289,10 @@ bool DocSettingsPage::eventFilter(QObject *object, QEvent *event)
         }
     }
 
-    return IOptionsPage::eventFilter(object, event);
+    return IOptionsPageWidget::eventFilter(object, event);
 }
 
-void DocSettingsPage::removeDocumentation(const QList<QModelIndex> &items)
+void DocSettingsPageWidget::removeDocumentation(const QList<QModelIndex> &items)
 {
     if (items.isEmpty())
         return;
@@ -289,27 +301,34 @@ void DocSettingsPage::removeDocumentation(const QList<QModelIndex> &items)
     Utils::sort(itemsByDecreasingRow, [](const QModelIndex &i1, const QModelIndex &i2) {
         return i1.row() > i2.row();
     });
-    foreach (const QModelIndex &item, itemsByDecreasingRow) {
+    for (const QModelIndex &item : qAsConst(itemsByDecreasingRow)) {
         const int row = item.row();
-        const QString nameSpace = m_model->entryAt(row).nameSpace;
+        const QString nameSpace = m_model.entryAt(row).nameSpace;
 
         m_filesToRegister.remove(nameSpace);
         m_filesToRegisterUserManaged.remove(nameSpace);
         m_filesToUnregister.insertMulti(nameSpace, QDir::cleanPath(HelpManager::fileFromNamespace(nameSpace)));
 
-        m_model->removeAt(row);
+        m_model.removeAt(row);
     }
 
     const int newlySelectedRow = qMax(itemsByDecreasingRow.last().row() - 1, 0);
-    const QModelIndex index = m_proxyModel->mapFromSource(m_model->index(newlySelectedRow));
+    const QModelIndex index = m_proxyModel.mapFromSource(m_model.index(newlySelectedRow));
     m_ui.docsListView->selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
 }
 
-QList<QModelIndex> DocSettingsPage::currentSelection() const
+QList<QModelIndex> DocSettingsPageWidget::currentSelection() const
 {
-    QModelIndexList result;
-    Q_ASSERT(!m_widget.isNull());
-    foreach (const QModelIndex &index, m_ui.docsListView->selectionModel()->selectedRows())
-        result.append(m_proxyModel->mapToSource(index));
-    return result;
+    return Utils::transform(m_ui.docsListView->selectionModel()->selectedRows(),
+            [this](const QModelIndex &index) { return m_proxyModel.mapToSource(index); });
 }
+
+DocSettingsPage::DocSettingsPage()
+{
+    setId("B.Documentation");
+    setDisplayName(DocSettingsPageWidget::tr("Documentation"));
+    setCategory(Help::Constants::HELP_CATEGORY);
+    setWidgetCreator([] { return new DocSettingsPageWidget; });
+}
+
+} // namespace Help

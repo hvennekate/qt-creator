@@ -37,16 +37,21 @@ CppTools::CppModelManager *cppModelManager()
     return CppTools::CppModelManager::instance();
 }
 
-std::vector<ClangBackEnd::V2::FileContainer> createGeneratedFiles()
+std::vector<ClangBackEnd::V2::FileContainer> createGeneratedFiles(
+    ClangBackEnd::FilePathCachingInterface &filePathCache)
 {
     auto abstractEditors = CppTools::CppModelManager::instance()->abstractEditorSupports();
     std::vector<ClangBackEnd::V2::FileContainer> generatedFiles;
     generatedFiles.reserve(std::size_t(abstractEditors.size()));
 
-    auto toFileContainer = [] (const CppTools::AbstractEditorSupport *abstractEditor) {
-        return  ClangBackEnd::V2::FileContainer(ClangBackEnd::FilePath(abstractEditor->fileName()),
-                                                Utils::SmallString::fromQByteArray(abstractEditor->contents()),
-                                                {});
+    auto toFileContainer = [&](const CppTools::AbstractEditorSupport *abstractEditor) {
+        ClangBackEnd::FilePath filePath{abstractEditor->fileName()};
+        ClangBackEnd::FilePathId filePathId = filePathCache.filePathId(filePath);
+        return ClangBackEnd::V2::FileContainer(std::move(filePath),
+                                               filePathId,
+                                               Utils::SmallString::fromQByteArray(
+                                                   abstractEditor->contents()),
+                                               {});
     };
 
     std::transform(abstractEditors.begin(),
@@ -60,17 +65,28 @@ std::vector<ClangBackEnd::V2::FileContainer> createGeneratedFiles()
 }
 }
 
-QtCreatorRefactoringProjectUpdater::QtCreatorRefactoringProjectUpdater(ClangBackEnd::ProjectManagementServerInterface &server,
-                                                                       ClangPchManager::PchManagerClient &pchManagerClient,
-                                                                       ClangBackEnd::FilePathCachingInterface &filePathCache)
-    : RefactoringProjectUpdater(server, pchManagerClient, *cppModelManager(), filePathCache)
+QtCreatorRefactoringProjectUpdater::QtCreatorRefactoringProjectUpdater(
+    ClangBackEnd::ProjectManagementServerInterface &server,
+    ClangPchManager::PchManagerClient &pchManagerClient,
+    ClangBackEnd::FilePathCachingInterface &filePathCache,
+    ClangBackEnd::ProjectPartsStorageInterface &projectPartsStorage,
+    ClangPchManager::ClangIndexingSettingsManager &settingsManager)
+    : RefactoringProjectUpdater(server,
+                                pchManagerClient,
+                                *cppModelManager(),
+                                filePathCache,
+                                projectPartsStorage,
+                                settingsManager)
 {
     connectToCppModelManager();
 }
 
-void QtCreatorRefactoringProjectUpdater::abstractEditorUpdated(const QString &filePath, const QByteArray &contents)
+void QtCreatorRefactoringProjectUpdater::abstractEditorUpdated(const QString &qFilePath,
+                                                               const QByteArray &contents)
 {
-    RefactoringProjectUpdater::updateGeneratedFiles({{ClangBackEnd::FilePath{filePath}, contents}});
+    ClangBackEnd::FilePath filePath{qFilePath};
+    ClangBackEnd::FilePathId filePathId = m_filePathCache.filePathId(filePath);
+    RefactoringProjectUpdater::updateGeneratedFiles({{std::move(filePath), filePathId, contents}});
 }
 
 void QtCreatorRefactoringProjectUpdater::abstractEditorRemoved(const QString &filePath)
@@ -80,11 +96,11 @@ void QtCreatorRefactoringProjectUpdater::abstractEditorRemoved(const QString &fi
 
 void QtCreatorRefactoringProjectUpdater::connectToCppModelManager()
 {
-    RefactoringProjectUpdater::updateGeneratedFiles(createGeneratedFiles());
+    RefactoringProjectUpdater::updateGeneratedFiles(createGeneratedFiles(m_filePathCache));
 
     QObject::connect(cppModelManager(),
                      &CppTools::CppModelManager::abstractEditorSupportContentsUpdated,
-                     [&] (const QString &filePath, const QByteArray &contents) {
+                     [&] (const QString &filePath, const QString &, const QByteArray &contents) {
         abstractEditorUpdated(filePath, contents);
     });
 

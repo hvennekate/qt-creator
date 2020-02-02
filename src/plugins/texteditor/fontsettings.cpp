@@ -28,6 +28,7 @@
 
 #include <utils/fileutils.h>
 #include <utils/hostosinfo.h>
+#include <utils/stringutils.h>
 #include <utils/theme/theme.h>
 #include <coreplugin/icore.h>
 
@@ -74,10 +75,14 @@ void FontSettings::clear()
     m_textCharFormatCache.clear();
 }
 
-void FontSettings::toSettings(const QString &category,
-                              QSettings *s) const
+static QString settingsGroup()
 {
-    s->beginGroup(category);
+    return Utils::settingsKey(TextEditor::Constants::TEXT_EDITOR_SETTINGS_CATEGORY);
+}
+
+void FontSettings::toSettings(QSettings *s) const
+{
+    s->beginGroup(settingsGroup());
     if (m_family != defaultFixedFontFamily() || s->contains(QLatin1String(fontFamilyKey)))
         s->setValue(QLatin1String(fontFamilyKey), m_family);
 
@@ -99,16 +104,14 @@ void FontSettings::toSettings(const QString &category,
     s->endGroup();
 }
 
-bool FontSettings::fromSettings(const QString &category,
-                                const FormatDescriptions &descriptions,
-                                const QSettings *s)
+bool FontSettings::fromSettings(const FormatDescriptions &descriptions, const QSettings *s)
 {
     clear();
 
-    if (!s->childGroups().contains(category))
+    QString group = settingsGroup();
+    if (!s->childGroups().contains(group))
         return false;
 
-    QString group = category;
     group += QLatin1Char('/');
 
     m_family = s->value(group + QLatin1String(fontFamilyKey), defaultFixedFontFamily()).toString();
@@ -143,6 +146,14 @@ uint qHash(const TextStyle &textStyle)
     return ::qHash(quint8(textStyle));
 }
 
+static bool isOverlayCategory(TextStyle category)
+{
+    return category == C_OCCURRENCES
+           || category == C_OCCURRENCES_RENAME
+           || category == C_SEARCH_RESULT
+           || category == C_PARENTHESES_MISMATCH;
+}
+
 /**
  * Returns the QTextCharFormat of the given format category.
  */
@@ -166,18 +177,18 @@ QTextCharFormat FontSettings::toTextCharFormat(TextStyle category) const
                                                   "Unused variable"));
     }
 
-    if (f.foreground().isValid()
-            && category != C_OCCURRENCES
-            && category != C_OCCURRENCES_RENAME
-            && category != C_SEARCH_RESULT
-            && category != C_PARENTHESES_MISMATCH)
+    if (f.foreground().isValid() && !isOverlayCategory(category))
         tf.setForeground(f.foreground());
-    if (f.background().isValid() && (category == C_TEXT || f.background() != m_scheme.formatFor(C_TEXT).background()))
-        tf.setBackground(f.background());
-
-    // underline does not need to fill without having background color
-    if (f.underlineStyle() != QTextCharFormat::NoUnderline && !f.background().isValid())
-        tf.setBackground(QBrush(Qt::BrushStyle::NoBrush));
+    if (f.background().isValid()) {
+        if (category == C_TEXT || f.background() != m_scheme.formatFor(C_TEXT).background())
+            tf.setBackground(f.background());
+    } else if (isOverlayCategory(category)) {
+        // overlays without a background schouldn't get painted
+        tf.setBackground(QColor());
+    } else if (f.underlineStyle() != QTextCharFormat::NoUnderline) {
+        // underline does not need to fill without having background color
+        tf.setBackground(Qt::BrushStyle::NoBrush);
+    }
 
     tf.setFontWeight(f.bold() ? QFont::Bold : QFont::Normal);
     tf.setFontItalic(f.italic());
@@ -406,12 +417,9 @@ bool FontSettings::loadColorScheme(const QString &fileName,
         if (!m_scheme.contains(id)) {
             Format format;
             const Format &descFormat = desc.format();
-            if (descFormat == format && m_scheme.contains(C_TEXT)) {
-                // Default format -> Text
-                const Format textFormat = m_scheme.formatFor(C_TEXT);
-                format.setForeground(textFormat.foreground());
-                format.setBackground(textFormat.background());
-            } else {
+            // Default fallback for background and foreground is C_TEXT, which is set through
+            // the editor's palette, i.e. we leave these as invalid colors in that case
+            if (descFormat != format || !m_scheme.contains(C_TEXT)) {
                 format.setForeground(descFormat.foreground());
                 format.setBackground(descFormat.background());
             }

@@ -29,6 +29,7 @@
 #include <projectexplorer/projectnodes.h>
 
 #include <coreplugin/generatedfile.h>
+#include <coreplugin/jsexpander.h>
 
 #include <utils/wizard.h>
 #include <utils/macroexpander.h>
@@ -37,7 +38,24 @@
 
 namespace ProjectExplorer {
 
+class JsonWizard;
 class JsonWizardGenerator;
+
+namespace Internal {
+
+class JsonWizardJsExtension : public QObject
+{
+    Q_OBJECT
+public:
+    JsonWizardJsExtension(JsonWizard *wizard);
+
+    Q_INVOKABLE QVariant value(const QString &name) const;
+
+private:
+    JsonWizard *m_wizard;
+};
+
+} // namespace Internal
 
 // Documentation inside.
 class PROJECTEXPLORER_EXPORT JsonWizard : public Utils::Wizard
@@ -47,7 +65,7 @@ class PROJECTEXPLORER_EXPORT JsonWizard : public Utils::Wizard
 public:
     class GeneratorFile {
     public:
-        GeneratorFile() : generator(nullptr) { }
+        GeneratorFile() = default;
         GeneratorFile(const Core::GeneratedFile &f, JsonWizardGenerator *g) :
             file(f), generator(g)
         { }
@@ -55,9 +73,9 @@ public:
         bool isValid() const { return generator; }
 
         Core::GeneratedFile file;
-        JsonWizardGenerator *generator;
+        JsonWizardGenerator *generator = nullptr;
     };
-    typedef QList<GeneratorFile> GeneratorFiles;
+    using GeneratorFiles = QList<GeneratorFile>;
     Q_PROPERTY(GeneratorFiles generateFileList READ generateFileList)
 
     explicit JsonWizard(QWidget *parent = nullptr);
@@ -126,6 +144,7 @@ private:
 
     GeneratorFiles m_files;
     Utils::MacroExpander m_expander;
+    Core::JsExpander m_jsExpander;
 };
 
 } // namespace ProjectExplorer

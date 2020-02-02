@@ -32,10 +32,15 @@
 #include "project.h"
 #include "target.h"
 
+#include <coreplugin/variablechooser.h>
+
 #include <utils/algorithm.h>
 #include <utils/qtcassert.h>
+#include <utils/runextensions.h>
 
 #include <QFormLayout>
+#include <QFutureWatcher>
+#include <QPointer>
 
 /*!
     \class ProjectExplorer::BuildStep
@@ -121,24 +126,44 @@ static QList<BuildStepFactory *> g_buildStepFactories;
 BuildStep::BuildStep(BuildStepList *bsl, Core::Id id) :
     ProjectConfiguration(bsl, id)
 {
+    QTC_CHECK(bsl->target() && bsl->target() == this->target());
     Utils::MacroExpander *expander = macroExpander();
     expander->setDisplayName(tr("Build Step"));
     expander->setAccumulating(true);
     expander->registerSubProvider([this] { return projectConfiguration()->macroExpander(); });
 }
 
+void BuildStep::run()
+{
+    m_cancelFlag = false;
+    doRun();
+}
+
+void BuildStep::cancel()
+{
+    m_cancelFlag = true;
+    doCancel();
+}
+
 BuildStepConfigWidget *BuildStep::createConfigWidget()
 {
     auto widget = new BuildStepConfigWidget(this);
 
-    auto formLayout = new QFormLayout(widget);
-    formLayout->setMargin(0);
-    formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-
-    for (ProjectConfigurationAspect *aspect : m_aspects) {
-        if (aspect->isVisible())
-            aspect->addToConfigurationLayout(formLayout);
+    {
+        LayoutBuilder builder(widget);
+        for (ProjectConfigurationAspect *aspect : m_aspects) {
+            if (aspect->isVisible())
+                aspect->addToLayout(builder.startNewRow());
+        }
     }
+
+    connect(buildConfiguration(), &BuildConfiguration::buildDirectoryChanged,
+            widget, &BuildStepConfigWidget::recreateSummary);
+
+    widget->setSummaryUpdater(m_summaryUpdater);
+
+    if (m_addMacroExpander)
+        Core::VariableChooser::addSupportForChildWidgets(widget, macroExpander());
 
     return widget;
 }
@@ -179,14 +204,11 @@ ProjectConfiguration *BuildStep::projectConfiguration() const
     return static_cast<ProjectConfiguration *>(parent()->parent());
 }
 
-Target *BuildStep::target() const
+BuildSystem *BuildStep::buildSystem() const
 {
-    return qobject_cast<Target *>(parent()->parent()->parent());
-}
-
-Project *BuildStep::project() const
-{
-    return target()->project();
+    if (auto bc = buildConfiguration())
+        return bc->buildSystem();
+    return target()->buildSystem();
 }
 
 void BuildStep::reportRunResult(QFutureInterface<bool> &fi, bool success)
@@ -210,6 +232,12 @@ void BuildStep::setWidgetExpandedByDefault(bool widgetExpandedByDefault)
     m_widgetExpandedByDefault = widgetExpandedByDefault;
 }
 
+QVariant BuildStep::data(Core::Id id) const
+{
+    Q_UNUSED(id)
+    return {};
+}
+
 /*!
   \fn BuildStep::isImmutable()
 
@@ -218,25 +246,42 @@ void BuildStep::setWidgetExpandedByDefault(bool widgetExpandedByDefault)
     immutable steps are run. The default implementation returns \c false.
 */
 
-bool BuildStep::runInGuiThread() const
+void BuildStep::runInThread(const std::function<bool()> &syncImpl)
 {
-    return m_runInGuiThread;
+    m_runInGuiThread = false;
+    m_cancelFlag = false;
+    auto * const watcher = new QFutureWatcher<bool>(this);
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
+        emit finished(watcher->result());
+        watcher->deleteLater();
+    });
+    watcher->setFuture(Utils::runAsync(syncImpl));
 }
 
-void BuildStep::setRunInGuiThread(bool runInGuiThread)
+std::function<bool ()> BuildStep::cancelChecker() const
 {
-    m_runInGuiThread = runInGuiThread;
+    return [step = QPointer<const BuildStep>(this)] { return step && step->isCanceled(); };
 }
 
-/*!
-    This function needs to be reimplemented only for build steps that return
-    \c false from runInGuiThread().
-
-    \sa runInGuiThread()
-*/
-void BuildStep::cancel()
+bool BuildStep::isCanceled() const
 {
-    // Do nothing
+    return m_cancelFlag;
+}
+
+void BuildStep::doCancel()
+{
+    QTC_ASSERT(!m_runInGuiThread, qWarning() << "Build step" << displayName()
+               << "neeeds to implement the doCancel() function");
+}
+
+void BuildStep::addMacroExpander()
+{
+    m_addMacroExpander = true;
+}
+
+void BuildStep::setSummaryUpdater(const std::function<QString ()> &summaryUpdater)
+{
+    m_summaryUpdater = summaryUpdater;
 }
 
 void BuildStep::setEnabled(bool b)
@@ -245,6 +290,11 @@ void BuildStep::setEnabled(bool b)
         return;
     m_enabled = b;
     emit enabledChanged();
+}
+
+BuildStepList *BuildStep::stepList() const
+{
+    return qobject_cast<BuildStepList *>(parent());
 }
 
 bool BuildStep::enabled() const
@@ -277,7 +327,7 @@ bool BuildStepFactory::canHandle(BuildStepList *bsl) const
     if (!m_supportedDeviceTypes.isEmpty()) {
         Target *target = bsl->target();
         QTC_ASSERT(target, return false);
-        Core::Id deviceType = DeviceTypeKitInformation::deviceTypeId(target->kit());
+        Core::Id deviceType = DeviceTypeKitAspect::deviceTypeId(target->kit());
         if (!m_supportedDeviceTypes.contains(deviceType))
             return false;
     }
@@ -384,6 +434,10 @@ BuildStepConfigWidget::BuildStepConfigWidget(BuildStep *step)
     m_summaryText = "<b>" + m_displayName + "</b>";
     connect(m_step, &ProjectConfiguration::displayNameChanged,
             this, &BuildStepConfigWidget::updateSummary);
+    for (auto aspect : step->aspects()) {
+        connect(aspect, &ProjectConfigurationAspect::changed,
+                this, &BuildStepConfigWidget::recreateSummary);
+    }
 }
 
 QString BuildStepConfigWidget::summaryText() const
@@ -405,8 +459,20 @@ void BuildStepConfigWidget::setSummaryText(const QString &summaryText)
 {
     if (summaryText != m_summaryText) {
         m_summaryText = summaryText;
-        updateSummary();
+        emit updateSummary();
     }
+}
+
+void BuildStepConfigWidget::setSummaryUpdater(const std::function<QString()> &summaryUpdater)
+{
+    m_summaryUpdater = summaryUpdater;
+    recreateSummary();
+}
+
+void BuildStepConfigWidget::recreateSummary()
+{
+    if (m_summaryUpdater)
+        setSummaryText(m_summaryUpdater());
 }
 
 } // ProjectExplorer

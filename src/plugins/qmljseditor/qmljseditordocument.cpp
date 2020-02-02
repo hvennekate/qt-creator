@@ -43,6 +43,8 @@
 #include <qmljstools/qmljsmodelmanager.h>
 #include <qmljstools/qmljsqtstylecodeformatter.h>
 
+const char QML_UI_FILE_WARNING[] = "QmlJSEditor.QmlUiFileWarning";
+
 using namespace QmlJSEditor;
 using namespace QmlJS;
 using namespace QmlJS::AST;
@@ -58,23 +60,16 @@ enum {
 struct Declaration
 {
     QString text;
-    int startLine;
-    int startColumn;
-    int endLine;
-    int endColumn;
-
-    Declaration()
-        : startLine(0),
-        startColumn(0),
-        endLine(0),
-        endColumn(0)
-    { }
+    int startLine = 0;
+    int startColumn = 0;
+    int endLine = 0;
+    int endColumn = 0;
 };
 
 class FindIdDeclarations: protected Visitor
 {
 public:
-    typedef QHash<QString, QList<AST::SourceLocation> > Result;
+    using Result = QHash<QString, QList<AST::SourceLocation> >;
 
     Result operator()(Document::Ptr doc)
     {
@@ -111,8 +106,8 @@ protected:
     bool visit(AST::UiScriptBinding *node) override
     {
         if (asString(node->qualifiedId) == QLatin1String("id")) {
-            if (AST::ExpressionStatement *stmt = AST::cast<AST::ExpressionStatement*>(node->statement)) {
-                if (AST::IdentifierExpression *idExpr = AST::cast<AST::IdentifierExpression *>(stmt->expression)) {
+            if (auto stmt = AST::cast<const AST::ExpressionStatement*>(node->statement)) {
+                if (auto idExpr = AST::cast<const AST::IdentifierExpression *>(stmt->expression)) {
                     if (!idExpr->name.isEmpty()) {
                         const QString &id = idExpr->name.toString();
                         QList<AST::SourceLocation> *locs = &_ids[id];
@@ -295,8 +290,8 @@ protected:
 
         decl.text += QLatin1Char('(');
         for (FormalParameterList *it = ast->formals; it; it = it->next) {
-            if (!it->name.isEmpty())
-                decl.text += it->name;
+            if (!it->element->bindingIdentifier.isEmpty())
+                decl.text += it->element->bindingIdentifier;
 
             if (it->next)
                 decl.text += QLatin1String(", ");
@@ -309,14 +304,14 @@ protected:
         return false;
     }
 
-    bool visit(AST::VariableDeclaration *ast) override
+    bool visit(AST::PatternElement *ast) override
     {
-        if (ast->name.isEmpty())
+        if (!ast->isVariableDeclaration() || ast->bindingIdentifier.isEmpty())
             return false;
 
         Declaration decl;
         decl.text.fill(QLatin1Char(' '), _depth);
-        decl.text += ast->name;
+        decl.text += ast->bindingIdentifier;
 
         const SourceLocation first = ast->identifierToken;
         decl.startLine = first.startLine;
@@ -331,8 +326,8 @@ protected:
 
     bool visit(AST::BinaryExpression *ast) override
     {
-        AST::FieldMemberExpression *field = AST::cast<AST::FieldMemberExpression *>(ast->left);
-        AST::FunctionExpression *funcExpr = AST::cast<AST::FunctionExpression *>(ast->right);
+        auto field = AST::cast<const AST::FieldMemberExpression *>(ast->left);
+        auto funcExpr = AST::cast<const AST::FunctionExpression *>(ast->right);
 
         if (field && funcExpr && funcExpr->body && (ast->op == QSOperator::Assign)) {
             Declaration decl;
@@ -343,8 +338,8 @@ protected:
 
             decl.text += QLatin1Char('(');
             for (FormalParameterList *it = funcExpr->formals; it; it = it->next) {
-                if (!it->name.isEmpty())
-                    decl.text += it->name;
+                if (!it->element->bindingIdentifier.isEmpty())
+                    decl.text += it->element->bindingIdentifier;
 
                 if (it->next)
                     decl.text += QLatin1String(", ");
@@ -368,7 +363,7 @@ public:
     {
         _textDocument = textDocument;
         _ranges.clear();
-        if (doc && doc->ast() != 0)
+        if (doc && doc->ast() != nullptr)
             doc->ast()->accept(this);
         return _ranges;
     }
@@ -414,7 +409,7 @@ protected:
 
     bool visit(AST::UiScriptBinding *ast) override
     {
-        if (AST::Block *block = AST::cast<AST::Block *>(ast->statement))
+        if (auto block = AST::cast<AST::Block *>(ast->statement))
             _ranges.append(createRange(ast, block));
         return true;
     }
@@ -466,7 +461,7 @@ QmlJSEditorDocumentPrivate::QmlJSEditorDocumentPrivate(QmlJSEditorDocument *pare
     m_updateDocumentTimer.setInterval(UPDATE_DOCUMENT_DEFAULT_INTERVAL);
     m_updateDocumentTimer.setSingleShot(true);
     connect(q->document(), &QTextDocument::contentsChanged,
-            &m_updateDocumentTimer, static_cast<void (QTimer::*)()>(&QTimer::start));
+            &m_updateDocumentTimer, QOverload<>::of(&QTimer::start));
     connect(&m_updateDocumentTimer, &QTimer::timeout,
             this, &QmlJSEditorDocumentPrivate::reparseDocument);
     connect(modelManager, &ModelManagerInterface::documentUpdated,
@@ -484,7 +479,7 @@ QmlJSEditorDocumentPrivate::QmlJSEditorDocumentPrivate(QmlJSEditorDocument *pare
     connect(&m_reupdateSemanticInfoTimer, &QTimer::timeout,
             this, &QmlJSEditorDocumentPrivate::reupdateSemanticInfo);
     connect(modelManager, &ModelManagerInterface::libraryInfoUpdated,
-            &m_reupdateSemanticInfoTimer, static_cast<void (QTimer::*)()>(&QTimer::start));
+            &m_reupdateSemanticInfoTimer, QOverload<>::of(&QTimer::start));
 
     // outline model
     m_updateOutlineModelTimer.setInterval(UPDATE_OUTLINE_INTERVAL);
@@ -568,19 +563,6 @@ void QmlJSEditorDocumentPrivate::acceptNewSemanticInfo(const SemanticInfo &seman
     m_outlineModelNeedsUpdate = true;
     m_semanticHighlightingNecessary = true;
 
-    if (m_firstSementicInfo) {
-        m_firstSementicInfo = false;
-        if (semanticInfo.document->language() == Dialect::QmlQtQuick2Ui
-                && !q->infoBar()->containsInfo(Core::Id(Constants::QML_UI_FILE_WARNING))) {
-            Core::InfoBarEntry info(Core::Id(Constants::QML_UI_FILE_WARNING),
-                                    tr("This file should only be edited in <b>Design</b> mode."));
-            info.setCustomButtonInfo(tr("Switch Mode"), []() {
-                Core::ModeManager::activateMode(Core::Constants::MODE_DESIGN);
-            });
-            q->infoBar()->addInfo(info);
-        }
-    }
-
     createTextMarks(m_semanticInfo);
     emit q->semanticInfoUpdated(m_semanticInfo); // calls triggerPendingUpdates as necessary
 }
@@ -653,14 +635,14 @@ void QmlJSEditorDocumentPrivate::cleanSemanticMarks()
 
 } // Internal
 
-QmlJSEditorDocument::QmlJSEditorDocument()
+QmlJSEditorDocument::QmlJSEditorDocument(Core::Id id)
     : d(new Internal::QmlJSEditorDocumentPrivate(this))
 {
-    setId(Constants::C_QMLJSEDITOR_ID);
+    setId(id);
     connect(this, &TextEditor::TextDocument::tabSettingsChanged,
             d, &Internal::QmlJSEditorDocumentPrivate::invalidateFormatterCache);
     setSyntaxHighlighter(new QmlJSHighlighter(document()));
-    setIndenter(new Internal::Indenter);
+    setIndenter(new Internal::Indenter(document()));
 }
 
 QmlJSEditorDocument::~QmlJSEditorDocument()
@@ -691,6 +673,28 @@ Internal::QmlOutlineModel *QmlJSEditorDocument::outlineModel() const
 TextEditor::IAssistProvider *QmlJSEditorDocument::quickFixAssistProvider() const
 {
     return Internal::QmlJSEditorPlugin::quickFixAssistProvider();
+}
+
+void QmlJSEditorDocument::setIsDesignModePreferred(bool value)
+{
+    d->m_isDesignModePreferred = value;
+    if (value) {
+        if (infoBar()->canInfoBeAdded(QML_UI_FILE_WARNING)) {
+            Core::InfoBarEntry info(QML_UI_FILE_WARNING,
+                                    tr("This file should only be edited in <b>Design</b> mode."));
+            info.setCustomButtonInfo(tr("Switch Mode"), []() {
+                Core::ModeManager::activateMode(Core::Constants::MODE_DESIGN);
+            });
+            infoBar()->addInfo(info);
+        }
+    } else if (infoBar()->containsInfo(QML_UI_FILE_WARNING)) {
+        infoBar()->removeInfo(QML_UI_FILE_WARNING);
+    }
+}
+
+bool QmlJSEditorDocument::isDesignModePreferred() const
+{
+    return d->m_isDesignModePreferred;
 }
 
 void QmlJSEditorDocument::setDiagnosticRanges(const QVector<QTextLayout::FormatRange> &ranges)

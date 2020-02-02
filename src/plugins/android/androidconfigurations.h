@@ -52,7 +52,6 @@ class Project;
 
 namespace Android {
 
-
 namespace Internal {
 class AndroidSdkManager;
 class AndroidPluginPrivate;
@@ -64,6 +63,11 @@ public:
     QString serialNumber;
     QString avdname;
     QStringList cpuAbi;
+    QString avdTarget;
+    QString avdDevice;
+    QString avdSkin;
+    QString avdSdcardSize;
+
     int sdk = -1;
     enum State { OkState, UnAuthorizedState, OfflineState };
     State state = OfflineState;
@@ -81,12 +85,14 @@ using AndroidDeviceInfoList = QList<AndroidDeviceInfo>;
 class CreateAvdInfo
 {
 public:
-    bool isValid() const { return sdkPlatform && sdkPlatform->isValid() && !name.isEmpty(); }
-    const SdkPlatform *sdkPlatform = nullptr;
+    bool isValid() const { return systemImage && systemImage->isValid() && !name.isEmpty(); }
+    const SystemImage *systemImage = nullptr;
     QString name;
     QString abi;
+    QString deviceDefinition;
     int sdcardSize = 0;
     QString error; // only used in the return value of createAVD
+    bool overwrite = false;
 };
 
 class ANDROID_EXPORT AndroidConfig
@@ -98,23 +104,23 @@ public:
     static QStringList apiLevelNamesFor(const SdkPlatformList &platforms);
     static QString apiLevelNameFor(const SdkPlatform *platform);
 
-    Utils::FileName sdkLocation() const;
-    void setSdkLocation(const Utils::FileName &sdkLocation);
+    Utils::FilePath sdkLocation() const;
+    void setSdkLocation(const Utils::FilePath &sdkLocation);
     QVersionNumber sdkToolsVersion() const;
     QVersionNumber buildToolsVersion() const;
     QStringList sdkManagerToolArgs() const;
     void setSdkManagerToolArgs(const QStringList &args);
 
-    Utils::FileName ndkLocation() const;
-    Utils::FileName gdbServer(const ProjectExplorer::Abi &abi) const;
+    Utils::FilePath ndkLocation() const;
+    Utils::FilePath gdbServer(const QString &androidAbi) const;
     QVersionNumber ndkVersion() const;
-    void setNdkLocation(const Utils::FileName &ndkLocation);
+    void setNdkLocation(const Utils::FilePath &ndkLocation);
 
-    Utils::FileName openJDKLocation() const;
-    void setOpenJDKLocation(const Utils::FileName &openJDKLocation);
+    Utils::FilePath openJDKLocation() const;
+    void setOpenJDKLocation(const Utils::FilePath &openJDKLocation);
 
-    Utils::FileName keystoreLocation() const;
-    void setKeystoreLocation(const Utils::FileName &keystoreLocation);
+    Utils::FilePath keystoreLocation() const;
+    void setKeystoreLocation(const Utils::FilePath &keystoreLocation);
 
     QString toolchainHost() const;
 
@@ -124,23 +130,23 @@ public:
     bool automaticKitCreation() const;
     void setAutomaticKitCreation(bool b);
 
-    Utils::FileName qtLiveApkPath() const;
+    Utils::FilePath adbToolPath() const;
+    Utils::FilePath androidToolPath() const;
+    Utils::FilePath emulatorToolPath() const;
+    Utils::FilePath sdkManagerToolPath() const;
+    Utils::FilePath avdManagerToolPath() const;
+    Utils::FilePath aaptToolPath() const;
 
-    Utils::FileName adbToolPath() const;
-    Utils::FileName androidToolPath() const;
-    Utils::FileName emulatorToolPath() const;
-    Utils::FileName sdkManagerToolPath() const;
-    Utils::FileName avdManagerToolPath() const;
-    Utils::FileName aaptToolPath() const;
+    Utils::FilePath toolchainPath() const;
+    Utils::FilePath clangPath() const;
 
-    Utils::FileName clangPath() const;
-    Utils::FileName gdbPath() const;
-    Utils::FileName makePath() const;
+    Utils::FilePath gdbPath(const ProjectExplorer::Abi &abi) const;
+    Utils::FilePath makePath() const;
 
-    Utils::FileName keytoolPath() const;
+    Utils::FilePath keytoolPath() const;
 
     QVector<AndroidDeviceInfo> connectedDevices(QString *error = nullptr) const;
-    static QVector<AndroidDeviceInfo> connectedDevices(const QString &adbToolPath, QString *error = nullptr);
+    static QVector<AndroidDeviceInfo> connectedDevices(const Utils::FilePath &adbToolPath, QString *error = nullptr);
 
     QString bestNdkPlatformMatch(int target) const;
 
@@ -157,24 +163,25 @@ public:
     bool useNativeUiTools() const;
 
 private:
-    static QString getDeviceProperty(const QString &adbToolPath, const QString &device, const QString &property);
+    static QString getDeviceProperty(const Utils::FilePath &adbToolPath,
+                                     const QString &device, const QString &property);
 
-    Utils::FileName openJDKBinPath() const;
+    Utils::FilePath openJDKBinPath() const;
     int getSDKVersion(const QString &device) const;
-    static int getSDKVersion(const QString &adbToolPath, const QString &device);
+    static int getSDKVersion(const Utils::FilePath &adbToolPath, const QString &device);
     QStringList getAbis(const QString &device) const;
-    static QStringList getAbis(const QString &adbToolPath, const QString &device);
-    static bool isBootToQt(const QString &adbToolPath, const QString &device);
+    static QStringList getAbis(const Utils::FilePath &adbToolPath, const QString &device);
+    static bool isBootToQt(const Utils::FilePath &adbToolPath, const QString &device);
     bool isBootToQt(const QString &device) const;
     static QString getAvdName(const QString &serialnumber);
 
     void updateNdkInformation() const;
 
-    Utils::FileName m_sdkLocation;
+    Utils::FilePath m_sdkLocation;
     QStringList m_sdkManagerToolArgs;
-    Utils::FileName m_ndkLocation;
-    Utils::FileName m_openJDKLocation;
-    Utils::FileName m_keystoreLocation;
+    Utils::FilePath m_ndkLocation;
+    Utils::FilePath m_openJDKLocation;
+    Utils::FilePath m_keystoreLocation;
     unsigned m_partitionSize = 1024;
     bool m_automaticKitCreation = true;
 
@@ -196,7 +203,7 @@ public:
     static void setConfig(const AndroidConfig &config);
     static AndroidConfigurations *instance();
 
-    static AndroidDeviceInfo showDeviceDialog(ProjectExplorer::Project *project, int apiLevel, const QString &abi);
+    static AndroidDeviceInfo showDeviceDialog(ProjectExplorer::Project *project, int apiLevel, const QStringList &abis);
     static void setDefaultDevice(ProjectExplorer::Project *project, const QString &abi, const QString &serialNumber); // serial number or avd name
     static QString defaultDevice(ProjectExplorer::Project *project, const QString &abi); // serial number or avd name
     static void clearDefaultDevices(ProjectExplorer::Project *project);
@@ -207,6 +214,7 @@ public:
     static QProcessEnvironment toolsEnvironment(const AndroidConfig &config);
 
 signals:
+    void aboutToUpdate();
     void updated();
 
 private:

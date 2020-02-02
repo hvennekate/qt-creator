@@ -33,8 +33,10 @@
 
 #include <utils/qtcassert.h>
 
-#include <QSysInfo>
 #include <QApplication>
+#include <QDebug>
+#include <QStandardPaths>
+#include <QSysInfo>
 
 /*!
     \namespace Core
@@ -328,9 +330,11 @@ ICore::ICore(MainWindow *mainwindow)
     m_mainwindow = mainwindow;
     // Save settings once after all plugins are initialized:
     connect(PluginManager::instance(), &PluginManager::initializationDone,
-            this, &ICore::saveSettings);
+            this, [] { ICore::saveSettings(ICore::InitializationDone); });
     connect(PluginManager::instance(), &PluginManager::testsFinished, [this] (int failedTests) {
         emit coreAboutToClose();
+        if (failedTests != 0)
+            qWarning("Test run was not successful: %d test(s) failed.", failedTests);
         QCoreApplication::exit(failedTests);
     });
 }
@@ -439,6 +443,11 @@ QString ICore::userResourcePath()
     return urp;
 }
 
+QString ICore::cacheResourcePath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+}
+
 QString ICore::installerResourcePath()
 {
     return QFileInfo(settings(QSettings::SystemScope)->fileName()).path() + '/'
@@ -467,13 +476,28 @@ QString ICore::clangIncludeDirectory(const QString &clangVersion, const QString 
     return QDir::toNativeSeparators(dir.canonicalPath());
 }
 
-QString ICore::clangExecutable(const QString &clangBinDirectory)
+static QString clangBinary(const QString &binaryBaseName, const QString &clangBinDirectory)
 {
     const QString hostExeSuffix(QTC_HOST_EXE_SUFFIX);
-    QFileInfo executable(libexecPath() + "/clang/bin/clang" + hostExeSuffix);
+    QFileInfo executable(ICore::libexecPath() + "/clang/bin/" + binaryBaseName + hostExeSuffix);
     if (!executable.exists())
-        executable = QFileInfo(clangBinDirectory + "/clang" + hostExeSuffix);
+        executable = QFileInfo(clangBinDirectory + "/" + binaryBaseName + hostExeSuffix);
     return QDir::toNativeSeparators(executable.canonicalFilePath());
+}
+
+QString ICore::clangExecutable(const QString &clangBinDirectory)
+{
+    return clangBinary("clang", clangBinDirectory);
+}
+
+QString ICore::clangTidyExecutable(const QString &clangBinDirectory)
+{
+    return clangBinary("clang-tidy", clangBinDirectory);
+}
+
+QString ICore::clazyStandaloneExecutable(const QString &clangBinDirectory)
+{
+    return clangBinary("clazy-standalone", clangBinDirectory);
 }
 
 static QString compilerString()
@@ -550,6 +574,11 @@ QWidget *ICore::dialogParent()
 QStatusBar *ICore::statusBar()
 {
     return m_mainwindow->statusBar();
+}
+
+InfoBar *ICore::infoBar()
+{
+    return m_mainwindow->infoBar();
 }
 
 void ICore::raiseWindow(QWidget *widget)
@@ -681,9 +710,14 @@ void ICore::setupScreenShooter(const QString &name, QWidget *w, const QRect &rc)
         new ScreenShooter(w, name, rc);
 }
 
-void ICore::saveSettings()
+void ICore::restart()
 {
-    emit m_instance->saveSettingsRequested();
+    m_mainwindow->restart();
+}
+
+void ICore::saveSettings(SaveSettingsReason reason)
+{
+    emit m_instance->saveSettingsRequested(reason);
     m_mainwindow->saveSettings();
 
     ICore::settings(QSettings::SystemScope)->sync();

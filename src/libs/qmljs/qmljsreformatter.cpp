@@ -24,8 +24,9 @@
 ****************************************************************************/
 
 #include "qmljsreformatter.h"
-
 #include "qmljscodeformatter.h"
+#include "qmljsbind.h"
+
 #include "parser/qmljsast_p.h"
 #include "parser/qmljsastvisitor_p.h"
 #include "parser/qmljsengine_p.h"
@@ -96,6 +97,7 @@ class Rewriter : protected Visitor
     int _lastNewlineOffset = -1;
     bool _hadEmptyLine = false;
     int _binaryExpDepth = 0;
+    bool _hasOpenComment = false;
 
 public:
     Rewriter(Document::Ptr doc)
@@ -121,6 +123,10 @@ public:
 
 
         // emit directives
+        if (_doc->bind()->isJsLibrary()) {
+            out(QLatin1String(".pragma library"));
+            newLine();
+        }
         const QList<SourceLocation> &directives = _doc->jsDirectives();
         for (const auto &d: directives) {
             quint32 line = 1;
@@ -201,6 +207,9 @@ protected:
 
     void out(const QString &str, const SourceLocation &lastLoc = SourceLocation())
     {
+        if (_hasOpenComment) {
+            newLine();
+        }
         if (lastLoc.isValid()) {
             QList<SourceLocation> comments = _doc->engine()->comments();
             for (; _nextComment < comments.size(); ++_nextComment) {
@@ -371,6 +380,7 @@ protected:
     {
         // if preceded by a newline, it's an empty line!
         _hadEmptyLine = _line.trimmed().isEmpty();
+        _hasOpenComment = false;
 
         // if the preceding line wasn't empty, reindent etc.
         if (!_hadEmptyLine) {
@@ -524,6 +534,7 @@ protected:
 
                 out(" ");
                 out(toString(nextCommentLoc));
+                _hasOpenComment = true;
             }
         }
     }
@@ -531,7 +542,39 @@ protected:
     bool visit(UiPragma *ast) override
     {
         out("pragma ", ast->pragmaToken);
-        accept(ast->pragmaType);
+        out(ast->name.toString());
+        newLine();
+        return false;
+    }
+
+    bool visit(UiEnumDeclaration *ast) override
+    {
+        out(ast->enumToken);
+        out(" ");
+        out(ast->name.toString());
+        out(" ");
+        out("{"); // TODO: out(ast->lbraceToken);
+        newLine();
+
+        accept(ast->members);
+
+        out(ast->rbraceToken);
+        return false;
+    }
+
+    bool visit(UiEnumMemberList *list) override
+    {
+        for (UiEnumMemberList *it = list; it; it = it->next) {
+            out(it->memberToken);
+            if (it->valueToken.isValid()) {
+                out(" = ");
+                out(it->valueToken);
+            }
+            if (it->next) {
+                out(",");
+            }
+            newLine();
+        }
         return false;
     }
 
@@ -564,9 +607,10 @@ protected:
     bool visit(UiObjectInitializer *ast) override
     {
         out(ast->lbraceToken);
-        if (ast->members)
+        if (ast->members) {
             lnAcceptIndented(ast->members);
-        newLine();
+            newLine();
+        }
         out(ast->rbraceToken);
         return false;
     }
@@ -594,10 +638,10 @@ protected:
             if (!ast->typeModifier.isNull()) {
                 out(ast->typeModifierToken);
                 out("<");
-                out(ast->typeToken);
+                accept(ast->memberType);
                 out(">");
             } else {
-                out(ast->typeToken);
+                accept(ast->memberType);
             }
             out(" ");
             if (ast->statement) {
@@ -666,77 +710,77 @@ protected:
     bool visit(NumericLiteral *ast) override { out(ast->literalToken); return true; }
     bool visit(RegExpLiteral *ast) override { out(ast->literalToken); return true; }
 
-    bool visit(ArrayLiteral *ast) override
+    bool visit(ArrayPattern *ast) override
     {
         out(ast->lbracketToken);
         if (ast->elements)
             accept(ast->elements);
-        if (ast->elements && ast->elision)
-            out(", ", ast->commaToken);
-        if (ast->elision)
-            accept(ast->elision);
         out(ast->rbracketToken);
         return false;
     }
 
-    bool visit(ObjectLiteral *ast) override
+    bool visit(ObjectPattern *ast) override
     {
         out(ast->lbraceToken);
-        lnAcceptIndented(ast->properties);
-        newLine();
+        if (ast->properties) {
+            lnAcceptIndented(ast->properties);
+            newLine();
+        }
         out(ast->rbraceToken);
         return false;
     }
 
-    bool visit(ElementList *ast) override
+    bool visit(PatternElementList *ast) override
     {
-        for (ElementList *it = ast; it; it = it->next) {
+        for (PatternElementList *it = ast; it; it = it->next) {
             if (it->elision)
                 accept(it->elision);
-            if (it->elision && it->expression)
+            if (it->elision && it->element)
                 out(", ");
-            if (it->expression)
-                accept(it->expression);
+            if (it->element)
+                accept(it->element);
             if (it->next)
-                out(", ", ast->commaToken);
+                out(", ");
         }
         return false;
     }
 
-    bool visit(PropertyAssignmentList *ast) override
+    bool visit(PatternPropertyList *ast) override
     {
-        for (PropertyAssignmentList *it = ast; it; it = it->next) {
-            PropertyNameAndValue *assignment = AST::cast<PropertyNameAndValue *>(it->assignment);
+        for (PatternPropertyList *it = ast; it; it = it->next) {
+            PatternProperty *assignment = AST::cast<PatternProperty *>(it->property);
             if (assignment) {
                 out("\"");
                 accept(assignment->name);
                 out("\"");
                 out(": ", assignment->colonToken);
-                accept(assignment->value);
+                accept(assignment->initializer);
                 if (it->next) {
-                    out(",", ast->commaToken); // always invalid?
+                    out(","); // always invalid?
                     newLine();
                 }
                 continue;
             }
-            PropertyGetterSetter *getterSetter = AST::cast<PropertyGetterSetter *>(it->assignment);
-            if (getterSetter) {
-                switch (getterSetter->type) {
-                case PropertyGetterSetter::Getter:
+            PatternPropertyList *getterSetter = AST::cast<PatternPropertyList *>(it->next);
+            if (getterSetter->property) {
+                switch (getterSetter->property->type) {
+                case PatternElement::Getter:
                     out("get");
                     break;
-                case PropertyGetterSetter::Setter:
+                case PatternElement::Setter:
                     out("set");
+                    break;
+                default:
                     break;
                 }
 
-                accept(getterSetter->name);
-                out("(", getterSetter->lparenToken);
-                accept(getterSetter->formals);
-                out("(", getterSetter->rparenToken);
-                out(" {", getterSetter->lbraceToken);
-                accept(getterSetter->functionBody);
-                out(" }", getterSetter->rbraceToken);
+                accept(getterSetter->property->name);
+                out("(");
+                //accept(getterSetter->formals);  // TODO
+                out(")");
+                out(" {");
+                //accept(getterSetter->functionBody);  // TODO
+                out(" }");
             }
         }
         return false;
@@ -917,17 +961,28 @@ protected:
 
     bool visit(VariableStatement *ast) override
     {
-        out("var ", ast->declarationKindToken);
+        out(ast->declarationKindToken);
+        out(" ");
         accept(ast->declarations);
         return false;
     }
 
-    bool visit(VariableDeclaration *ast) override
+    bool visit(PatternElement *ast) override
     {
+        if (ast->isForDeclaration) {
+            if (ast->scope == VariableScope::Var) {
+                out("var ");
+            } else if (ast->scope == VariableScope::Let) {
+                out("let ");
+            } else if (ast->scope == VariableScope::Const) {
+                out("const ");
+            }
+        }
         out(ast->identifierToken);
-        if (ast->expression) {
-            out(" = ");
-            accept(ast->expression);
+        if (ast->initializer) {
+            if (ast->isVariableDeclaration())
+                out(" = ");
+            accept(ast->initializer);
         }
         return false;
     }
@@ -986,29 +1041,17 @@ protected:
         out(ast->forToken);
         out(" ");
         out(ast->lparenToken);
-        accept(ast->initialiser);
+        if (ast->initialiser) {
+            accept(ast->initialiser);
+        } else if (ast->declarations) {
+            out("var ");
+            accept(ast->declarations);
+        }
         out("; ", ast->firstSemicolonToken);
         accept(ast->condition);
         out("; ", ast->secondSemicolonToken);
         accept(ast->expression);
         out(ast->rparenToken);
-        acceptBlockOrIndented(ast->statement);
-        return false;
-    }
-
-    bool visit(LocalForStatement *ast) override
-    {
-        out(ast->forToken);
-        out(" ");
-        out(ast->lparenToken);
-        out(ast->varToken);
-        out(" ");
-        accept(ast->declarations);
-        out("; ", ast->firstSemicolonToken);
-        accept(ast->condition);
-        out("; ", ast->secondSemicolonToken);
-        accept(ast->expression);
-        out(")", ast->rparenToken);
         acceptBlockOrIndented(ast->statement);
         return false;
     }
@@ -1018,23 +1061,8 @@ protected:
         out(ast->forToken);
         out(" ");
         out(ast->lparenToken);
-        accept(ast->initialiser);
-        out(" in ", ast->inToken);
-        accept(ast->expression);
-        out(ast->rparenToken);
-        acceptBlockOrIndented(ast->statement);
-        return false;
-    }
-
-    bool visit(LocalForEachStatement *ast) override
-    {
-        out(ast->forToken);
-        out(" ");
-        out(ast->lparenToken);
-        out(ast->varToken);
-        out(" ");
-        accept(ast->declaration);
-        out(" in ", ast->inToken);
+        accept(ast->lhs);
+        out(" in ");
         accept(ast->expression);
         out(ast->rparenToken);
         acceptBlockOrIndented(ast->statement);
@@ -1245,12 +1273,6 @@ protected:
         return false;
     }
 
-    bool visit(UiQualifiedPragmaId *ast) override
-    {
-        out(ast->identifierToken);
-        return false;
-    }
-
     bool visit(Elision *ast) override
     {
         for (Elision *it = ast; it; it = it->next) {
@@ -1288,16 +1310,6 @@ protected:
         return false;
     }
 
-    bool visit(SourceElements *ast) override
-    {
-        for (SourceElements *it = ast; it; it = it->next) {
-            accept(it->element);
-            if (it->next)
-                newLine();
-        }
-        return false;
-    }
-
     bool visit(VariableDeclarationList *ast) override
     {
         for (VariableDeclarationList *it = ast; it; it = it->next) {
@@ -1321,9 +1333,9 @@ protected:
     bool visit(FormalParameterList *ast) override
     {
         for (FormalParameterList *it = ast; it; it = it->next) {
-            if (it->commaToken.isValid())
-                out(", ", it->commaToken);
-            out(it->identifierToken);
+            out(it->element->bindingIdentifier.toString()); // TODO
+            if (it->next)
+                out(", ");
         }
         return false;
     }

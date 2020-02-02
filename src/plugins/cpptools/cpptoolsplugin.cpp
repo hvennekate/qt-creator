@@ -23,31 +23,33 @@
 **
 ****************************************************************************/
 
-#include "cpptoolsconstants.h"
 #include "cpptoolsplugin.h"
-#include "cppfilesettingspage.h"
 #include "cppcodemodelsettingspage.h"
 #include "cppcodestylesettingspage.h"
+#include "cppfilesettingspage.h"
 #include "cppmodelmanager.h"
-#include "cpptoolsjsextension.h"
-#include "cpptoolssettings.h"
-#include "cpptoolsreuse.h"
 #include "cppprojectfile.h"
+#include "cppprojectupdater.h"
 #include "cpptoolsbridge.h"
+#include "cpptoolsbridgeqtcreatorimplementation.h"
+#include "cpptoolsconstants.h"
+#include "cpptoolsjsextension.h"
+#include "cpptoolsreuse.h"
+#include "cpptoolssettings.h"
 #include "projectinfo.h"
 #include "stringtable.h"
-#include "cpptoolsbridgeqtcreatorimplementation.h"
 
 #include <coreplugin/actionmanager/actioncontainer.h>
 #include <coreplugin/actionmanager/actionmanager.h>
-#include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/coreconstants.h>
 #include <coreplugin/documentmanager.h>
+#include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
 #include <coreplugin/jsexpander.h>
 #include <coreplugin/vcsmanager.h>
 #include <cppeditor/cppeditorconstants.h>
+#include <extensionsystem/pluginmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projecttree.h>
 
@@ -95,14 +97,17 @@ public:
         StringTable::destroy();
         delete m_cppFileSettingsPage;
         delete m_cppCodeModelSettingsPage;
-        delete m_cppCodeStyleSettingsPage;
+        if (m_cppCodeStyleSettingsPage)
+            delete m_cppCodeStyleSettingsPage;
+        ExtensionSystem::PluginManager::removeObject(&m_cppProjectUpdaterFactory);
     }
 
     QSharedPointer<CppCodeModelSettings> m_codeModelSettings;
     CppToolsSettings *m_settings = nullptr;
     CppFileSettingsPage *m_cppFileSettingsPage = nullptr;
     CppCodeModelSettingsPage *m_cppCodeModelSettingsPage = nullptr;
-    CppCodeStyleSettingsPage *m_cppCodeStyleSettingsPage = nullptr;
+    QPointer<CppCodeStyleSettingsPage> m_cppCodeStyleSettingsPage = nullptr;
+    CppProjectUpdaterFactory m_cppProjectUpdaterFactory;
 };
 
 CppToolsPlugin::CppToolsPlugin()
@@ -129,14 +134,19 @@ void CppToolsPlugin::clearHeaderSourceCache()
     m_headerSourceMapping.clear();
 }
 
-Utils::FileName CppToolsPlugin::licenseTemplatePath()
+Utils::FilePath CppToolsPlugin::licenseTemplatePath()
 {
-    return Utils::FileName::fromString(m_instance->m_fileSettings->licenseTemplatePath);
+    return Utils::FilePath::fromString(m_instance->m_fileSettings->licenseTemplatePath);
 }
 
 QString CppToolsPlugin::licenseTemplate()
 {
     return m_instance->m_fileSettings->licenseTemplate();
+}
+
+bool CppToolsPlugin::usePragmaOnce()
+{
+    return m_instance->m_fileSettings->headerPragmaOnce;
 }
 
 const QStringList &CppToolsPlugin::headerSearchPaths()
@@ -166,7 +176,8 @@ bool CppToolsPlugin::initialize(const QStringList &arguments, QString *error)
 
     d = new CppToolsPluginPrivate;
 
-    JsExpander::registerQObjectForJs(QLatin1String("Cpp"), new CppToolsJsExtension);
+    JsExpander::registerGlobalObject<CppToolsJsExtension>("Cpp");
+    ExtensionSystem::PluginManager::addObject(&d->m_cppProjectUpdaterFactory);
 
     // Menus
     ActionContainer *mtools = ActionManager::actionContainer(Core::Constants::M_TOOLS);
@@ -202,6 +213,11 @@ bool CppToolsPlugin::initialize(const QStringList &arguments, QString *error)
     expander->registerFileVariables("Cpp:LicenseTemplatePath",
                                     tr("The configured path to the license template"),
                                     []() { return CppToolsPlugin::licenseTemplatePath().toString(); });
+
+    expander->registerVariable(
+                "Cpp:PragmaOnce",
+                tr("Insert \"#pragma once\" instead of \"#ifndef\" include guards into header file"),
+                [] { return usePragmaOnce() ? QString("true") : QString(); });
 
     return true;
 }
@@ -245,7 +261,7 @@ static QStringList findFilesInProject(const QString &name,
     QString pattern = QString(1, QLatin1Char('/'));
     pattern += name;
     const QStringList projectFiles
-            = Utils::transform(project->files(ProjectExplorer::Project::AllFiles), &Utils::FileName::toString);
+            = Utils::transform(project->files(ProjectExplorer::Project::AllFiles), &Utils::FilePath::toString);
     const QStringList::const_iterator pcend = projectFiles.constEnd();
     QStringList candidateList;
     for (QStringList::const_iterator it = projectFiles.constBegin(); it != pcend; ++it) {

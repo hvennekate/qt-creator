@@ -26,9 +26,11 @@
 #include "nimeditorfactory.h"
 #include "nimindenter.h"
 #include "nimhighlighter.h"
+#include "nimcompletionassistprovider.h"
 
 #include "../nimconstants.h"
 #include "../nimplugin.h"
+#include "nimtexteditorwidget.h"
 
 #include <texteditor/texteditoractionhandler.h>
 #include <texteditor/texteditorconstants.h>
@@ -49,22 +51,21 @@ NimEditorFactory::NimEditorFactory()
 
     setEditorActionHandlers(TextEditorActionHandler::Format
                             | TextEditorActionHandler::UnCommentSelection
-                            | TextEditorActionHandler::UnCollapseAll);
-
+                            | TextEditorActionHandler::UnCollapseAll
+                            | TextEditorActionHandler::FollowSymbolUnderCursor);
     setEditorWidgetCreator([]{
-        auto result = new TextEditorWidget();
-        result->setLanguageSettingsId(Nim::Constants::C_NIMLANGUAGE_ID);
-        return result;
+        return new NimTextEditorWidget();
     });
     setDocumentCreator([]() {
         return new TextDocument(Constants::C_NIMEDITOR_ID);
     });
-    setIndenterCreator([]() {
-        return new NimIndenter;
+    setIndenterCreator([](QTextDocument *doc) {
+        return new NimIndenter(doc);
     });
     setSyntaxHighlighterCreator([]() {
         return new NimHighlighter;
     });
+    setCompletionAssistProvider(new NimCompletionAssistProvider());
     setCommentDefinition(CommentDefinition::HashStyle);
     setParenthesesMatchingEnabled(true);
     setCodeFoldingSupported(true);
@@ -78,7 +79,7 @@ Core::IEditor *NimEditorFactory::createEditor()
 void NimEditorFactory::decorateEditor(TextEditorWidget *editor)
 {
     editor->textDocument()->setSyntaxHighlighter(new NimHighlighter());
-    editor->textDocument()->setIndenter(new NimIndenter());
+    editor->textDocument()->setIndenter(new NimIndenter(editor->textDocument()->document()));
 }
 
 }
