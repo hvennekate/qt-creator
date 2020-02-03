@@ -218,7 +218,7 @@ void SubversionDiffEditorController::requestDescription()
     m_state = GettingDescription;
 
     QStringList args(QLatin1String("log"));
-    args << SubversionClient::addAuthenticationOptions(client()->settings());
+    args << SubversionClient::addAuthenticationOptions(settings());
     args << QLatin1String("-r");
     args << QString::number(m_changeNumber);
     runCommand(QList<QStringList>() << args, VcsCommand::SshPasswordPrompt);
@@ -230,7 +230,7 @@ void SubversionDiffEditorController::requestDiff()
 
     QStringList args;
     args << QLatin1String("diff");
-    args << SubversionClient::addAuthenticationOptions(client()->settings());
+    args << SubversionClient::addAuthenticationOptions(settings());
     args << QLatin1String("--internal-diff");
     if (ignoreWhitespace())
         args << QLatin1String("-x") << QLatin1String("-uw");
@@ -323,24 +323,6 @@ void SubversionClient::describe(const QString &workingDirectory, int changeNumbe
     SubversionDiffEditorController *controller = findOrCreateDiffEditor(documentId, workingDirectory, title, workingDirectory);
     controller->setChangeNumber(changeNumber);
     controller->requestReload();
-}
-
-QString SubversionClient::findTopLevelForFile(const QFileInfo &file) const
-{
-    Q_UNUSED(file)
-    return QString();
-}
-
-QStringList SubversionClient::revisionSpec(const QString &revision) const
-{
-    Q_UNUSED(revision)
-    return QStringList();
-}
-
-VcsBaseClient::StatusItem SubversionClient::parseStatusLine(const QString &line) const
-{
-    Q_UNUSED(line)
-    return VcsBaseClient::StatusItem();
 }
 
 } // namespace Internal

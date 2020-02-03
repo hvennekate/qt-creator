@@ -60,7 +60,7 @@ SOURCES += \
     cxxtest/cxxtesttreeitem.cpp \
     cxxtest/cxxtestconfiguration.cpp \
     cxxtest/cxxoutputreader.cpp \
-    cxxtest/cxxtestresult.cpp
+    cxxtest/cxxtestresult.cpp \
     boost/boostcodeparser.cpp \
     boost/boosttestframework.cpp \
     boost/boosttesttreeitem.cpp \
@@ -135,7 +135,7 @@ HEADERS += \
     cxxtest/cxxtesttreeitem.h \
     cxxtest/cxxtestconfiguration.h \
     cxxtest/cxxoutputreader.h \
-    cxxtest/cxxtestresult.h
+    cxxtest/cxxtestresult.h \
     boost/boostcodeparser.h \
     boost/boosttestframework.h \
     boost/boosttestconstants.h \

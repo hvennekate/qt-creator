@@ -26,6 +26,7 @@
 #pragma once
 
 #include "target.h"
+#include "taskhub.h"
 
 #include <projectexplorer/kit.h>
 

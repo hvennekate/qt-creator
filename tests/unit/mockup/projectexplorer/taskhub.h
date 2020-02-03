@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
@@ -25,42 +25,27 @@
 
 #pragma once
 
-#include "clangtoolssettings.h"
+#include <projectexplorer/task.h>
 
-#include <coreplugin/dialogs/ioptionspage.h>
+namespace ProjectExplorer {
 
-#include <memory>
-
-namespace ClangTools {
-namespace Internal {
-
-namespace Ui { class SettingsWidget; }
-
-class SettingsWidget : public Core::IOptionsPageWidget
-{
-    Q_OBJECT
-
-public:
-    static SettingsWidget *instance();
-
-    SettingsWidget();
-    ~SettingsWidget() override;
-
-    QString clangTidyPath() const;
-    QString clazyStandalonePath() const;
-
-private:
-    void apply() final;
-
-    std::unique_ptr<Ui::SettingsWidget> m_ui;
-    ClangToolsSettings *m_settings;
-};
-
-class ClangToolsOptionsPage final : public Core::IOptionsPage
+class TaskHub: public QObject
 {
 public:
-    ClangToolsOptionsPage();
+
+    static TaskHub *instance()
+    {
+        return nullptr;
+    }
+
+    static void addTask(Task::TaskType type, const QString &description,
+                        Core::Id category)
+    {
+    }
+
+    static void addTask(ProjectExplorer::Task task)
+    {
+    }
 };
 
-} // namespace Internal
-} // namespace ClangTools
+} // namespace ProjectExplorer

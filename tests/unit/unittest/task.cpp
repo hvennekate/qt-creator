@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
@@ -23,34 +23,11 @@
 **
 ****************************************************************************/
 
-#pragma once
+#include <projectexplorer/task.h>
 
-#include "cvssettings.h"
-
-#include <vcsbase/vcsbaseclient.h>
-
-namespace Cvs {
-namespace Internal {
-
-class CvsSettings;
-
-class CvsClient : public VcsBase::VcsBaseClient
+namespace ProjectExplorer {
+BuildSystemTask::BuildSystemTask(TaskType type, const QString &description,
+                const Utils::FilePath&, int line)
 {
-    Q_OBJECT
-
-public:
-    explicit CvsClient(CvsSettings *settings);
-
-    void diff(const QString &workingDir, const QStringList &files,
-              const QStringList &extraOptions = QStringList()) override;
-    QString findTopLevelForFile(const QFileInfo &file) const override;
-    QStringList revisionSpec(const QString &revision) const override;
-    StatusItem parseStatusLine(const QString &line) const override;
-
-protected:
-    Utils::ExitCodeInterpreter exitCodeInterpreter(VcsCommandTag cmd) const override;
-    Core::Id vcsEditorKind(VcsCommandTag cmd) const override;
-};
-
-} // namespace Internal
-} // namespace Cvs
+}
+}
