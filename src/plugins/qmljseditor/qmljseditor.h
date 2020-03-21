@@ -60,6 +60,7 @@ public:
     QmlJSEditorWidget();
 
     void finalizeInitialization() override;
+    bool restoreState(const QByteArray &state) override;
 
     QmlJSEditorDocument *qmlJsEditorDocument() const;
 
@@ -92,6 +93,7 @@ private:
     void semanticInfoUpdated(const QmlJSTools::SemanticInfo &semanticInfo);
 
     void updateCodeWarnings(QmlJS::Document::Ptr doc);
+    void foldAuxiliaryData();
 
 protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
@@ -142,8 +144,6 @@ public:
 
 class QMLJSEDITOR_EXPORT QmlJSEditorFactory : public TextEditor::TextEditorFactory
 {
-    Q_OBJECT
-
 public:
     QmlJSEditorFactory();
     QmlJSEditorFactory(Core::Id id);

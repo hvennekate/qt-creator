@@ -247,8 +247,8 @@ void Client::initialize()
     QTC_ASSERT(m_clientInterface, return);
     QTC_ASSERT(m_state == Uninitialized, return);
     qCDebug(LOGLSPCLIENT) << "initializing language server " << m_displayName;
-    auto initRequest = new InitializeRequest();
-    auto params = initRequest->params().value_or(InitializeParams());
+    InitializeRequest initRequest;
+    auto params = initRequest.params().value_or(InitializeParams());
     params.setCapabilities(generateClientCapabilities());
     if (m_project) {
         params.setRootUri(DocumentUri::fromFilePath(m_project->projectDirectory()));
@@ -256,13 +256,16 @@ void Client::initialize()
             return WorkSpaceFolder(pro->projectDirectory().toString(), pro->displayName());
         }));
     }
-    initRequest->setParams(params);
-    initRequest->setResponseCallback([this](const InitializeRequest::Response &initResponse){
+    initRequest.setParams(params);
+    initRequest.setResponseCallback([this](const InitializeRequest::Response &initResponse){
         initializeCallback(initResponse);
     });
     // directly send data otherwise the state check would fail;
-    initRequest->registerResponseHandler(&m_responseHandlers);
-    m_clientInterface->sendMessage(initRequest->toBaseMessage());
+    initRequest.registerResponseHandler(&m_responseHandlers);
+    LanguageClientManager::logBaseMessage(LspLogMessage::ClientMessage,
+                                          name(),
+                                          initRequest.toBaseMessage());
+    m_clientInterface->sendMessage(initRequest.toBaseMessage());
     m_state = InitializeRequested;
 }
 
@@ -334,6 +337,9 @@ void Client::sendContent(const IContent &content)
     QString error;
     if (!QTC_GUARD(content.isValid(&error)))
         Core::MessageManager::write(error);
+    LanguageClientManager::logBaseMessage(LspLogMessage::ClientMessage,
+                                          name(),
+                                          content.toBaseMessage());
     m_clientInterface->sendMessage(content.toBaseMessage());
 }
 
@@ -357,7 +363,7 @@ void Client::closeDocument(TextEditor::TextDocument *document)
     deactivateDocument(document);
     const DocumentUri &uri = DocumentUri::fromFilePath(document->filePath());
     m_highlights[uri].clear();
-    if (m_openedDocument.remove(document) != 0) {
+    if (m_openedDocument.remove(document) != 0 && m_state == Initialized) {
         DidCloseTextDocumentParams params(TextDocumentIdentifier{uri});
         sendContent(DidCloseTextDocumentNotification(params));
     }
@@ -392,8 +398,10 @@ void Client::deactivateDocument(TextEditor::TextDocument *document)
     hideDiagnostics(document);
     resetAssistProviders(document);
     document->setFormatter(nullptr);
-    if (TextEditor::SyntaxHighlighter *highlighter = document->syntaxHighlighter())
-        highlighter->clearAllExtraFormats();
+    if (m_serverCapabilities.semanticHighlighting().has_value()) {
+        if (TextEditor::SyntaxHighlighter *highlighter = document->syntaxHighlighter())
+            highlighter->clearAllExtraFormats();
+    }
     for (Core::IEditor *editor : Core::DocumentModel::editorsForDocument(document)) {
         if (auto textEditor = qobject_cast<TextEditor::BaseTextEditor *>(editor))
             textEditor->editorWidget()->removeHoverHandler(&m_hoverHandler);
@@ -473,7 +481,7 @@ void Client::documentContentsChanged(TextEditor::TextDocument *document,
                                      int charsRemoved,
                                      int charsAdded)
 {
-    if (!m_openedDocument.contains(document))
+    if (!m_openedDocument.contains(document) || !reachable())
         return;
     const QString method(DidChangeTextDocumentNotification::methodName);
     TextDocumentSyncKind syncKind = m_serverCapabilities.textDocumentSyncKindHelper();
@@ -910,12 +918,12 @@ bool Client::reset()
     m_responseHandlers.clear();
     m_clientInterface->resetBuffer();
     updateEditorToolBar(m_openedDocument.keys());
-    m_openedDocument.clear();
     m_serverCapabilities = ServerCapabilities();
     m_dynamicCapabilities.reset();
-    m_project = nullptr;
     for (const DocumentUri &uri : m_diagnostics.keys())
         removeDiagnostics(uri);
+    for (TextEditor::TextDocument *document : m_openedDocument.keys())
+        document->disconnect(this);
     for (TextEditor::TextDocument *document : m_resetAssistProvider.keys())
         resetAssistProviders(document);
     return true;
@@ -929,6 +937,7 @@ void Client::setError(const QString &message)
 
 void Client::handleMessage(const BaseMessage &message)
 {
+    LanguageClientManager::logBaseMessage(LspLogMessage::ServerMessage, name(), message);
     if (auto handler = m_contentHandler[message.mimeType]) {
         QString parseError;
         handler(message.content, message.codec, parseError,
@@ -1055,33 +1064,41 @@ void Client::handleResponse(const MessageId &id, const QByteArray &content, QTex
 
 void Client::handleMethod(const QString &method, MessageId id, const IContent *content)
 {
-    QStringList error;
-    bool paramsValid = true;
+    ErrorHierarchy error;
+    auto logError = [&](const JsonObject &content) {
+        log(QJsonDocument(content).toJson(QJsonDocument::Indented) + '\n'
+                + tr("Invalid parameter in \"%1\": %2").arg(method, error.toString()),
+            Core::MessageManager::Flash);
+    };
+
     if (method == PublishDiagnosticsNotification::methodName) {
         auto params = dynamic_cast<const PublishDiagnosticsNotification *>(content)->params().value_or(PublishDiagnosticsParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             handleDiagnostics(params);
+        else
+            logError(params);
     } else if (method == LogMessageNotification::methodName) {
         auto params = dynamic_cast<const LogMessageNotification *>(content)->params().value_or(LogMessageParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             log(params, Core::MessageManager::Flash);
+        else
+            logError(params);
     } else if (method == SemanticHighlightNotification::methodName) {
         auto params = dynamic_cast<const SemanticHighlightNotification *>(content)->params().value_or(SemanticHighlightingParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             handleSemanticHighlight(params);
+        else
+            logError(params);
     } else if (method == ShowMessageNotification::methodName) {
         auto params = dynamic_cast<const ShowMessageNotification *>(content)->params().value_or(ShowMessageParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             log(params);
+        else
+            logError(params);
     } else if (method == ShowMessageRequest::methodName) {
         auto request = dynamic_cast<const ShowMessageRequest *>(content);
         auto params = request->params().value_or(ShowMessageRequestParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid) {
+        if (params.isValid(&error)) {
             showMessageBox(params, request->id());
         } else {
             ShowMessageRequest::Response response(request->id());
@@ -1096,19 +1113,22 @@ void Client::handleMethod(const QString &method, MessageId id, const IContent *c
         }
     } else if (method == RegisterCapabilityRequest::methodName) {
         auto params = dynamic_cast<const RegisterCapabilityRequest *>(content)->params().value_or(RegistrationParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             m_dynamicCapabilities.registerCapability(params.registrations());
+        else
+            logError(params);
     } else if (method == UnregisterCapabilityRequest::methodName) {
         auto params = dynamic_cast<const UnregisterCapabilityRequest *>(content)->params().value_or(UnregistrationParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             m_dynamicCapabilities.unregisterCapability(params.unregistrations());
+        else
+            logError(params);
     } else if (method == ApplyWorkspaceEditRequest::methodName) {
         auto params = dynamic_cast<const ApplyWorkspaceEditRequest *>(content)->params().value_or(ApplyWorkspaceEditParams());
-        paramsValid = params.isValid(&error);
-        if (paramsValid)
+        if (params.isValid(&error))
             applyWorkspaceEdit(params.edit());
+        else
+            logError(params);
     } else if (method == WorkSpaceFolderRequest::methodName) {
         WorkSpaceFolderRequest::Response response(dynamic_cast<const WorkSpaceFolderRequest *>(content)->id());
         const QList<ProjectExplorer::Project *> projects
@@ -1130,11 +1150,6 @@ void Client::handleMethod(const QString &method, MessageId id, const IContent *c
         error.setCode(ResponseError<JsonObject>::MethodNotFound);
         response.setError(error);
         sendContent(response);
-    }
-    std::reverse(error.begin(), error.end());
-    if (!paramsValid) {
-        log(tr("Invalid parameter in \"%1\": %2").arg(method, error.join("->")),
-            Core::MessageManager::Flash);
     }
     delete content;
 }
@@ -1211,10 +1226,10 @@ void Client::initializeCallback(const InitializeRequest::Response &initResponse)
         log(tr("No initialize result."));
     } else {
         const InitializeResult &result = _result.value();
-        QStringList error;
+        ErrorHierarchy error;
         if (!result.isValid(&error)) { // continue on ill formed result
-            std::reverse(error.begin(), error.end());
-            log(tr("Initialize result is not valid: ") + error.join("->"));
+            log(QJsonDocument(result).toJson(QJsonDocument::Indented) + '\n'
+                + tr("Initialize result is not valid: ") + error.toString());
         }
 
         m_serverCapabilities = result.capabilities().value_or(ServerCapabilities());

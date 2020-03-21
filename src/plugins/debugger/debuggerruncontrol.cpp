@@ -93,6 +93,7 @@ DebuggerEngine *createGdbEngine();
 DebuggerEngine *createPdbEngine();
 DebuggerEngine *createQmlEngine();
 DebuggerEngine *createLldbEngine();
+DebuggerEngine *createUvscEngine();
 
 class LocalProcessRunner : public RunWorker
 {
@@ -127,14 +128,14 @@ public:
     {
         const QByteArray ba = m_proc.readAllStandardOutput();
         const QString msg = QString::fromLocal8Bit(ba, ba.length());
-        m_runTool->appendMessage(msg, StdOutFormatSameLine);
+        m_runTool->appendMessage(msg, StdOutFormat);
     }
 
     void handleStandardError()
     {
         const QByteArray ba = m_proc.readAllStandardError();
         const QString msg = QString::fromLocal8Bit(ba, ba.length());
-        m_runTool->appendMessage(msg, StdErrFormatSameLine);
+        m_runTool->appendMessage(msg, StdErrFormat);
     }
 
     void handleFinished()
@@ -186,7 +187,7 @@ public:
     Utils::QtcProcess m_proc;
 };
 
-class CoreUnpacker : public RunWorker
+class CoreUnpacker final : public RunWorker
 {
 public:
     CoreUnpacker(RunControl *runControl, const QString &coreFileName)
@@ -332,6 +333,11 @@ void DebuggerRunTool::setRemoteChannel(const QString &channel)
 void DebuggerRunTool::setRemoteChannel(const QUrl &url)
 {
     m_runParameters.remoteChannel = QString("%1:%2").arg(url.host()).arg(url.port());
+}
+
+QString DebuggerRunTool::remoteChannel() const
+{
+    return m_runParameters.remoteChannel;
 }
 
 void DebuggerRunTool::setRemoteChannel(const QString &host, int port)
@@ -597,6 +603,9 @@ void DebuggerRunTool::start()
             case PdbEngineType: // FIXME: Yes, Python counts as C++...
                 QTC_CHECK(false); // Called from DebuggerRunTool constructor already.
 //                m_engine = createPdbEngine();
+                break;
+            case UvscEngineType:
+                m_engine = createUvscEngine();
                 break;
             default:
                 if (!m_runParameters.isQmlDebugging) {
@@ -1016,10 +1025,10 @@ void DebuggerRunTool::showMessage(const QString &msg, int channel, int timeout)
         m_engine->showMessage(msg, channel, timeout);
     switch (channel) {
     case AppOutput:
-        appendMessage(msg, StdOutFormatSameLine);
+        appendMessage(msg, StdOutFormat);
         break;
     case AppError:
-        appendMessage(msg, StdErrFormatSameLine);
+        appendMessage(msg, StdErrFormat);
         break;
     case AppStuff:
         appendMessage(msg, DebugFormat);

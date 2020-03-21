@@ -1,6 +1,6 @@
 add_qtc_plugin(QmlDesigner
   DEPENDS
-    QmlJS LanguageUtils QmlEditorWidgets
+    QmlJS LanguageUtils QmlEditorWidgets AdvancedDockingSystem
     Qt5::QuickWidgets Qt5::CorePrivate
   DEFINES
     DESIGNER_CORE_LIBRARY
@@ -139,11 +139,10 @@ extend_qtc_plugin(QmlDesigner
     tokencommand.cpp tokencommand.h
     valueschangedcommand.cpp valueschangedcommand.h
     changeselectioncommand.cpp changeselectioncommand.h
-    drop3dlibraryitemcommand.cpp drop3dlibraryitemcommand.h
     update3dviewstatecommand.cpp update3dviewstatecommand.h
-    enable3dviewcommand.cpp enable3dviewcommand.h
-    view3dclosedcommand.cpp view3dclosedcommand.h
     puppettocreatorcommand.cpp puppettocreatorcommand.h
+    inputeventcommand.cpp inputeventcommand.h
+    view3dactioncommand.cpp view3dactioncommand.h
 )
 
 extend_qtc_plugin(QmlDesigner
@@ -195,6 +194,16 @@ extend_qtc_plugin(QmlDesigner
 )
 
 extend_qtc_plugin(QmlDesigner
+  SOURCES_PREFIX components/edit3d
+  SOURCES
+  edit3dview.cpp edit3dview.h
+  edit3dwidget.cpp edit3dwidget.h
+  edit3dcanvas.cpp edit3dcanvas.h
+  edit3dactions.cpp edit3dactions.h
+  edit3d.qrc
+)
+
+extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX components/formeditor
   SOURCES
     abstractcustomtool.cpp abstractcustomtool.h
@@ -208,6 +217,7 @@ extend_qtc_plugin(QmlDesigner
     controlelement.cpp controlelement.h
     dragtool.cpp dragtool.h
     formeditor.qrc
+    formeditorannotationicon.cpp formeditorannotationicon.h
     formeditorgraphicsview.cpp formeditorgraphicsview.h
     formeditoritem.cpp formeditoritem.h
     formeditorscene.cpp formeditorscene.h
@@ -236,7 +246,6 @@ extend_qtc_plugin(QmlDesigner
     snapper.cpp snapper.h
     snappinglinecreator.cpp snappinglinecreator.h
     toolbox.cpp toolbox.h
-    option3daction.cpp option3daction.h
 )
 
 extend_qtc_plugin(QmlDesigner
@@ -385,6 +394,7 @@ extend_qtc_plugin(QmlDesigner
     include/abstractproperty.h
     include/abstractview.h
     include/anchorline.h
+    include/annotation.h
     include/basetexteditmodifier.h
     include/bindingproperty.h
     include/bytearraymodifier.h
@@ -474,6 +484,7 @@ extend_qtc_plugin(QmlDesigner
     model/abstractproperty.cpp
     model/abstractview.cpp
     model/anchorline.cpp
+    model/annotation.cpp
     model/basetexteditmodifier.cpp
     model/bindingproperty.cpp
     model/componenttextmodifier.cpp
@@ -536,6 +547,14 @@ extend_qtc_plugin(QmlDesigner
 extend_qtc_plugin(QmlDesigner
   SOURCES_PREFIX components/colortool
   SOURCES colortool.cpp colortool.h
+)
+
+extend_qtc_plugin(QmlDesigner
+  SOURCES_PREFIX components/annotationeditor
+  SOURCES annotationcommenttab.cpp annotationcommenttab.h annotationcommenttab.ui
+  annotationeditordialog.cpp annotationeditordialog.h annotationeditordialog.ui
+  annotationeditor.cpp annotationeditor.h
+  annotationtool.cpp annotationtool.h
 )
 
 extend_qtc_plugin(QmlDesigner

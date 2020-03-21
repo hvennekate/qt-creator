@@ -396,7 +396,7 @@ CallgrindToolPrivate::CallgrindToolPrivate()
     // reset action
     m_resetAction = action = new QAction(this);
     action->setDisabled(true);
-    action->setIcon(Utils::Icons::RELOAD.icon());
+    action->setIcon(Utils::Icons::RELOAD_TOOLBAR.icon());
     //action->setText(CallgrindTool::tr("Reset"));
     action->setToolTip(CallgrindTool::tr("Reset all event counters."));
     connect(action, &QAction::triggered, this, &CallgrindToolPrivate::resetRequested);
@@ -530,7 +530,7 @@ CallgrindToolPrivate::CallgrindToolPrivate()
     m_perspective.addWindow(m_visualization, Perspective::SplitVertical, nullptr,
                            false, Qt::RightDockWidgetArea);
 
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             this, &CallgrindToolPrivate::updateRunActions);
 }
 
@@ -863,7 +863,7 @@ void CallgrindToolPrivate::showParserResults(const ParseData *data)
 
 void CallgrindToolPrivate::editorOpened(IEditor *editor)
 {
-    if (auto widget = qobject_cast<TextEditorWidget *>(editor->widget())) {
+    if (auto widget = TextEditorWidget::fromEditor(editor)) {
         connect(widget, &TextEditorWidget::markContextMenuRequested,
                 this, &CallgrindToolPrivate::requestContextMenu);
     }

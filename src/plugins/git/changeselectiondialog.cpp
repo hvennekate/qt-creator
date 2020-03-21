@@ -25,7 +25,6 @@
 
 #include "changeselectiondialog.h"
 #include "logchangedialog.h"
-#include "gitplugin.h"
 #include "gitclient.h"
 #include "ui_changeselectiondialog.h"
 
@@ -57,13 +56,12 @@ ChangeSelectionDialog::ChangeSelectionDialog(const QString &workingDirectory, Co
                                              QWidget *parent) :
     QDialog(parent), m_ui(new Ui::ChangeSelectionDialog)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-    m_gitExecutable = GitPluginPrivate::client()->vcsBinary();
+    m_gitExecutable = GitClient::instance()->vcsBinary();
     m_ui->setupUi(this);
     m_ui->workingDirectoryChooser->setExpectedKind(PathChooser::ExistingDirectory);
     m_ui->workingDirectoryChooser->setPromptDialogTitle(tr("Select Git Directory"));
     m_ui->workingDirectoryChooser->setPath(workingDirectory);
-    m_gitEnvironment = GitPluginPrivate::client()->processEnvironment();
+    m_gitEnvironment = GitClient::instance()->processEnvironment();
     m_ui->changeNumberEdit->setFocus();
     m_ui->changeNumberEdit->selectAll();
 
@@ -204,7 +202,7 @@ void ChangeSelectionDialog::recalculateCompletion()
     if (workingDir.isEmpty())
         return;
 
-    GitClient *client = GitPluginPrivate::client();
+    GitClient *client = GitClient::instance();
     VcsBase::VcsCommand *command = client->asyncForEachRefCmd(
                 workingDir, {"--format=%(refname:short)"});
     connect(this, &QObject::destroyed, command, &VcsBase::VcsCommand::abort);

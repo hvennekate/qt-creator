@@ -73,12 +73,6 @@ const int MAX_PROGRESS = 1400;
 
 ServerModeReader::ServerModeReader()
 {
-    connect(Core::EditorManager::instance(), &Core::EditorManager::aboutToSave,
-            this, [this](const Core::IDocument *document) {
-        if (m_cmakeFiles.contains(document->filePath()))
-            emit dirty();
-    });
-
     connect(&m_parser, &CMakeParser::addOutput,
             this, [](const QString &m) { Core::MessageManager::write(m); });
     connect(&m_parser, &CMakeParser::addTask, this, [this](const Task &t) {
@@ -356,8 +350,8 @@ void ServerModeReader::createNewServer()
                 m_parameters.platform, m_parameters.toolset,
                 true, 1);
 
-    connect(m_cmakeServer.get(), &ServerMode::errorOccured,
-            this, &ServerModeReader::errorOccured);
+    connect(m_cmakeServer.get(), &ServerMode::errorOccurred,
+            this, &ServerModeReader::errorOccurred);
     connect(m_cmakeServer.get(), &ServerMode::cmakeReply,
             this, &ServerModeReader::handleReply);
     connect(m_cmakeServer.get(), &ServerMode::cmakeError,
@@ -466,10 +460,9 @@ void ServerModeReader::handleProgress(int min, int cur, int max, const QString &
 
 void ServerModeReader::handleSignal(const QString &signal, const QVariantMap &data)
 {
+    Q_UNUSED(signal)
     Q_UNUSED(data)
-    // CMake on Windows sends false dirty signals on each edit (QTCREATORBUG-17944)
-    if (!HostOsInfo::isWindowsHost() && signal == "dirty")
-        emit dirty();
+    // We do not need to act on fileChanged signals nor on dirty signals!
 }
 
 void ServerModeReader::handleServerConnected()
@@ -492,7 +485,7 @@ void ServerModeReader::reportError()
 {
     stop();
     Core::MessageManager::write(tr("CMake Project parsing failed."));
-    emit errorOccured(m_delayedErrorMessage);
+    emit errorOccurred(m_delayedErrorMessage);
 
     if (m_future)
         m_future->reportCanceled();

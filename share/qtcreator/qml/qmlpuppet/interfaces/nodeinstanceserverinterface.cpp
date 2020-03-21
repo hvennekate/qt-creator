@@ -33,7 +33,6 @@
 #include "createinstancescommand.h"
 #include "createscenecommand.h"
 #include "update3dviewstatecommand.h"
-#include "enable3dviewcommand.h"
 #include "changevaluescommand.h"
 #include "changebindingscommand.h"
 #include "changeauxiliarycommand.h"
@@ -48,7 +47,8 @@
 #include "addimportcontainer.h"
 #include "changenodesourcecommand.h"
 #include "changeselectioncommand.h"
-#include "drop3dlibraryitemcommand.h"
+#include "inputeventcommand.h"
+#include "view3dactioncommand.h"
 
 #include "informationchangedcommand.h"
 #include "pixmapchangedcommand.h"
@@ -63,7 +63,6 @@
 #include "endpuppetcommand.h"
 #include "debugoutputcommand.h"
 #include "puppetalivecommand.h"
-#include "view3dclosedcommand.h"
 #include "puppettocreatorcommand.h"
 
 #include <enumeration.h>
@@ -97,9 +96,6 @@ void NodeInstanceServerInterface::registerCommands()
     qRegisterMetaType<Update3dViewStateCommand>("Update3dViewStateCommand");
     qRegisterMetaTypeStreamOperators<Update3dViewStateCommand>("Update3dViewStateCommand");
 
-    qRegisterMetaType<Enable3DViewCommand>("Enable3DViewCommand");
-    qRegisterMetaTypeStreamOperators<Enable3DViewCommand>("Enable3DViewCommand");
-
     qRegisterMetaType<ChangeBindingsCommand>("ChangeBindingsCommand");
     qRegisterMetaTypeStreamOperators<ChangeBindingsCommand>("ChangeBindingsCommand");
 
@@ -117,9 +113,6 @@ void NodeInstanceServerInterface::registerCommands()
 
     qRegisterMetaType<ChangeSelectionCommand>("ChangeSelectionCommand");
     qRegisterMetaTypeStreamOperators<ChangeSelectionCommand>("ChangeSelectionCommand");
-
-    qRegisterMetaType<Drop3DLibraryItemCommand>("Drop3DLibraryItemCommand");
-    qRegisterMetaTypeStreamOperators<Drop3DLibraryItemCommand>("Drop3DLibraryItemCommand");
 
     qRegisterMetaType<RemovePropertiesCommand>("RemovePropertiesCommand");
     qRegisterMetaTypeStreamOperators<RemovePropertiesCommand>("RemovePropertiesCommand");
@@ -208,17 +201,17 @@ void NodeInstanceServerInterface::registerCommands()
     qRegisterMetaType<PuppetAliveCommand>("PuppetAliveCommand");
     qRegisterMetaTypeStreamOperators<PuppetAliveCommand>("PuppetAliveCommand");
 
-    qRegisterMetaType<View3DClosedCommand>("View3DClosedCommand");
-    qRegisterMetaTypeStreamOperators<View3DClosedCommand>("View3DClosedCommand");
-
     qRegisterMetaType<PuppetToCreatorCommand>("PuppetToCreatorCommand");
     qRegisterMetaTypeStreamOperators<PuppetToCreatorCommand>("PuppetToCreatorCommand");
 
+    qRegisterMetaType<InputEventCommand>("InputEventCommand");
+    qRegisterMetaTypeStreamOperators<InputEventCommand>("InputEventCommand");
+
+    qRegisterMetaType<View3DActionCommand>("View3DActionCommand");
+    qRegisterMetaTypeStreamOperators<View3DActionCommand>("View3DActionCommand");
+
     qRegisterMetaType<QPair<int, int>>("QPairIntInt");
     qRegisterMetaTypeStreamOperators<QPair<int, int>>("QPairIntInt");
-
-    qRegisterMetaType<QPair<QString, QVariant>>("QPairStringVariant");
-    qRegisterMetaTypeStreamOperators<QPair<QString, QVariant>>("QPairStringVariant");
 }
 
 }

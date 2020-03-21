@@ -238,8 +238,8 @@ void DisassemblerAgent::setLocation(const Location &loc)
         // Refresh when not displaying a function and there is not sufficient
         // context left past the address.
         if (d->cache.at(index).first.endAddress - loc.address() < 24) {
-            index = -1;
             d->cache.removeAt(index);
+            index = -1;
         }
     }
     if (index != -1) {
@@ -266,7 +266,7 @@ void DisassemblerAgentPrivate::configureMimeType()
     Utils::MimeType mtype = Utils::mimeTypeForName(mimeType);
     if (mtype.isValid()) {
         foreach (IEditor *editor, DocumentModel::editorsForDocument(document))
-            if (auto widget = qobject_cast<TextEditorWidget *>(editor->widget()))
+            if (auto widget = TextEditorWidget::fromEditor(editor))
                 widget->configureGenericHighlighter();
     } else {
         qWarning("Assembler mimetype '%s' not found.", qPrintable(mimeType));
@@ -314,7 +314,7 @@ void DisassemblerAgent::setContentsToDocument(const DisassemblerLines &contents)
                 Core::Constants::K_DEFAULT_TEXT_EDITOR_ID,
                 &titlePattern);
         QTC_ASSERT(editor, return);
-        if (auto widget = qobject_cast<TextEditorWidget *>(editor->widget())) {
+        if (auto widget = TextEditorWidget::fromEditor(editor)) {
             widget->setReadOnly(true);
             widget->setRequestMarkEnabled(true);
         }

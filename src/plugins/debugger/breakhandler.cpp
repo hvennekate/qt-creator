@@ -874,7 +874,6 @@ private:
 MultiBreakPointsDialog::MultiBreakPointsDialog(unsigned int enabledParts, QWidget *parent) :
     QDialog(parent)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setWindowTitle(tr("Edit Breakpoint Properties"));
 
     m_lineEditCondition = new QLineEdit(this);
@@ -1510,7 +1509,7 @@ bool BreakHandler::setData(const QModelIndex &idx, const QVariant &value, int ro
             return contextMenuEvent(ev);
 
         if (auto kev = ev.as<QKeyEvent>(QEvent::KeyPress)) {
-            if (kev->key() == Qt::Key_Delete) {
+            if (kev->key() == Qt::Key_Delete || kev->key() == Qt::Key_Backspace) {
                 QModelIndexList si = ev.currentOrSelectedRows();
                 const Breakpoints bps = findBreakpointsByIndex(si);
                 for (Breakpoint bp : bps) {
@@ -1794,8 +1793,8 @@ void BreakpointItem::destroyMarker()
 FilePath BreakpointItem::markerFileName() const
 {
     // Some heuristics to find a "good" file name.
-    if (!m_parameters.fileName.exists())
-        return FilePath::fromString(m_parameters.fileName.toFileInfo().absolutePath());
+    if (m_parameters.fileName.exists())
+        return FilePath::fromString(m_parameters.fileName.toFileInfo().absoluteFilePath());
 
     const FilePath origFileName = requestedParameters().fileName;
     if (m_parameters.fileName.endsWith(origFileName.fileName()))
@@ -2269,7 +2268,7 @@ void GlobalBreakpointItem::updateFileName(const FilePath &fileName)
 FilePath GlobalBreakpointItem::markerFileName() const
 {
     // Some heuristics to find a "good" file name.
-    if (!m_params.fileName.exists())
+    if (m_params.fileName.exists())
         return FilePath::fromString(m_params.fileName.toFileInfo().absoluteFilePath());
     return m_params.fileName;
 }
@@ -2548,7 +2547,7 @@ bool BreakpointManager::setData(const QModelIndex &idx, const QVariant &value, i
             return contextMenuEvent(ev);
 
         if (auto kev = ev.as<QKeyEvent>(QEvent::KeyPress)) {
-            if (kev->key() == Qt::Key_Delete) {
+            if (kev->key() == Qt::Key_Delete || kev->key() == Qt::Key_Backspace) {
                 QModelIndexList si = ev.currentOrSelectedRows();
                 const GlobalBreakpoints gbps = findBreakpointsByIndex(si);
                 for (GlobalBreakpoint gbp : gbps)

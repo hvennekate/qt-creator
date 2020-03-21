@@ -83,15 +83,6 @@ static QString msgAttachDebuggerTooltip(const QString &handleDescription = QStri
            AppOutputPane::tr("Attach debugger to %1").arg(handleDescription);
 }
 
-static void replaceAllChildWidgets(QLayout *layout, const QList<QWidget *> &newChildren)
-{
-    while (QLayoutItem *child = layout->takeAt(0))
-        delete child;
-
-    for (QWidget *widget : newChildren)
-        layout->addWidget(widget);
-}
-
 namespace {
 const char SETTINGS_KEY[] = "ProjectExplorer/AppOutput/Zoom";
 const char C_APP_OUTPUT[] = "ProjectExplorer.ApplicationOutput";
@@ -119,8 +110,6 @@ private:
     void slotContextMenuRequested(const QPoint &pos);
     int m_tabIndexForMiddleClick = -1;
 };
-
-} // Internal
 
 TabWidget::TabWidget(QWidget *parent)
     : QTabWidget(parent)
@@ -165,7 +154,7 @@ AppOutputPane::RunControlTab::RunControlTab(RunControl *runControl, Core::Output
     runControl(runControl), window(w)
 {
     if (runControl && w)
-        w->setFormatter(runControl->outputFormatter());
+        w->setFormatters(runControl->outputFormatters());
 }
 
 AppOutputPane::AppOutputPane() :
@@ -186,14 +175,14 @@ AppOutputPane::AppOutputPane() :
 
     // Rerun
     m_reRunButton->setIcon(Utils::Icons::RUN_SMALL_TOOLBAR.icon());
-    m_reRunButton->setToolTip(tr("Re-run this run-configuration"));
+    m_reRunButton->setToolTip(tr("Re-run this run-configuration."));
     m_reRunButton->setEnabled(false);
     connect(m_reRunButton, &QToolButton::clicked,
             this, &AppOutputPane::reRunRunControl);
 
     // Stop
     m_stopAction->setIcon(Utils::Icons::STOP_SMALL_TOOLBAR.icon());
-    m_stopAction->setToolTip(tr("Stop Running Program"));
+    m_stopAction->setToolTip(tr("Stop running program."));
     m_stopAction->setEnabled(false);
 
     Core::Command *cmd = Core::ActionManager::registerAction(m_stopAction, Constants::STOP);
@@ -415,7 +404,7 @@ void AppOutputPane::createNewOutputWindow(RunControl *rc)
         if (tab.runControl)
             tab.runControl->initiateFinish();
         tab.runControl = rc;
-        tab.window->setFormatter(rc->outputFormatter());
+        tab.window->setFormatters(rc->outputFormatters());
 
         handleOldOutput(tab.window);
 
@@ -702,10 +691,6 @@ void AppOutputPane::enableButtons(const RunControl *rc)
             m_attachButton->setToolTip(msgAttachDebuggerTooltip());
         }
         setZoomButtonsEnabled(true);
-
-        replaceAllChildWidgets(m_formatterWidget->layout(), rc->outputFormatter() ?
-                                   rc->outputFormatter()->toolbarWidgets() :
-                                   QList<QWidget *>());
     } else {
         m_reRunButton->setEnabled(false);
         m_reRunButton->setIcon(Utils::Icons::RUN_SMALL_TOOLBAR.icon());
@@ -758,8 +743,12 @@ void AppOutputPane::slotRunControlFinished()
 {
     auto *rc = qobject_cast<RunControl *>(sender());
     QTimer::singleShot(0, this, [this, rc]() { slotRunControlFinished2(rc); });
-    if (rc->outputFormatter())
-        rc->outputFormatter()->flush();
+    for (const RunControlTab &t : m_runControlTabs) {
+        if (t.runControl == rc) {
+            t.window->flush();
+            break;
+        }
+    }
 }
 
 void AppOutputPane::slotRunControlFinished2(RunControl *sender)
@@ -779,7 +768,7 @@ void AppOutputPane::slotRunControlFinished2(RunControl *sender)
     if (current && current == sender)
         enableButtons(current);
 
-    emit ProjectExplorerPlugin::instance()->updateRunActions();
+    ProjectExplorerPlugin::updateRunActions();
 
 #ifdef Q_OS_WIN
     const bool isRunning = Utils::anyOf(m_runControlTabs, [](const RunControlTab &rt) {
@@ -833,7 +822,7 @@ public:
              : {&m_runOutputModeComboBox, &m_debugOutputModeComboBox}) {
             modeComboBox->addItem(tr("Always"), int(AppOutputPaneMode::PopupOnOutput));
             modeComboBox->addItem(tr("Never"), int(AppOutputPaneMode::FlashOnOutput));
-            modeComboBox->addItem(tr("On first output only"),
+            modeComboBox->addItem(tr("On First Output Only"),
                                   int(AppOutputPaneMode::PopupOnFirstOutput));
         }
         m_runOutputModeComboBox.setCurrentIndex(m_runOutputModeComboBox
@@ -894,7 +883,8 @@ AppOutputSettingsPage::AppOutputSettingsPage()
     setWidgetCreator([] { return new AppOutputSettingsWidget; });
 }
 
-} // ProjectExplorer
+} // namespace Internal
+} // namespace ProjectExplorer
 
 #include "appoutputpane.moc"
 

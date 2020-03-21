@@ -27,16 +27,23 @@
 
 #include <extensionsystem/iplugin.h>
 
+namespace ProjectExplorer { class Project; }
+
 namespace QmakeProjectManager {
+
+class QmakeProFileNode;
+
 namespace Internal {
 
-class QmakeProjectManagerPlugin : public ExtensionSystem::IPlugin
+class QmakeProjectManagerPlugin final : public ExtensionSystem::IPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QtCreatorPlugin" FILE "QmakeProjectManager.json")
 
 public:
     ~QmakeProjectManagerPlugin() final;
+
+    static void buildProduct(ProjectExplorer::Project *project, QmakeProFileNode *proFileNode);
 
 #ifdef WITH_TESTS
 private slots:
@@ -48,7 +55,6 @@ private slots:
 
 private:
     bool initialize(const QStringList &arguments, QString *errorMessage) final;
-    void extensionsInitialized() final {}
 
     class QmakeProjectManagerPluginPrivate *d = nullptr;
 };

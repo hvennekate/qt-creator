@@ -102,11 +102,11 @@ public:
                                              const Position &position,
                                              NodeAbstractProperty parentproperty);
 
-    static QmlVisualNode createQmlVisualNode(AbstractView *view,
+    static QmlVisualNode createQml3DNode(AbstractView *view,
                                              const ItemLibraryEntry &itemLibraryEntry,
-                                             const QVector3D &position);
+                                             qint32 sceneRootId = -1, const QVector3D &position = {});
 
-    static NodeListProperty findSceneNodeProperty(AbstractView *view);
+    static NodeListProperty findSceneNodeProperty(AbstractView *view, qint32 sceneRootId);
 
     static bool isFlowTransition(const ModelNode &node);
 

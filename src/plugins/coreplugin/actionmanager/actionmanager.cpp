@@ -30,6 +30,7 @@
 
 #include <coreplugin/icore.h>
 #include <coreplugin/id.h>
+#include <utils/algorithm.h>
 #include <utils/fadingindicator.h>
 #include <utils/qtcassert.h>
 
@@ -46,31 +47,32 @@ namespace {
 }
 
 static const char kKeyboardSettingsKey[] = "KeyboardShortcuts";
+static const char kKeyboardSettingsKeyV2[] = "KeyboardShortcutsV2";
 
 using namespace Core;
 using namespace Core::Internal;
 
 /*!
     \class Core::ActionManager
-    \mainclass
-    \inmodule Qt Creator
+    \ingroup mainclasses
+    \inmodule QtCreator
 
     \brief The ActionManager class is responsible for registration of menus and
     menu items and keyboard shortcuts.
 
     The ActionManager is the central bookkeeper of actions and their shortcuts and layout.
     It is a singleton containing mostly static functions. If you need access to the instance,
-    e.g. for connecting to signals, is its ActionManager::instance() function.
+    e.g. for connecting to signals, call its ActionManager::instance() function.
 
-    The main reasons for the need of this class is to provide a central place where the user
-    can specify all his keyboard shortcuts, and to provide a solution for actions that should
+    The main reasons for the need of this class is to provide a central place where the users
+    can specify all their keyboard shortcuts, and to provide a solution for actions that should
     behave differently in different contexts (like the copy/replace/undo/redo actions).
 
     \section1 Contexts
 
     All actions that are registered with the same Id (but different context lists)
     are considered to be overloads of the same command, represented by an instance
-    of the Command class.
+    of the Core::Command class.
     Exactly only one of the registered actions with the same ID is active at any time.
     Which action this is, is defined by the context list that the actions were registered
     with:
@@ -141,13 +143,13 @@ using namespace Core::Internal;
 */
 
 /*!
-    \fn void ActionManager::commandListChanged()
+    \fn void Core::ActionManager::commandListChanged()
 
     Emitted when the command list has changed.
 */
 
 /*!
-    \fn void ActionManager::commandAdded(const QString &id)
+    \fn void Core::ActionManager::commandAdded(Core::Id id)
 
     Emitted when a command (with the \a id) is added.
 */
@@ -262,7 +264,7 @@ ActionContainer *ActionManager::createTouchBar(Id id, const QIcon &icon, const Q
     for the currently active context.
     If the optional \a context argument is not specified, the global context
     will be assumed.
-    A scriptable action can be called from a script without the need for the user
+    A \a scriptable action can be called from a script without the need for the user
     to interact with it.
 */
 Command *ActionManager::registerAction(QAction *action, Id id, const Context &context, bool scriptable)
@@ -356,7 +358,7 @@ void ActionManager::unregisterAction(QAction *action, Id id)
 
 /*!
     Handles the display of the used shortcuts in the presentation mode. The presentation mode is
-    enabled when starting \QC with the command line argument \c{-presentationMode}. In the
+    \a enabled when starting \QC with the command line argument \c{-presentationMode}. In the
     presentation mode, \QC displays any pressed shortcut in a grey box.
 */
 void ActionManager::setPresentationModeEnabled(bool enabled)
@@ -377,11 +379,19 @@ void ActionManager::setPresentationModeEnabled(bool enabled)
     d->m_presentationModeEnabled = enabled;
 }
 
+/*!
+    Returns whether presentation mode is enabled.
+
+    \sa setPresentationModeEnabled
+*/
 bool ActionManager::isPresentationModeEnabled()
 {
     return d->m_presentationModeEnabled;
 }
 
+/*!
+    \internal
+*/
 QString ActionManager::withNumberAccelerator(const QString &text, const int number)
 {
     if (Utils::HostOsInfo::isMacHost() || number > 9)
@@ -487,22 +497,50 @@ Action *ActionManagerPrivate::overridableAction(Id id)
 
 void ActionManagerPrivate::readUserSettings(Id id, Action *cmd)
 {
+    // TODO Settings V2 were introduced in Qt Creator 4.13, remove old settings at some point
     QSettings *settings = ICore::settings();
-    settings->beginGroup(QLatin1String(kKeyboardSettingsKey));
-    if (settings->contains(id.toString()))
-        cmd->setKeySequence(QKeySequence(settings->value(id.toString()).toString()));
+    // transfer from old settings if not done before
+    const QString group = settings->childGroups().contains(kKeyboardSettingsKeyV2)
+                              ? QString(kKeyboardSettingsKeyV2)
+                              : QString(kKeyboardSettingsKey);
+    settings->beginGroup(group);
+    if (settings->contains(id.toString())) {
+        const QVariant v = settings->value(id.toString());
+        if (QMetaType::Type(v.type()) == QMetaType::QStringList) {
+            cmd->setKeySequences(Utils::transform<QList>(v.toStringList(), [](const QString &s) {
+                return QKeySequence::fromString(s);
+            }));
+        } else {
+            cmd->setKeySequences({QKeySequence::fromString(v.toString())});
+        }
+    }
     settings->endGroup();
 }
 
 void ActionManagerPrivate::saveSettings(Action *cmd)
 {
-    const QString settingsKey = QLatin1String(kKeyboardSettingsKey) + QLatin1Char('/')
-            + cmd->id().toString();
-    QKeySequence key = cmd->keySequence();
-    if (key != cmd->defaultKeySequence())
-        ICore::settings()->setValue(settingsKey, key.toString());
-    else
+    const QString id = cmd->id().toString();
+    const QString settingsKey = QLatin1String(kKeyboardSettingsKeyV2) + '/' + id;
+    const QString compatSettingsKey = QLatin1String(kKeyboardSettingsKey) + '/' + id;
+    const QList<QKeySequence> keys = cmd->keySequences();
+    const QList<QKeySequence> defaultKeys = cmd->defaultKeySequences();
+    if (keys != defaultKeys) {
+        if (keys.isEmpty()) {
+            ICore::settings()->setValue(settingsKey, QString());
+            ICore::settings()->setValue(compatSettingsKey, QString());
+        } else if (keys.size() == 1) {
+            ICore::settings()->setValue(settingsKey, keys.first().toString());
+            ICore::settings()->setValue(compatSettingsKey, keys.first().toString());
+        } else {
+            ICore::settings()->setValue(settingsKey,
+                                        Utils::transform<QStringList>(keys,
+                                                                      [](const QKeySequence &k) {
+                                                                          return k.toString();
+                                                                      }));
+        }
+    } else {
         ICore::settings()->remove(settingsKey);
+    }
 }
 
 void ActionManagerPrivate::saveSettings()

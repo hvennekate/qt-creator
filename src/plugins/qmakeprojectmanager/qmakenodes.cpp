@@ -26,7 +26,7 @@
 #include "qmakenodes.h"
 
 #include "qmakeproject.h"
-#include "qmakeprojectmanager.h"
+#include "qmakeprojectmanagerplugin.h"
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/runconfiguration.h>
@@ -217,6 +217,9 @@ bool QmakeBuildSystem::addFiles(Node *context, const QStringList &filePaths, QSt
             actualFilePaths.removeOne(e);
         if (notAdded)
             *notAdded = alreadyPresentFiles;
+        qCDebug(qmakeNodesLog) << Q_FUNC_INFO << "file paths:" << filePaths
+                               << "already present:" << alreadyPresentFiles
+                               << "actual file paths:" << actualFilePaths;
         return pri->addFiles(actualFilePaths, notAdded);
     }
 
@@ -339,7 +342,7 @@ bool QmakeProFileNode::validParse() const
 
 void QmakeProFileNode::build()
 {
-    QmakeManager::buildProduct(getProject(), this);
+    QmakeProjectManagerPlugin::buildProduct(getProject(), this);
 }
 
 QStringList QmakeProFileNode::targetApplications() const
@@ -380,6 +383,8 @@ QVariant QmakeProFileNode::data(Core::Id role) const
     }
 
     if (role == Android::Constants::AndroidTargets)
+        return {};
+    if (role == Android::Constants::AndroidApk)
         return {};
 
     // We can not use AppMan headers even at build time.

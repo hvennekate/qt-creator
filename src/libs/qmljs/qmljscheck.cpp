@@ -313,6 +313,12 @@ protected:
             _state = ReachesEnd;
         return false;
     }
+
+    void throwRecursionDepthError() override
+    {
+         // handle differently? ReturnOrThrow declares unreachable code, but probably leads to bogus warnings
+        _state = ReachesEnd;
+    }
 };
 
 class MarkUnreachableCode : protected ReachesEndCheck
@@ -351,6 +357,11 @@ protected:
             message.location = locationFromRange(expr->firstSourceLocation(), expr->lastSourceLocation());
         if (message.isValid())
             _messages += message;
+    }
+
+    void throwRecursionDepthError() override
+    {
+        _messages.append(Message(ErrHitMaximumRecursion, SourceLocation()));
     }
 };
 
@@ -510,6 +521,11 @@ protected:
         --_block;
     }
 
+    void throwRecursionDepthError() override
+    {
+        addMessage(ErrHitMaximumRecursion, SourceLocation());
+    }
+
 private:
     void addMessage(StaticAnalysis::Type type, const SourceLocation &loc, const QString &arg1 = QString())
     {
@@ -603,16 +619,9 @@ public:
 class UnsupportedTypesByQmlUi : public QStringList
 {
 public:
-    UnsupportedTypesByQmlUi() : QStringList({"Binding",
-                                             "ShaderEffect",
-                                             "ShaderEffectSource",
+    UnsupportedTypesByQmlUi() : QStringList({"ShaderEffect",
                                              "Component",
                                              "Transition",
-                                             "PropertyAnimation",
-                                             "SequentialAnimation",
-                                             "PropertyAnimation",
-                                             "SequentialAnimation",
-                                             "ParallelAnimation",
                                              "Drawer"})
     {
         append(UnsupportedTypesByVisualDesigner());
@@ -655,13 +664,11 @@ Check::Check(Document::Ptr doc, const ContextPtr &context)
     , _importsOk(false)
     , _inStatementBinding(false)
     , _imports(nullptr)
-    , _isQtQuick2(false)
 
 {
     _imports = context->imports(doc.data());
     if (_imports && !_imports->importFailed()) {
         _importsOk = true;
-        _isQtQuick2 = isQtQuick2();
     }
 
     _enabledMessages = Utils::toSet(Message::allMessageTypes());
@@ -672,12 +679,9 @@ Check::Check(Document::Ptr doc, const ContextPtr &context)
     disableMessage(HintOneStatementPerLine);
     disableMessage(HintExtraParentheses);
 
-    if (isQtQuick2Ui()) {
-        disableQmlDesignerChecks();
-    } else {
-        disableQmlDesignerChecks();
+    disableQmlDesignerChecks();
+    if (!isQtQuick2Ui())
         disableQmlDesignerUiFileChecks();
-    }
 }
 
 Check::~Check()
@@ -813,6 +817,11 @@ void Check::endVisit(UiObjectInitializer *)
     UiObjectBinding *objectBinding = cast<UiObjectBinding *>(parent());
     if (objectBinding && objectBinding->qualifiedTypeNameId->name == "Component")
         m_idStack.pop();
+}
+
+void Check::throwRecursionDepthError()
+{
+    addMessage(ErrHitMaximumRecursion, SourceLocation());
 }
 
 void Check::checkProperty(UiQualifiedId *qualifiedId)

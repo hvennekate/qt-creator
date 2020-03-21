@@ -16,7 +16,6 @@ add_qtc_plugin(ProjectExplorer
     buildpropertiessettings.h
     buildpropertiessettingspage.cpp buildpropertiessettingspage.h
     buildconfiguration.cpp buildconfiguration.h
-    buildenvironmentwidget.cpp buildenvironmentwidget.h
     buildinfo.cpp buildinfo.h
     buildmanager.cpp buildmanager.h
     buildprogress.cpp buildprogress.h
@@ -163,6 +162,7 @@ add_qtc_plugin(ProjectExplorer
     sessionview.cpp sessionview.h
     showineditortaskhandler.cpp showineditortaskhandler.h
     showoutputtaskhandler.cpp showoutputtaskhandler.h
+    simpleprojectwizard.cpp simpleprojectwizard.h
     target.cpp target.h
     targetsettingspanel.cpp targetsettingspanel.h
     targetsetuppage.cpp targetsetuppage.h

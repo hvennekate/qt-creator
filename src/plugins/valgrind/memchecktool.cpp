@@ -350,7 +350,7 @@ bool MemcheckErrorFilterProxyModel::filterAcceptsRow(int sourceRow, const QModel
                     if (file.isExecutable())
                         validFolders << file.remoteDirectory();
                 }
-                foreach (BuildConfiguration *config, target->buildConfigurations())
+                for (BuildConfiguration *config : target->buildConfigurations())
                     validFolders << config->buildDirectory().toString();
             }
         }
@@ -571,7 +571,7 @@ MemcheckToolPrivate::MemcheckToolPrivate()
 
     m_perspective.addWindow(m_errorView, Perspective::SplitVertical, nullptr);
 
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             this, &MemcheckToolPrivate::maybeActiveRunConfigurationChanged);
 
     //
@@ -1338,9 +1338,6 @@ HeobDialog::HeobDialog(QWidget *parent) :
     m_profileDeleteButton->setEnabled(m_profilesCombo->count() > 1);
 
     setWindowTitle(tr("Heob"));
-
-    // disable context help button
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 }
 
 QString HeobDialog::arguments() const

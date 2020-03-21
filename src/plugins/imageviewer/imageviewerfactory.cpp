@@ -38,15 +38,11 @@ ImageViewerFactory::ImageViewerFactory()
 {
     setId(Constants::IMAGEVIEWER_ID);
     setDisplayName(QCoreApplication::translate("OpenWith::Editors", Constants::IMAGEVIEWER_DISPLAY_NAME));
+    setEditorCreator([] { return new ImageViewer; });
 
     const QList<QByteArray> supportedMimeTypes = QImageReader::supportedMimeTypes();
-    foreach (const QByteArray &format, supportedMimeTypes)
-        addMimeType(format.constData());
-}
-
-Core::IEditor *ImageViewerFactory::createEditor()
-{
-    return new ImageViewer();
+    for (const QByteArray &format : supportedMimeTypes)
+        addMimeType(QString::fromLatin1(format));
 }
 
 } // namespace Internal

@@ -51,7 +51,7 @@ BuildDirectoryAspect::BuildDirectoryAspect() : d(new Private)
     setSettingsKey("ProjectExplorer.BuildConfiguration.BuildDirectory");
     setLabelText(tr("Build directory:"));
     setDisplayStyle(PathChooserDisplay);
-    setExpectedKind(Utils::PathChooser::Directory);
+    setExpectedKind(Utils::PathChooser::ExistingDirectory);
 }
 
 BuildDirectoryAspect::~BuildDirectoryAspect()
@@ -63,6 +63,7 @@ void BuildDirectoryAspect::allowInSourceBuilds(const FilePath &sourceDir)
 {
     d->sourceDir = sourceDir;
     makeCheckable(CheckBoxPlacement::Top, tr("Shadow build:"), QString());
+    setChecked(d->sourceDir != filePath());
 }
 
 bool BuildDirectoryAspect::isShadowBuild() const

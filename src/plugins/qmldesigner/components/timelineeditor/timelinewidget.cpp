@@ -328,6 +328,20 @@ void TimelineWidget::updateAnimationCurve(DesignTools::PropertyTreeItem *item)
     QmlTimelineKeyframeGroup group = timelineKeyframeGroup(currentTimeline, item);
 
     if (group.isValid()) {
+        ModelNode groupNode = group.modelNode();
+
+        if (groupNode.isValid()) {
+            if (item->locked())
+                groupNode.setAuxiliaryData("locked", true);
+            else
+                groupNode.removeAuxiliaryData("locked");
+
+            if (item->pinned())
+                groupNode.setAuxiliaryData("pinned", true);
+            else
+                groupNode.removeAuxiliaryData("pinned");
+        }
+
         auto replaceKeyframes = [&group, item, this]() {
             m_toolbar->setBlockReflection(true);
             for (auto frame : group.keyframes())
@@ -341,7 +355,8 @@ void TimelineWidget::updateAnimationCurve(DesignTools::PropertyTreeItem *item)
                 if (previous.isValid()) {
                     if (frame.interpolation() == DesignTools::Keyframe::Interpolation::Bezier) {
                         DesignTools::CurveSegment segment(previous, frame);
-                        attachEasingCurve(pos.x(), segment.easingCurve(), group);
+                        if (segment.isValid())
+                            attachEasingCurve(pos.x(), segment.easingCurve(), group);
                     } else if (frame.interpolation()
                                == DesignTools::Keyframe::Interpolation::Easing) {
                         QVariant data = frame.data();
@@ -407,8 +422,8 @@ void TimelineWidget::init()
     QmlTimeline currentTimeline = m_timelineView->timelineForState(m_timelineView->currentState());
     if (currentTimeline.isValid()) {
         setTimelineId(currentTimeline.modelNode().id());
-        m_statusBar->setText(tr(TimelineConstants::statusBarPlayheadFrame)
-                             .arg(getcurrentFrame(currentTimeline)));
+        m_statusBar->setText(
+            tr(TimelineConstants::statusBarPlayheadFrame).arg(getcurrentFrame(currentTimeline)));
     } else {
         setTimelineId({});
         m_statusBar->clear();
@@ -445,6 +460,8 @@ void TimelineWidget::invalidateTimelineDuration(const QmlTimeline &timeline)
     if (timelineView() && timelineView()->model()) {
         QmlTimeline currentTimeline = graphicsScene()->currentTimeline();
         if (currentTimeline.isValid() && currentTimeline == timeline) {
+            m_toolbar->setStartFrame(timeline.startKeyframe());
+            m_toolbar->setEndFrame(timeline.endKeyframe());
             graphicsScene()->setTimeline(timeline);
 
             qreal playHeadFrame = getcurrentFrame(timeline);
@@ -486,11 +503,15 @@ void TimelineWidget::setupScrollbar(int min, int max, int current)
 
 void TimelineWidget::setTimelineId(const QString &id)
 {
-    setTimelineActive(!m_timelineView->getTimelines().isEmpty());
-    if (m_timelineView->isAttached()) {
+    const bool empty = m_timelineView->getTimelines().isEmpty();
+    setTimelineActive(!empty);
+    if (m_timelineView->isAttached() && !empty) {
         m_toolbar->setCurrentTimeline(m_timelineView->modelNodeForId(id));
         m_toolbar->setCurrentState(m_timelineView->currentState().name());
         m_timelineView->setTimelineRecording(false);
+    } else {
+        m_toolbar->setCurrentTimeline({});
+        m_toolbar->setCurrentState({});
     }
 }
 

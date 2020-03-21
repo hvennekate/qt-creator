@@ -26,6 +26,7 @@
 #include "graphicsview.h"
 #include "curveeditormodel.h"
 #include "curveitem.h"
+#include "treeitem.h"
 #include "utils.h"
 
 #include <QAction>
@@ -68,6 +69,9 @@ GraphicsView::GraphicsView(CurveEditorModel *model, QWidget *parent)
     };
 
     connect(&m_scene, &GraphicsScene::curveChanged, itemSlot);
+
+    auto pinSlot = [this](PropertyTreeItem *pti) { m_scene.setPinned(pti->id(), pti->pinned()); };
+    connect(m_model, &CurveEditorModel::curveChanged, pinSlot);
 
     applyZoom(m_zoomX, m_zoomY);
     update();
@@ -185,6 +189,16 @@ void GraphicsView::setStyle(const CurveEditorStyle &style)
     viewport()->update();
 }
 
+void GraphicsView::setLocked(PropertyTreeItem *item)
+{
+    const auto itemList = items();
+    for (auto *gitem : itemList) {
+        if (auto *citem = qgraphicsitem_cast<CurveItem *>(gitem))
+            if (item->id() == citem->id())
+                citem->setLocked(item->locked());
+    }
+}
+
 void GraphicsView::setZoomX(double zoom, const QPoint &pivot)
 {
     applyZoom(zoom, m_zoomY, pivot);
@@ -219,6 +233,30 @@ void GraphicsView::reset(const std::vector<CurveItem *> &items)
 {
     m_scene.clear();
     for (auto *item : items)
+        m_scene.addCurveItem(item);
+
+    applyZoom(m_zoomX, m_zoomY);
+    viewport()->update();
+}
+
+void GraphicsView::updateSelection(const std::vector<CurveItem *> &items)
+{
+    const std::vector<CurveItem *> pinnedItems = m_scene.takePinnedItems();
+    auto notPinned = [pinnedItems](CurveItem *item) {
+        for (auto *pinned : pinnedItems) {
+            if (pinned->id() == item->id())
+                return false;
+        }
+        return true;
+    };
+
+    m_scene.clear();
+    for (auto *item : items) {
+        if (notPinned(item))
+            m_scene.addCurveItem(item);
+    }
+
+    for (auto *item : pinnedItems)
         m_scene.addCurveItem(item);
 
     applyZoom(m_zoomX, m_zoomY);
@@ -513,6 +551,39 @@ void GraphicsView::drawExtremaY(QPainter *painter, const QRectF &rect)
 }
 #endif
 
+void GraphicsView::drawRangeBar(QPainter *painter, const QRectF &rect)
+{
+    painter->save();
+
+    QFontMetrics fm(painter->font());
+    QRectF labelRect = fm.boundingRect(QString("0"));
+    labelRect.moveCenter(rect.center());
+
+    qreal bTick = rect.bottom() - 2;
+    qreal tTick = labelRect.bottom() + 2;
+    QRectF activeRect = QRectF(QPointF(mapTimeToX(m_model->minimumTime()), tTick),
+                               QPointF(mapTimeToX(m_model->maximumTime()), bTick));
+
+    painter->fillRect(activeRect, m_style.rangeBarColor);
+
+    QColor handleColor(m_style.rangeBarCapsColor);
+    painter->setBrush(handleColor);
+    painter->setPen(handleColor);
+
+    const qreal radius = 5.;
+    QRectF minHandle = rangeMinHandle(rect);
+    painter->drawRoundedRect(minHandle, radius, radius);
+    minHandle.setLeft(minHandle.center().x());
+    painter->fillRect(minHandle, handleColor);
+
+    QRectF maxHandle = rangeMaxHandle(rect);
+    painter->drawRoundedRect(maxHandle, radius, radius);
+    maxHandle.setRight(maxHandle.center().x());
+    painter->fillRect(maxHandle, handleColor);
+
+    painter->restore();
+}
+
 void GraphicsView::drawTimeScale(QPainter *painter, const QRectF &rect)
 {
     painter->save();
@@ -533,9 +604,13 @@ void GraphicsView::drawTimeScale(QPainter *painter, const QRectF &rect)
         painter->drawLine(position, rect.bottom() - 2, position, textRect.bottom() + 2);
     };
 
+    drawRangeBar(painter, rect);
+
     double timeIncrement = timeLabelInterval(painter, maximumTime());
     for (double i = minimumTime(); i <= maximumTime(); i += timeIncrement)
         paintLabeledTick(i);
+
+    drawRangeBar(painter, rect);
 
     painter->restore();
 }
@@ -589,6 +664,30 @@ double GraphicsView::timeLabelInterval(QPainter *painter, double maxTime)
     }
 
     return deltaTime;
+}
+
+QRectF GraphicsView::rangeMinHandle(const QRectF &rect)
+{
+    QRectF labelRect = fontMetrics().boundingRect(QString("0"));
+    labelRect.moveCenter(rect.center());
+
+    qreal top = rect.bottom() - 2;
+    qreal bottom = labelRect.bottom() + 2;
+    QSize size(10, top - bottom);
+
+    int leftHandleLeft = mapTimeToX(m_model->minimumTime()) - size.width();
+    return QRectF(QPointF(leftHandleLeft, bottom), size);
+}
+
+QRectF GraphicsView::rangeMaxHandle(const QRectF &rect)
+{
+    QRectF labelRect = fontMetrics().boundingRect(QString("0"));
+    labelRect.moveCenter(rect.center());
+
+    qreal bottom = rect.bottom() - 2;
+    qreal top = labelRect.bottom() + 2;
+
+    return QRectF(QPointF(mapTimeToX(m_model->maximumTime()), bottom), QSize(10, top - bottom));
 }
 
 } // End namespace DesignTools.

@@ -43,7 +43,10 @@
 
 #include <texteditor/textdocument.h>
 
+#include <utils/consoleprocess.h>
+#include <utils/mimetypes/mimedatabase.h>
 #include <utils/qtcassert.h>
+#include <utils/runextensions.h>
 #include <utils/synchronousprocess.h>
 
 #include <QDir>
@@ -144,19 +147,18 @@ static PythonLanguageServerState checkPythonLanguageServer(const FilePath &pytho
     using namespace LanguageClient;
     SynchronousProcess pythonProcess;
     const CommandLine pythonLShelpCommand(python, {"-m", "pyls", "-h"});
-    SynchronousProcessResponse response = pythonProcess.runBlocking(pythonLShelpCommand);
-    if (response.allOutput().contains("Python Language Server")) {
-        const FilePath &modulePath = getPylsModulePath(pythonLShelpCommand);
-        for (const StdIOSettings *serverSetting : configuredPythonLanguageServer()) {
-            if (modulePath == getPylsModulePath(serverSetting->command())) {
-                return {serverSetting->m_enabled ? PythonLanguageServerState::AlreadyConfigured
-                                                 : PythonLanguageServerState::ConfiguredButDisabled,
-                        FilePath()};
-            }
+    const FilePath &modulePath = getPylsModulePath(pythonLShelpCommand);
+    for (const StdIOSettings *serverSetting : configuredPythonLanguageServer()) {
+        if (modulePath == getPylsModulePath(serverSetting->command())) {
+            return {serverSetting->m_enabled ? PythonLanguageServerState::AlreadyConfigured
+                                             : PythonLanguageServerState::ConfiguredButDisabled,
+                    FilePath()};
         }
-
-        return {PythonLanguageServerState::AlreadyInstalled, modulePath};
     }
+
+    SynchronousProcessResponse response = pythonProcess.runBlocking(pythonLShelpCommand);
+    if (response.allOutput().contains("Python Language Server"))
+        return {PythonLanguageServerState::AlreadyInstalled, modulePath};
 
     const CommandLine pythonPipVersionCommand(python, {"-m", "pip", "-V"});
     response = pythonProcess.runBlocking(pythonPipVersionCommand);
@@ -170,8 +172,10 @@ static FilePath detectPython(const FilePath &documentPath)
 {
     FilePath python;
 
-    PythonProject *project = qobject_cast<PythonProject *>(
-        ProjectExplorer::SessionManager::projectForFile(documentPath));
+    PythonProject *project = documentPath.isEmpty()
+                                 ? nullptr
+                                 : qobject_cast<PythonProject *>(
+                                     ProjectExplorer::SessionManager::projectForFile(documentPath));
     if (!project)
         project = qobject_cast<PythonProject *>(ProjectExplorer::SessionManager::startupProject());
 
@@ -368,11 +372,38 @@ void PyLSConfigureAssistant::documentOpened(Core::IDocument *document)
 void PyLSConfigureAssistant::openDocumentWithPython(const FilePath &python,
                                                     TextEditor::TextDocument *document)
 {
-    const PythonLanguageServerState &lsState = checkPythonLanguageServer(python);
+    using CheckPylsWatcher = QFutureWatcher<PythonLanguageServerState>;
 
-    if (lsState.state == PythonLanguageServerState::CanNotBeInstalled)
+    QPointer<CheckPylsWatcher> watcher = new CheckPylsWatcher();
+    watcher->setFuture(Utils::runAsync(&checkPythonLanguageServer, python));
+
+    // cancel and delete watcher after a 10 second timeout
+    QTimer::singleShot(10000, this, [watcher]() {
+        if (watcher) {
+            watcher->cancel();
+            watcher->deleteLater();
+        }
+    });
+
+    connect(
+        watcher,
+        &CheckPylsWatcher::resultReadyAt,
+        this,
+        [=, document = QPointer<TextEditor::TextDocument>(document)]() {
+            if (!document || !watcher)
+                return;
+            handlePyLSState(python, watcher->result(), document);
+            watcher->deleteLater();
+        });
+}
+
+void PyLSConfigureAssistant::handlePyLSState(const FilePath &python,
+                                             const PythonLanguageServerState &state,
+                                             TextEditor::TextDocument *document)
+{
+    if (state.state == PythonLanguageServerState::CanNotBeInstalled)
         return;
-    if (lsState.state == PythonLanguageServerState::AlreadyConfigured) {
+    if (state.state == PythonLanguageServerState::AlreadyConfigured) {
         if (const StdIOSettings *setting = languageServerForPython(python)) {
             if (Client *client = LanguageClientManager::clientForSetting(setting).value(0))
                 LanguageClientManager::reOpenDocumentWithClient(document, client);
@@ -382,12 +413,11 @@ void PyLSConfigureAssistant::openDocumentWithPython(const FilePath &python,
 
     resetEditorInfoBar(document);
     Core::InfoBar *infoBar = document->infoBar();
-    if (lsState.state == PythonLanguageServerState::CanBeInstalled
+    if (state.state == PythonLanguageServerState::CanBeInstalled
         && infoBar->canInfoBeAdded(installPylsInfoBarId)) {
-        auto message
-            = tr("Install and set up Python language server (PyLS) for %1 (%2). "
-                 "The language server provides Python specific completion and annotation.")
-                  .arg(pythonName(python), python.toUserOutput());
+        auto message = tr("Install and set up Python language server (PyLS) for %1 (%2). "
+                          "The language server provides Python specific completion and annotation.")
+                           .arg(pythonName(python), python.toUserOutput());
         Core::InfoBarEntry info(installPylsInfoBarId,
                                 message,
                                 Core::InfoBarEntry::GlobalSuppression::Enabled);
@@ -395,7 +425,7 @@ void PyLSConfigureAssistant::openDocumentWithPython(const FilePath &python,
                                  [=]() { installPythonLanguageServer(python, document); });
         infoBar->addInfo(info);
         m_infoBarEntries[python] << document;
-    } else if (lsState.state == PythonLanguageServerState::AlreadyInstalled
+    } else if (state.state == PythonLanguageServerState::AlreadyInstalled
                && infoBar->canInfoBeAdded(startPylsInfoBarId)) {
         auto message = tr("Found a Python language server for %1 (%2). "
                           "Set it up for this document?")
@@ -407,7 +437,7 @@ void PyLSConfigureAssistant::openDocumentWithPython(const FilePath &python,
                                  [=]() { setupPythonLanguageServer(python, document); });
         infoBar->addInfo(info);
         m_infoBarEntries[python] << document;
-    } else if (lsState.state == PythonLanguageServerState::ConfiguredButDisabled
+    } else if (state.state == PythonLanguageServerState::ConfiguredButDisabled
                && infoBar->canInfoBeAdded(enablePylsInfoBarId)) {
         auto message = tr("Enable Python language server for %1 (%2)?")
                            .arg(pythonName(python), python.toUserOutput());
@@ -444,6 +474,7 @@ PyLSConfigureAssistant::PyLSConfigureAssistant(QObject *parent)
     : QObject(parent)
 {
     Core::EditorManager::instance();
+
     connect(Core::EditorManager::instance(),
             &Core::EditorManager::documentClosed,
             this,
@@ -451,6 +482,55 @@ PyLSConfigureAssistant::PyLSConfigureAssistant(QObject *parent)
                 if (auto textDocument = qobject_cast<TextEditor::TextDocument *>(document))
                     resetEditorInfoBar(textDocument);
             });
+}
+
+static QStringList replImportArgs(const FilePath &pythonFile, ReplType type)
+{
+    using MimeTypes = QList<MimeType>;
+    const MimeTypes mimeTypes = pythonFile.isEmpty() || type == ReplType::Unmodified
+                                    ? MimeTypes()
+                                    : mimeTypesForFileName(pythonFile.toString());
+    const bool isPython = Utils::anyOf(mimeTypes, [](const MimeType &mt) {
+        return mt.inherits("text/x-python") || mt.inherits("text/x-python3");
+    });
+    if (type == ReplType::Unmodified || !isPython)
+        return {};
+    const auto import = type == ReplType::Import
+                            ? QString("import %1").arg(pythonFile.toFileInfo().completeBaseName())
+                            : QString("from %1 import *")
+                                  .arg(pythonFile.toFileInfo().completeBaseName());
+    return {"-c", QString("%1; print('Running \"%1\"')").arg(import)};
+}
+
+void openPythonRepl(const FilePath &file, ReplType type)
+{
+    static const auto workingDir = [](const FilePath &file) {
+        if (file.isEmpty()) {
+            if (ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject())
+                return project->projectDirectory().toFileInfo().filePath();
+            return QDir::currentPath();
+        }
+        return file.toFileInfo().path();
+    };
+
+    const auto args = QStringList{"-i"} + replImportArgs(file, type);
+    auto process = new ConsoleProcess;
+    const FilePath pythonCommand = detectPython(file);
+    process->setCommand({pythonCommand, args});
+    process->setWorkingDirectory(workingDir(file));
+    const QString commandLine = process->command().toUserOutput();
+    QObject::connect(process,
+                     &ConsoleProcess::processError,
+                     process,
+                     [process, commandLine](const QString &errorString) {
+                         Core::MessageManager::write(
+                             QCoreApplication::translate("Python",
+                                                         "Failed to run Python (%1): \"%2\".")
+                                 .arg(commandLine, errorString));
+                         process->deleteLater();
+                     });
+    QObject::connect(process, &ConsoleProcess::stubStopped, process, &QObject::deleteLater);
+    process->start();
 }
 
 } // namespace Internal

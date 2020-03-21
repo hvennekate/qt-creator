@@ -74,12 +74,14 @@ static Abi::Architecture guessArchitecture(const FilePath &compilerPath)
     const QString bn = fi.baseName().toLower();
     if (bn == "c51" || bn == "cx51")
         return Abi::Architecture::Mcs51Architecture;
+    if (bn == "c251")
+        return Abi::Architecture::Mcs251Architecture;
     if (bn == "armcc")
         return Abi::Architecture::ArmArchitecture;
     return Abi::Architecture::UnknownArchitecture;
 }
 
-// Note: The KEIL 8051 compiler does not support the predefined
+// Note: The KEIL C51 compiler does not support the predefined
 // macros dumping. So, we do it with following trick where we try
 // to compile a temporary file and to parse the console output.
 static Macros dumpC51PredefinedMacros(const FilePath &compiler, const QStringList &env)
@@ -124,6 +126,41 @@ static Macros dumpC51PredefinedMacros(const FilePath &compiler, const QStringLis
     return macros;
 }
 
+// Note: The KEIL C251 compiler does not support the predefined
+// macros dumping. So, we do it with following trick where we try
+// to compile a temporary file and to parse the console output.
+static Macros dumpC251PredefinedMacros(const FilePath &compiler, const QStringList &env)
+{
+    QTemporaryFile fakeIn;
+    if (!fakeIn.open())
+        return {};
+    fakeIn.write("#define VALUE_TO_STRING(x) #x\n");
+    fakeIn.write("#define VALUE(x) VALUE_TO_STRING(x)\n");
+    fakeIn.write("#define VAR_NAME_VALUE(var) \"\"|#var|VALUE(var)|\"\n");
+    fakeIn.write("#ifdef __C251__\n");
+    fakeIn.write("#warning(VAR_NAME_VALUE(__C251__))\n");
+    fakeIn.write("#endif\n");
+    fakeIn.close();
+
+    SynchronousProcess cpp;
+    cpp.setEnvironment(env);
+    cpp.setTimeoutS(10);
+
+    const CommandLine cmd(compiler, {fakeIn.fileName()});
+    const SynchronousProcessResponse response = cpp.runBlocking(cmd);
+    QString output = response.allOutput();
+    Macros macros;
+    QTextStream stream(&output);
+    QString line;
+    while (stream.readLineInto(&line)) {
+        const QStringList parts = line.split("\"|\"");
+        if (parts.count() != 4)
+            continue;
+        macros.push_back({parts.at(1).toUtf8(), parts.at(2).toUtf8()});
+    }
+    return macros;
+}
+
 static Macros dumpArmPredefinedMacros(const FilePath &compiler, const QStringList &env)
 {
     SynchronousProcess cpp;
@@ -152,11 +189,24 @@ static Macros dumpPredefinedMacros(const FilePath &compiler, const QStringList &
     switch (arch) {
     case Abi::Architecture::Mcs51Architecture:
         return dumpC51PredefinedMacros(compiler, env);
+    case Abi::Architecture::Mcs251Architecture:
+        return dumpC251PredefinedMacros(compiler, env);
     case Abi::Architecture::ArmArchitecture:
         return dumpArmPredefinedMacros(compiler, env);
     default:
         return {};
     }
+}
+
+static bool isMcsArchitecture(Abi::Architecture arch)
+{
+    return arch == Abi::Architecture::Mcs51Architecture
+            || arch == Abi::Architecture::Mcs251Architecture;
+}
+
+static bool isArmArchitecture(Abi::Architecture arch)
+{
+    return arch == Abi::Architecture::ArmArchitecture;
 }
 
 static HeaderPaths dumpHeaderPaths(const FilePath &compiler)
@@ -171,11 +221,11 @@ static HeaderPaths dumpHeaderPaths(const FilePath &compiler)
     HeaderPaths headerPaths;
 
     const Abi::Architecture arch = guessArchitecture(compiler);
-    if (arch == Abi::Architecture::Mcs51Architecture) {
+    if (isMcsArchitecture(arch)) {
         QDir includeDir(toolkitDir);
         if (includeDir.cd("inc"))
             headerPaths.push_back({includeDir.canonicalPath(), HeaderPathType::BuiltIn});
-    } else if (arch == Abi::Architecture::ArmArchitecture) {
+    } else if (isArmArchitecture(arch)) {
         QDir includeDir(toolkitDir);
         if (includeDir.cd("include"))
             headerPaths.push_back({includeDir.canonicalPath(), HeaderPathType::BuiltIn});
@@ -191,15 +241,17 @@ static Abi::Architecture guessArchitecture(const Macros &macros)
             return Abi::Architecture::ArmArchitecture;
         if (macro.key == "__C51__" || macro.key == "__CX51__")
             return Abi::Architecture::Mcs51Architecture;
+        if (macro.key == "__C251__")
+            return Abi::Architecture::Mcs251Architecture;
     }
     return Abi::Architecture::UnknownArchitecture;
 }
 
 static unsigned char guessWordWidth(const Macros &macros, Abi::Architecture arch)
 {
-    // Check for C51 compiler first.
-    if (arch == Abi::Architecture::Mcs51Architecture)
-        return 16; // C51 always have 16-bit word width.
+    // Check for C51 or C251 compiler first.
+    if (isMcsArchitecture(arch))
+        return 16; // C51 or C251 always have 16-bit word width.
 
     const Macro sizeMacro = Utils::findOrDefault(macros, [](const Macro &m) {
         return m.key == "__sizeof_int";
@@ -211,9 +263,9 @@ static unsigned char guessWordWidth(const Macros &macros, Abi::Architecture arch
 
 static Abi::BinaryFormat guessFormat(Abi::Architecture arch)
 {
-    if (arch == Abi::Architecture::ArmArchitecture)
+    if (isArmArchitecture(arch))
         return Abi::BinaryFormat::ElfFormat;
-    if (arch == Abi::Architecture::Mcs51Architecture)
+    if (isMcsArchitecture(arch))
         return Abi::BinaryFormat::OmfFormat;
     return Abi::BinaryFormat::UnknownFormat;
 }
@@ -230,19 +282,19 @@ static QString buildDisplayName(Abi::Architecture arch, Core::Id language,
 {
     const auto archName = Abi::toString(arch);
     const auto langName = ToolChainManager::displayNameOfLanguageId(language);
-    return KeilToolchain::tr("KEIL %1 (%2, %3)")
+    return KeilToolChain::tr("KEIL %1 (%2, %3)")
             .arg(version, langName, archName);
 }
 
 // KeilToolchain
 
-KeilToolchain::KeilToolchain() :
+KeilToolChain::KeilToolChain() :
     ToolChain(Constants::KEIL_TOOLCHAIN_TYPEID)
 {
-    setTypeDisplayName(Internal::KeilToolchainFactory::tr("KEIL"));
+    setTypeDisplayName(tr("KEIL"));
 }
 
-void KeilToolchain::setTargetAbi(const Abi &abi)
+void KeilToolChain::setTargetAbi(const Abi &abi)
 {
     if (abi == m_targetAbi)
         return;
@@ -250,17 +302,17 @@ void KeilToolchain::setTargetAbi(const Abi &abi)
     toolChainUpdated();
 }
 
-Abi KeilToolchain::targetAbi() const
+Abi KeilToolChain::targetAbi() const
 {
     return m_targetAbi;
 }
 
-bool KeilToolchain::isValid() const
+bool KeilToolChain::isValid() const
 {
     return true;
 }
 
-ToolChain::MacroInspectionRunner KeilToolchain::createMacroInspectionRunner() const
+ToolChain::MacroInspectionRunner KeilToolChain::createMacroInspectionRunner() const
 {
     Environment env = Environment::systemEnvironment();
     addToEnvironment(env);
@@ -282,23 +334,23 @@ ToolChain::MacroInspectionRunner KeilToolchain::createMacroInspectionRunner() co
     };
 }
 
-Macros KeilToolchain::predefinedMacros(const QStringList &cxxflags) const
+Macros KeilToolChain::predefinedMacros(const QStringList &cxxflags) const
 {
     return createMacroInspectionRunner()(cxxflags).macros;
 }
 
-Utils::LanguageExtensions KeilToolchain::languageExtensions(const QStringList &) const
+Utils::LanguageExtensions KeilToolChain::languageExtensions(const QStringList &) const
 {
     return LanguageExtension::None;
 }
 
-WarningFlags KeilToolchain::warningFlags(const QStringList &cxxflags) const
+WarningFlags KeilToolChain::warningFlags(const QStringList &cxxflags) const
 {
     Q_UNUSED(cxxflags)
     return WarningFlags::Default;
 }
 
-ToolChain::BuiltInHeaderPathsRunner KeilToolchain::createBuiltInHeaderPathsRunner(
+ToolChain::BuiltInHeaderPathsRunner KeilToolChain::createBuiltInHeaderPathsRunner(
         const Environment &) const
 {
     const Utils::FilePath compilerCommand = m_compilerCommand;
@@ -317,14 +369,14 @@ ToolChain::BuiltInHeaderPathsRunner KeilToolchain::createBuiltInHeaderPathsRunne
     };
 }
 
-HeaderPaths KeilToolchain::builtInHeaderPaths(const QStringList &cxxFlags,
+HeaderPaths KeilToolChain::builtInHeaderPaths(const QStringList &cxxFlags,
                                               const FilePath &fileName,
                                               const Environment &env) const
 {
     return createBuiltInHeaderPathsRunner(env)(cxxFlags, fileName.toString(), "");
 }
 
-void KeilToolchain::addToEnvironment(Environment &env) const
+void KeilToolChain::addToEnvironment(Environment &env) const
 {
     if (!m_compilerCommand.isEmpty()) {
         const FilePath path = m_compilerCommand.parentDir();
@@ -332,12 +384,12 @@ void KeilToolchain::addToEnvironment(Environment &env) const
     }
 }
 
-IOutputParser *KeilToolchain::outputParser() const
+IOutputParser *KeilToolChain::outputParser() const
 {
     return new KeilParser;
 }
 
-QVariantMap KeilToolchain::toMap() const
+QVariantMap KeilToolChain::toMap() const
 {
     QVariantMap data = ToolChain::toMap();
     data.insert(compilerCommandKeyC, m_compilerCommand.toString());
@@ -345,7 +397,7 @@ QVariantMap KeilToolchain::toMap() const
     return data;
 }
 
-bool KeilToolchain::fromMap(const QVariantMap &data)
+bool KeilToolChain::fromMap(const QVariantMap &data)
 {
     if (!ToolChain::fromMap(data))
         return false;
@@ -354,23 +406,23 @@ bool KeilToolchain::fromMap(const QVariantMap &data)
     return true;
 }
 
-std::unique_ptr<ToolChainConfigWidget> KeilToolchain::createConfigurationWidget()
+std::unique_ptr<ToolChainConfigWidget> KeilToolChain::createConfigurationWidget()
 {
-    return std::make_unique<KeilToolchainConfigWidget>(this);
+    return std::make_unique<KeilToolChainConfigWidget>(this);
 }
 
-bool KeilToolchain::operator ==(const ToolChain &other) const
+bool KeilToolChain::operator ==(const ToolChain &other) const
 {
     if (!ToolChain::operator ==(other))
         return false;
 
-    const auto customTc = static_cast<const KeilToolchain *>(&other);
+    const auto customTc = static_cast<const KeilToolChain *>(&other);
     return m_compilerCommand == customTc->m_compilerCommand
             && m_targetAbi == customTc->m_targetAbi
             ;
 }
 
-void KeilToolchain::setCompilerCommand(const FilePath &file)
+void KeilToolChain::setCompilerCommand(const FilePath &file)
 {
     if (file == m_compilerCommand)
         return;
@@ -378,12 +430,12 @@ void KeilToolchain::setCompilerCommand(const FilePath &file)
     toolChainUpdated();
 }
 
-FilePath KeilToolchain::compilerCommand() const
+FilePath KeilToolChain::compilerCommand() const
 {
     return m_compilerCommand;
 }
 
-FilePath KeilToolchain::makeCommand(const Environment &env) const
+FilePath KeilToolChain::makeCommand(const Environment &env) const
 {
     Q_UNUSED(env)
     return {};
@@ -391,58 +443,101 @@ FilePath KeilToolchain::makeCommand(const Environment &env) const
 
 // KeilToolchainFactory
 
-KeilToolchainFactory::KeilToolchainFactory()
+KeilToolChainFactory::KeilToolChainFactory()
 {
-    setDisplayName(tr("KEIL"));
+    setDisplayName(KeilToolChain::tr("KEIL"));
     setSupportedToolChainType(Constants::KEIL_TOOLCHAIN_TYPEID);
     setSupportedLanguages({ProjectExplorer::Constants::C_LANGUAGE_ID,
                            ProjectExplorer::Constants::CXX_LANGUAGE_ID});
-    setToolchainConstructor([] { return new KeilToolchain; });
+    setToolchainConstructor([] { return new KeilToolChain; });
     setUserCreatable(true);
 }
 
-QList<ToolChain *> KeilToolchainFactory::autoDetect(const QList<ToolChain *> &alreadyKnown)
+// Parse the 'tools.ini' file to fetch a toolchain version.
+// Note: We can't use QSettings here!
+static QString extractVersion(const QString &toolsFile, const QString &section)
+{
+    QFile f(toolsFile);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    QTextStream in(&f);
+    enum State { Enter, Lookup, Exit } state = Enter;
+    while (!in.atEnd()) {
+        const QString line = in.readLine().trimmed();
+        // Search for section.
+        const int firstBracket = line.indexOf('[');
+        const int lastBracket = line.lastIndexOf(']');
+        const bool hasSection = (firstBracket == 0 && lastBracket != -1
+                && (lastBracket + 1) == line.size());
+        switch (state) {
+        case Enter:
+            if (hasSection) {
+                const auto content = line.midRef(firstBracket + 1,
+                                                 lastBracket - firstBracket - 1);
+                if (content == section)
+                    state = Lookup;
+            }
+            break;
+        case Lookup: {
+            if (hasSection)
+                return {}; // Next section found.
+            const int versionIndex = line.indexOf("VERSION=");
+            if (versionIndex < 0)
+                continue;
+            QString version = line.mid(8);
+            if (version.startsWith('V'))
+                version.remove(0, 1);
+            return version;
+        }
+            break;
+        default:
+            return {};
+        }
+    }
+    return {};
+}
+
+QList<ToolChain *> KeilToolChainFactory::autoDetect(const QList<ToolChain *> &alreadyKnown)
 {
 #ifdef Q_OS_WIN64
-    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Keil\\Products";
+    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\" \
+                                        "Windows\\CurrentVersion\\Uninstall\\Keil µVision4";
 #else
-    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Keil\\Products";
+    static const char kRegistryNode[] = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\" \
+                                        "Windows\\CurrentVersion\\Uninstall\\Keil µVision4";
 #endif
-
-    struct Entry {
-        QString productKey;
-        QString subExePath;
-    };
-
-    // Dictionary for know toolchains.
-    static const std::array<Entry, 2> knowToolchains = {{
-        {QString("MDK"), QString("\\ARMCC\\bin\\armcc.exe")},
-        {QString("C51"), QString("\\BIN\\c51.exe")},
-    }};
 
     Candidates candidates;
 
     QSettings registry(kRegistryNode, QSettings::NativeFormat);
     const auto productGroups = registry.childGroups();
     for (const QString &productKey : productGroups) {
-        const Entry entry = Utils::findOrDefault(knowToolchains,
-                                                 [productKey](const Entry &entry) {
-            return entry.productKey == productKey; });
-
-        if (entry.productKey.isEmpty())
+        if (!productKey.startsWith("App"))
             continue;
-
         registry.beginGroup(productKey);
-        QString compilerPath = registry.value("Path").toString();
-        if (!compilerPath.isEmpty()) {
-            // Build full compiler path.
-            compilerPath += entry.subExePath;
-            const FilePath fn = FilePath::fromString(compilerPath);
-            if (compilerExists(fn)) {
-                QString version = registry.value("Version").toString();
-                if (version.startsWith('V'))
-                    version.remove(0, 1);
-                candidates.push_back({fn, version});
+        const FilePath productPath(FilePath::fromString(registry.value("ProductDir")
+                                                        .toString()));
+        // Fetch the toolchain executable path.
+        FilePath compilerPath;
+        if (productPath.endsWith("ARM"))
+            compilerPath = productPath.pathAppended("\\ARMCC\\bin\\armcc.exe");
+        else if (productPath.endsWith("C51"))
+            compilerPath = productPath.pathAppended("\\BIN\\c51.exe");
+        else if (productPath.endsWith("C251"))
+            compilerPath = productPath.pathAppended("\\BIN\\c251.exe");
+
+        if (compilerPath.exists()) {
+            // Fetch the toolchain version.
+            const QDir rootDir(registry.value("Directory").toString());
+            const QString toolsFilePath = rootDir.absoluteFilePath("tools.ini");
+            for (auto index = 1; index <= 2; ++index) {
+                const QString section = registry.value(
+                            QStringLiteral("Section %1").arg(index)).toString();
+                const QString version = extractVersion(toolsFilePath, section);
+                if (!version.isEmpty()) {
+                    candidates.push_back({compilerPath, version});
+                    break;
+                }
             }
         }
         registry.endGroup();
@@ -451,7 +546,7 @@ QList<ToolChain *> KeilToolchainFactory::autoDetect(const QList<ToolChain *> &al
     return autoDetectToolchains(candidates, alreadyKnown);
 }
 
-QList<ToolChain *> KeilToolchainFactory::autoDetectToolchains(
+QList<ToolChain *> KeilToolChainFactory::autoDetectToolchains(
         const Candidates &candidates, const QList<ToolChain *> &alreadyKnown) const
 {
     QList<ToolChain *> result;
@@ -478,7 +573,7 @@ QList<ToolChain *> KeilToolchainFactory::autoDetectToolchains(
     return result;
 }
 
-QList<ToolChain *> KeilToolchainFactory::autoDetectToolchain(
+QList<ToolChain *> KeilToolChainFactory::autoDetectToolchain(
         const Candidate &candidate, Core::Id language) const
 {
     const auto env = Environment::systemEnvironment();
@@ -488,13 +583,12 @@ QList<ToolChain *> KeilToolchainFactory::autoDetectToolchain(
 
     const Abi abi = guessAbi(macros);
     const Abi::Architecture arch = abi.architecture();
-    if (arch == Abi::Architecture::Mcs51Architecture
-            && language == ProjectExplorer::Constants::CXX_LANGUAGE_ID) {
-        // KEIL C51 compiler does not support C++ language.
+    if (isMcsArchitecture(arch) && language == ProjectExplorer::Constants::CXX_LANGUAGE_ID) {
+        // KEIL C51 or C251 compiler does not support C++ language.
         return {};
     }
 
-    const auto tc = new KeilToolchain;
+    const auto tc = new KeilToolChain;
     tc->setDetection(ToolChain::AutoDetection);
     tc->setLanguage(language);
     tc->setCompilerCommand(candidate.compilerPath);
@@ -508,7 +602,7 @@ QList<ToolChain *> KeilToolchainFactory::autoDetectToolchain(
 
 // KeilToolchainConfigWidget
 
-KeilToolchainConfigWidget::KeilToolchainConfigWidget(KeilToolchain *tc) :
+KeilToolChainConfigWidget::KeilToolChainConfigWidget(KeilToolChain *tc) :
     ToolChainConfigWidget(tc),
     m_compilerCommand(new PathChooser),
     m_abiWidget(new AbiWidget)
@@ -521,20 +615,20 @@ KeilToolchainConfigWidget::KeilToolchainConfigWidget(KeilToolchain *tc) :
     m_abiWidget->setEnabled(false);
 
     addErrorLabel();
-    setFromToolchain();
+    setFromToolChain();
 
     connect(m_compilerCommand, &PathChooser::rawPathChanged,
-            this, &KeilToolchainConfigWidget::handleCompilerCommandChange);
+            this, &KeilToolChainConfigWidget::handleCompilerCommandChange);
     connect(m_abiWidget, &AbiWidget::abiChanged,
             this, &ToolChainConfigWidget::dirty);
 }
 
-void KeilToolchainConfigWidget::applyImpl()
+void KeilToolChainConfigWidget::applyImpl()
 {
     if (toolChain()->isAutoDetected())
         return;
 
-    const auto tc = static_cast<KeilToolchain *>(toolChain());
+    const auto tc = static_cast<KeilToolChain *>(toolChain());
     const QString displayName = tc->displayName();
     tc->setCompilerCommand(m_compilerCommand->fileName());
     tc->setTargetAbi(m_abiWidget->currentAbi());
@@ -546,34 +640,34 @@ void KeilToolchainConfigWidget::applyImpl()
     const auto languageVersion = ToolChain::languageVersion(tc->language(), m_macros);
     tc->predefinedMacrosCache()->insert({}, {m_macros, languageVersion});
 
-    setFromToolchain();
+    setFromToolChain();
 }
 
-bool KeilToolchainConfigWidget::isDirtyImpl() const
+bool KeilToolChainConfigWidget::isDirtyImpl() const
 {
-    const auto tc = static_cast<KeilToolchain *>(toolChain());
+    const auto tc = static_cast<KeilToolChain *>(toolChain());
     return m_compilerCommand->fileName() != tc->compilerCommand()
             || m_abiWidget->currentAbi() != tc->targetAbi()
             ;
 }
 
-void KeilToolchainConfigWidget::makeReadOnlyImpl()
+void KeilToolChainConfigWidget::makeReadOnlyImpl()
 {
     m_compilerCommand->setReadOnly(true);
     m_abiWidget->setEnabled(false);
 }
 
-void KeilToolchainConfigWidget::setFromToolchain()
+void KeilToolChainConfigWidget::setFromToolChain()
 {
     const QSignalBlocker blocker(this);
-    const auto tc = static_cast<KeilToolchain *>(toolChain());
+    const auto tc = static_cast<KeilToolChain *>(toolChain());
     m_compilerCommand->setFileName(tc->compilerCommand());
     m_abiWidget->setAbis({}, tc->targetAbi());
     const bool haveCompiler = compilerExists(m_compilerCommand->fileName());
     m_abiWidget->setEnabled(haveCompiler && !tc->isAutoDetected());
 }
 
-void KeilToolchainConfigWidget::handleCompilerCommandChange()
+void KeilToolChainConfigWidget::handleCompilerCommandChange()
 {
     const FilePath compilerPath = m_compilerCommand->fileName();
     const bool haveCompiler = compilerExists(compilerPath);

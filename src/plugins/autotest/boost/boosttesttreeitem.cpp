@@ -74,7 +74,7 @@ TestTreeItem *BoostTestTreeItem::find(const TestParseResult *result)
 
     switch (type()) {
     case Root:
-        if (TestFrameworkManager::instance()->groupingEnabled(result->frameworkId)) {
+        if (result->framework->grouping()) {
             const QFileInfo fileInfo(bResult->fileName);
             const QFileInfo base(fileInfo.absolutePath());
             for (int row = 0; row < childCount(); ++row) {
@@ -336,6 +336,9 @@ bool BoostTestTreeItem::enabled() const
 
     if (m_state & Disabled)
         return false;
+
+    if (type() == Root)
+        return true;
 
     const TestTreeItem *parent = parentItem();
     if (parent && parent->type() == TestSuite) // take test suites into account

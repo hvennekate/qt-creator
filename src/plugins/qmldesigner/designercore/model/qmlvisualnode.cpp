@@ -294,36 +294,32 @@ QmlObjectNode QmlVisualNode::createQmlObjectNode(AbstractView *view,
     return newQmlObjectNode;
 }
 
-QmlVisualNode QmlVisualNode::createQmlVisualNode(AbstractView *view,
-                                                 const ItemLibraryEntry &itemLibraryEntry,
-                                                 const QVector3D &position)
+QmlVisualNode QmlVisualNode::createQml3DNode(AbstractView *view,
+                                             const ItemLibraryEntry &itemLibraryEntry,
+                                             qint32 sceneRootId, const QVector3D &position)
 {
-    NodeAbstractProperty sceneNodeProperty = findSceneNodeProperty(view);
-    QTC_ASSERT(sceneNodeProperty.isValid(), return {});
-    ModelNode node = createQmlObjectNode(view, itemLibraryEntry, position, sceneNodeProperty).modelNode();
+    NodeAbstractProperty sceneNodeProperty = sceneRootId != -1 ? findSceneNodeProperty(view, sceneRootId)
+                                                               : view->rootModelNode().defaultNodeAbstractProperty();
 
-    return node;
+    QTC_ASSERT(sceneNodeProperty.isValid(), return {});
+
+    return createQmlObjectNode(view, itemLibraryEntry, position, sceneNodeProperty).modelNode();
 }
 
-NodeListProperty QmlVisualNode::findSceneNodeProperty(AbstractView *view)
+NodeListProperty QmlVisualNode::findSceneNodeProperty(AbstractView *view, qint32 sceneRootId)
 {
     QTC_ASSERT(view, return {});
 
-    QList<ModelNode> quickViews = view->allModelNodesOfType("QtQuick3D.View3D");
-    QTC_ASSERT(!quickViews.isEmpty(), return {});
-    const ModelNode quickView = quickViews.first();
-
-    QList<ModelNode> nodes = quickView.directSubModelNodesOfType("QtQuick3D.Node");
-    QTC_ASSERT(!nodes.isEmpty(), return {});
-    const ModelNode node = nodes.first();
+    ModelNode node;
+    if (view->hasModelNodeForInternalId(sceneRootId))
+        node = view->modelNodeForInternalId(sceneRootId);
 
     return node.defaultNodeListProperty();
 }
 
 bool QmlVisualNode::isFlowTransition(const ModelNode &node)
 {
-    return node.metaInfo().isValid()
-           && node.metaInfo().isSubclassOf("FlowView.FlowTransition");
+    return node.metaInfo().isValid() && node.metaInfo().isSubclassOf("FlowView.FlowTransition");
 }
 
 bool QmlVisualNode::isFlowTransition() const

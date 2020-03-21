@@ -3,11 +3,12 @@ include(../../qtcreatorplugin.pri)
 
 # GDB debug servers
 include(debugservers/gdb/gdbservers.pri)
+# UVSC debug servers
+include(debugservers/uvsc/uvscservers.pri)
 
 # BareMetal files
 
 SOURCES += \
-    baremetalcustomrunconfiguration.cpp\
     baremetaldebugsupport.cpp \
     baremetaldevice.cpp \
     baremetaldeviceconfigurationwidget.cpp \
@@ -28,7 +29,6 @@ SOURCES += \
 
 HEADERS += \
     baremetalconstants.h \
-    baremetalcustomrunconfiguration.h \
     baremetaldebugsupport.h \
     baremetaldevice.h \
     baremetaldeviceconfigurationwidget.h \

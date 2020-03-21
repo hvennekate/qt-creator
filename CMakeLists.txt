@@ -8,8 +8,9 @@ include(QtCreatorIDEBranding)
 
 set(IDE_REVISION FALSE CACHE BOOL "Marks the presence of IDE revision string.")
 set(IDE_REVISION_STR "" CACHE STRING "The IDE revision string.")
+set(IDE_REVISION_URL_STR "" CACHE STRING "The IDE revision Url string.")
 
-mark_as_advanced(IDE_REVISION IDE_REVISION_STR)
+mark_as_advanced(IDE_REVISION IDE_REVISION_STR IDE_REVISION_URL_STR)
 
 project(QtCreator VERSION ${IDE_VERSION})
 
@@ -137,6 +138,11 @@ if (WITH_TESTS)
 endif()
 
 add_subdirectory(doc)
+
+# CMake will include in a cmake_install.cmake at the end the subdirectories
+# At this point all the previous install scripts have been included
+# Deployment is being done in cmake/CMakeLists.txt
+add_subdirectory(cmake)
 
 feature_summary(INCLUDE_QUIET_PACKAGES WHAT
   PACKAGES_FOUND PACKAGES_NOT_FOUND

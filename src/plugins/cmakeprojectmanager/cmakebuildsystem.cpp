@@ -26,6 +26,7 @@
 #include "cmakebuildsystem.h"
 
 #include "cmakebuildconfiguration.h"
+#include "cmakekitinformation.h"
 #include "cmakeproject.h"
 #include "cmakeprojectconstants.h"
 #include "cmakeprojectnodes.h"
@@ -35,6 +36,7 @@
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <cpptools/cppprojectupdater.h>
 #include <cpptools/generatedcodemodelsupport.h>
+#include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/kitmanager.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/target.h>
@@ -105,32 +107,32 @@ CMakeBuildSystem::CMakeBuildSystem(CMakeBuildConfiguration *bc)
 
     // BuildDirManager:
     connect(&m_buildDirManager, &BuildDirManager::requestReparse, this, [this] {
-        if (m_buildConfiguration->isActive())
+        if (cmakeBuildConfiguration()->isActive())
             requestParse();
     });
     connect(&m_buildDirManager, &BuildDirManager::requestDelayedReparse, this, [this] {
-        if (m_buildConfiguration->isActive())
+        if (cmakeBuildConfiguration()->isActive())
             requestDelayedParse();
     });
 
     connect(&m_buildDirManager, &BuildDirManager::dataAvailable,
             this, &CMakeBuildSystem::handleParsingSucceeded);
 
-    connect(&m_buildDirManager, &BuildDirManager::errorOccured,
+    connect(&m_buildDirManager, &BuildDirManager::errorOccurred,
             this, &CMakeBuildSystem::handleParsingFailed);
 
     connect(&m_buildDirManager, &BuildDirManager::parsingStarted, this, [this]() {
-        m_buildConfiguration->clearError(CMakeBuildConfiguration::ForceEnabledChanged::True);
+        cmakeBuildConfiguration()->clearError(CMakeBuildConfiguration::ForceEnabledChanged::True);
     });
 
     // Kit changed:
     connect(KitManager::instance(), &KitManager::kitUpdated, this, [this](Kit *k) {
-        if (k != target()->kit())
+        if (k != kit())
             return; // not for us...
         // Build configuration has not changed, but Kit settings might have:
         // reparse and check the configuration, independent of whether the reader has changed
         qCDebug(cmakeBuildSystemLog) << "Requesting parse due to kit being updated";
-        m_buildDirManager.setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
+        m_buildDirManager.setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
                                                        BuildDirManager::REPARSE_CHECK_CONFIGURATION);
     });
 
@@ -142,22 +144,22 @@ CMakeBuildSystem::CMakeBuildSystem(CMakeBuildConfiguration *bc)
             // * run cmake without configuration arguments if the reader stays
             qCDebug(cmakeBuildSystemLog) << "Requesting parse due to active target changed";
             m_buildDirManager
-                .setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
+                .setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
                                               BuildDirManager::REPARSE_CHECK_CONFIGURATION);
         } else {
             m_buildDirManager.stopParsingAndClearState();
         }
     });
     connect(target(), &Target::activeBuildConfigurationChanged, this, [this](BuildConfiguration *bc) {
-        if (m_buildConfiguration->isActive()) {
-            if (m_buildConfiguration == bc) {
+        if (cmakeBuildConfiguration()->isActive()) {
+            if (cmakeBuildConfiguration() == bc) {
                 // Build configuration has switched:
                 // * Check configuration if reader changes due to it not existing yet:-)
                 // * run cmake without configuration arguments if the reader stays
                 qCDebug(cmakeBuildSystemLog) << "Requesting parse due to active BC changed";
                 m_buildDirManager
-                                .setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
-                                                              BuildDirManager::REPARSE_CHECK_CONFIGURATION);
+                    .setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
+                                                  BuildDirManager::REPARSE_CHECK_CONFIGURATION);
             } else {
                 m_buildDirManager.stopParsingAndClearState();
             }
@@ -165,19 +167,19 @@ CMakeBuildSystem::CMakeBuildSystem(CMakeBuildConfiguration *bc)
     });
 
     // BuildConfiguration changed:
-    connect(m_buildConfiguration, &CMakeBuildConfiguration::environmentChanged, this, [this]() {
-        if (m_buildConfiguration->isActive()) {
+    connect(cmakeBuildConfiguration(), &CMakeBuildConfiguration::environmentChanged, this, [this]() {
+        if (cmakeBuildConfiguration()->isActive()) {
             // The environment on our BC has changed:
             // * Error out if the reader updates, cannot happen since all BCs share a target/kit.
             // * run cmake without configuration arguments if the reader stays
             qCDebug(cmakeBuildSystemLog) << "Requesting parse due to environment change";
             m_buildDirManager
-                .setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
+                .setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
                                               BuildDirManager::REPARSE_CHECK_CONFIGURATION);
         }
     });
-    connect(m_buildConfiguration, &CMakeBuildConfiguration::buildDirectoryChanged, this, [this]() {
-        if (m_buildConfiguration->isActive()) {
+    connect(cmakeBuildConfiguration(), &CMakeBuildConfiguration::buildDirectoryChanged, this, [this]() {
+        if (cmakeBuildConfiguration()->isActive()) {
             // The build directory of our BC has changed:
             // * Error out if the reader updates, cannot happen since all BCs share a target/kit.
             // * run cmake without configuration arguments if the reader stays
@@ -185,33 +187,36 @@ CMakeBuildSystem::CMakeBuildSystem(CMakeBuildConfiguration *bc)
             //   the reader.
             qCDebug(cmakeBuildSystemLog) << "Requesting parse due to build directory change";
             m_buildDirManager
-                .setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
+                .setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
                                               BuildDirManager::REPARSE_CHECK_CONFIGURATION);
         }
     });
-    connect(m_buildConfiguration, &CMakeBuildConfiguration::configurationForCMakeChanged, this, [this]() {
-        if (m_buildConfiguration->isActive()) {
+    connect(cmakeBuildConfiguration(), &CMakeBuildConfiguration::configurationForCMakeChanged, this, [this]() {
+        if (cmakeBuildConfiguration()->isActive()) {
             // The CMake configuration has changed on our BC:
             // * Error out if the reader updates, cannot happen since all BCs share a target/kit.
             // * run cmake with configuration arguments if the reader stays
             qCDebug(cmakeBuildSystemLog) << "Requesting parse due to cmake configuration change";
             m_buildDirManager
-                .setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
+                .setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
                                               BuildDirManager::REPARSE_FORCE_CONFIGURATION);
         }
     });
 
     connect(project(), &Project::projectFileIsDirty, this, [this]() {
-        if (m_buildConfiguration->isActive()) {
-            qCDebug(cmakeBuildSystemLog) << "Requesting parse due to dirty project file";
-            m_buildDirManager
-                .setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
-                                              BuildDirManager::REPARSE_DEFAULT);
+        if (cmakeBuildConfiguration()->isActive() && !isParsing()) {
+            const auto cmake = CMakeKitAspect::cmakeTool(cmakeBuildConfiguration()->target()->kit());
+            if (cmake && cmake->isAutoRun()) {
+                qCDebug(cmakeBuildSystemLog) << "Requesting parse due to dirty project file";
+                m_buildDirManager.setParametersAndRequestParse(BuildDirParameters(
+                                                                   cmakeBuildConfiguration()),
+                                                               BuildDirManager::REPARSE_DEFAULT);
+            }
         }
     });
 
     qCDebug(cmakeBuildSystemLog) << "Requesting parse due to initial CMake BuildSystem setup";
-    m_buildDirManager.setParametersAndRequestParse(BuildDirParameters(m_buildConfiguration),
+    m_buildDirManager.setParametersAndRequestParse(BuildDirParameters(cmakeBuildConfiguration()),
                                                    BuildDirManager::REPARSE_CHECK_CONFIGURATION);
 }
 
@@ -230,9 +235,20 @@ CMakeBuildSystem::~CMakeBuildSystem()
 void CMakeBuildSystem::triggerParsing()
 {
     qCDebug(cmakeBuildSystemLog) << "Parsing has been triggered";
-    m_currentGuard = guardParsingRun();
 
-    QTC_CHECK(m_currentGuard.guardsProject());
+    auto guard = guardParsingRun();
+
+    if (!guard.guardsProject()) {
+        // This can legitimately trigger if e.g. Build->Run CMake
+        // is selected while this here is already running.
+
+        // FIXME: Instead of aborting the second run here we could try to
+        // cancel the first one in the Build->Run CMake handler and then
+        // continue to here normally. This here could then be an Assert.
+        return;
+    }
+
+    m_currentGuard = std::move(guard);
 
     if (m_allFiles.isEmpty())
         m_buildDirManager.requestFilesystemScan();
@@ -268,7 +284,7 @@ QStringList CMakeBuildSystem::filesGeneratedFrom(const QString &sourceFile) cons
 
     QDir srcDirRoot = QDir(project.toString());
     QString relativePath = srcDirRoot.relativeFilePath(baseDirectory.toString());
-    QDir buildDir = QDir(target()->activeBuildConfiguration()->buildDirectory().toString());
+    QDir buildDir = QDir(cmakeBuildConfiguration()->buildDirectory().toString());
     QString generatedFilePath = buildDir.absoluteFilePath(relativePath);
 
     if (fi.suffix() == "ui") {
@@ -289,7 +305,7 @@ QStringList CMakeBuildSystem::filesGeneratedFrom(const QString &sourceFile) cons
 
 void CMakeBuildSystem::runCMake()
 {
-    BuildDirParameters parameters(m_buildConfiguration);
+    BuildDirParameters parameters(cmakeBuildConfiguration());
     qCDebug(cmakeBuildSystemLog) << "Requesting parse due \"Run CMake\" command";
     m_buildDirManager.setParametersAndRequestParse(parameters,
                                                        BuildDirManager::REPARSE_CHECK_CONFIGURATION
@@ -299,7 +315,7 @@ void CMakeBuildSystem::runCMake()
 
 void CMakeBuildSystem::runCMakeAndScanProjectTree()
 {
-    BuildDirParameters parameters(m_buildConfiguration);
+    BuildDirParameters parameters(cmakeBuildConfiguration());
     qCDebug(cmakeBuildSystemLog) << "Requesting parse due to \"Rescan Project\" command";
     m_buildDirManager.setParametersAndRequestParse(parameters,
                                                        BuildDirManager::REPARSE_CHECK_CONFIGURATION
@@ -309,7 +325,7 @@ void CMakeBuildSystem::runCMakeAndScanProjectTree()
 void CMakeBuildSystem::buildCMakeTarget(const QString &buildTarget)
 {
     QTC_ASSERT(!buildTarget.isEmpty(), return);
-    m_buildConfiguration->buildTarget(buildTarget);
+    cmakeBuildConfiguration()->buildTarget(buildTarget);
 }
 
 void CMakeBuildSystem::handleTreeScanningFinished()
@@ -364,7 +380,7 @@ std::unique_ptr<CMakeProjectNode>
 
 void CMakeBuildSystem::combineScanAndParse()
 {
-    if (m_buildConfiguration->isActive()) {
+    if (cmakeBuildConfiguration()->isActive()) {
         if (m_waitingForParse || m_waitingForScan)
             return;
 
@@ -382,7 +398,7 @@ void CMakeBuildSystem::combineScanAndParse()
 void CMakeBuildSystem::checkAndReportError(QString &errorMessage)
 {
     if (!errorMessage.isEmpty()) {
-        m_buildConfiguration->setError(errorMessage);
+        cmakeBuildConfiguration()->setError(errorMessage);
         errorMessage.clear();
     }
 }
@@ -393,13 +409,15 @@ void CMakeBuildSystem::updateProjectData()
 
     QTC_ASSERT(m_treeScanner.isFinished() && !m_buildDirManager.isParsing(), return);
 
-    m_buildConfiguration->project()->setExtraProjectFiles(m_buildDirManager.takeProjectFilesToWatch());
+    cmakeBuildConfiguration()->project()->setExtraProjectFiles(
+        m_buildDirManager.projectFilesToWatch());
 
-    CMakeConfig patchedConfig = m_buildConfiguration->configurationFromCMake();
+    CMakeConfig patchedConfig = cmakeBuildConfiguration()->configurationFromCMake();
     {
         CMakeConfigItem settingFileItem;
         settingFileItem.key = "ANDROID_DEPLOYMENT_SETTINGS_FILE";
-        settingFileItem.value = m_buildConfiguration->buildDirectory()
+        settingFileItem.value = cmakeBuildConfiguration()
+                                    ->buildDirectory()
                                     .pathAppended("android_deployment_settings.json")
                                     .toString()
                                     .toUtf8();
@@ -463,7 +481,7 @@ void CMakeBuildSystem::updateProjectData()
         QString errorMessage;
         RawProjectParts rpps = m_buildDirManager.createRawProjectParts(errorMessage);
         if (!errorMessage.isEmpty())
-            m_buildConfiguration->setError(errorMessage);
+            cmakeBuildConfiguration()->setError(errorMessage);
         qCDebug(cmakeBuildSystemLog) << "Raw project parts created." << errorMessage;
 
         for (RawProjectPart &rpp : rpps) {
@@ -475,15 +493,13 @@ void CMakeBuildSystem::updateProjectData()
                 rpp.setFlagsForC({kitInfo.cToolChain, rpp.flagsForC.commandLineFlags});
         }
 
-        m_cppCodeModelUpdater->update({p, kitInfo, m_buildConfiguration->environment(), rpps});
+        m_cppCodeModelUpdater->update({p, kitInfo, cmakeBuildConfiguration()->environment(), rpps});
     }
     {
         updateQmlJSCodeModel();
     }
 
-    emit p->fileListChanged();
-
-    emit m_buildConfiguration->emitBuildTypeChanged();
+    emit cmakeBuildConfiguration()->buildTypeChanged();
 
     m_buildDirManager.resetData();
 
@@ -492,12 +508,12 @@ void CMakeBuildSystem::updateProjectData()
 
 void CMakeBuildSystem::handleParsingSucceeded()
 {
-    if (!m_buildConfiguration->isActive()) {
+    if (!cmakeBuildConfiguration()->isActive()) {
         m_buildDirManager.stopParsingAndClearState();
         return;
     }
 
-    m_buildConfiguration->clearError();
+    cmakeBuildConfiguration()->clearError();
 
     QString errorMessage;
     {
@@ -508,7 +524,7 @@ void CMakeBuildSystem::handleParsingSucceeded()
     {
         const CMakeConfig cmakeConfig = m_buildDirManager.takeCMakeConfiguration(errorMessage);
         checkAndReportError(errorMessage);
-        m_buildConfiguration->setConfigurationFromCMake(cmakeConfig);
+        cmakeBuildConfiguration()->setConfigurationFromCMake(cmakeConfig);
     }
 
     setApplicationTargets(appTargets());
@@ -519,10 +535,11 @@ void CMakeBuildSystem::handleParsingSucceeded()
 
 void CMakeBuildSystem::handleParsingFailed(const QString &msg)
 {
-    m_buildConfiguration->setError(msg);
+    cmakeBuildConfiguration()->setError(msg);
 
     QString errorMessage;
-    m_buildConfiguration->setConfigurationFromCMake(m_buildDirManager.takeCMakeConfiguration(errorMessage));
+    cmakeBuildConfiguration()->setConfigurationFromCMake(
+        m_buildDirManager.takeCMakeConfiguration(errorMessage));
     // ignore errorMessage here, we already got one.
 
     handleParsingError();
@@ -549,8 +566,8 @@ static Utils::FilePaths librarySearchPaths(const CMakeBuildSystem *bs, const QSt
 const QList<BuildTargetInfo> CMakeBuildSystem::appTargets() const
 {
     QList<BuildTargetInfo> appTargetList;
-    const bool forAndroid = DeviceTypeKitAspect::deviceTypeId(target()->kit())
-            == Android::Constants::ANDROID_DEVICE_TYPE;
+    const bool forAndroid = DeviceTypeKitAspect::deviceTypeId(kit())
+                            == Android::Constants::ANDROID_DEVICE_TYPE;
     for (const CMakeBuildTarget &ct : m_buildTargets) {
         if (ct.targetType == UtilityType)
             continue;
@@ -595,8 +612,8 @@ DeploymentData CMakeBuildSystem::deploymentData() const
 {
     DeploymentData result;
 
-    QDir sourceDir = target()->project()->projectDirectory().toString();
-    QDir buildDir = buildConfiguration()->buildDirectory().toString();
+    QDir sourceDir = project()->projectDirectory().toString();
+    QDir buildDir = cmakeBuildConfiguration()->buildDirectory().toString();
 
     QString deploymentPrefix;
     QString deploymentFilePath = sourceDir.filePath("QtCreatorDeployment.txt");
@@ -695,12 +712,14 @@ void CMakeBuildSystem::updateQmlJSCodeModel()
 
     projectInfo.importPaths.clear();
 
-    const CMakeConfig &cm = m_buildConfiguration->configurationFromCMake();
+    const CMakeConfig &cm = cmakeBuildConfiguration()->configurationFromCMake();
     const QString cmakeImports = QString::fromUtf8(CMakeConfigItem::valueOf("QML_IMPORT_PATH", cm));
 
     foreach (const QString &cmakeImport, CMakeConfigItem::cmakeSplitValue(cmakeImports))
         projectInfo.importPaths.maybeInsert(FilePath::fromString(cmakeImport), QmlJS::Dialect::Qml);
 
+    project()->setProjectLanguage(ProjectExplorer::Constants::QMLJS_LANGUAGE_ID,
+                                  !projectInfo.sourceFiles.isEmpty());
     modelManager->updateProjectInfo(projectInfo, p);
 }
 

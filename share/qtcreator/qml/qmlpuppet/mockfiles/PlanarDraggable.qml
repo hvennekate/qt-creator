@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import MouseArea3D 1.0
 
 Model {
@@ -48,14 +48,13 @@ Model {
     signal dragged(var mouseArea, vector3d sceneRelativeDistance, vector2d relativeDistance)
     signal released(var mouseArea, vector3d sceneRelativeDistance, vector2d relativeDistance)
 
-    rotationOrder: Node.XYZr
     source: "#Rectangle"
 
     DefaultMaterial {
         id: gizmoMaterial
         emissiveColor: "white"
         lighting: DefaultMaterial.NoLighting
-        cullingMode: Material.DisableCulling
+        cullMode: Material.NoCulling
     }
     materials: gizmoMaterial
 
@@ -66,8 +65,6 @@ Model {
 
         _planePosPressed = planePos;
         _scenePosPressed = mouseArea.dragHelper.mapPositionToScene(planePos.toVector3d());
-        if (targetNode.orientation === Node.RightHanded)
-            _scenePosPressed.z = -_scenePosPressed.z;
         _targetStartPos = mouseArea.pivotScenePosition(targetNode);
         pressed(mouseArea);
     }
@@ -75,8 +72,6 @@ Model {
     function calcRelativeDistance(mouseArea, planePos)
     {
         var scenePointerPos = mouseArea.dragHelper.mapPositionToScene(planePos.toVector3d());
-        if (targetNode.orientation === Node.RightHanded)
-            scenePointerPos.z = -scenePointerPos.z;
         return scenePointerPos.minus(_scenePosPressed);
     }
 

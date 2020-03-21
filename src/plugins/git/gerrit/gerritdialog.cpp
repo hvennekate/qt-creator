@@ -63,8 +63,6 @@ GerritDialog::GerritDialog(const QSharedPointer<GerritParameters> &p,
     , m_model(new GerritModel(p, this))
     , m_queryModel(new QStringListModel(this))
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-
     m_ui->setupUi(this);
     m_ui->remoteComboBox->setParameters(m_parameters);
     m_ui->remoteComboBox->setFallbackEnabled(true);
@@ -139,7 +137,7 @@ void GerritDialog::setCurrentPath(const QString &path)
     if (path == m_repository)
         return;
     m_repository = path;
-    m_ui->repositoryLabel->setText(Git::Internal::GitPluginPrivate::msgRepositoryLabel(path));
+    m_ui->repositoryLabel->setText(Git::Internal::GitPlugin::msgRepositoryLabel(path));
     updateRemotes();
 }
 

@@ -33,6 +33,7 @@
 #include "task.h"
 
 #include <utils/environment.h>
+#include <utils/macroexpander.h>
 #include <utils/port.h>
 
 #include <QWidget>
@@ -127,8 +128,6 @@ class PROJECTEXPLORER_EXPORT RunConfiguration : public ProjectConfiguration
 public:
     ~RunConfiguration() override;
 
-    bool isActive() const override;
-
     virtual QString disabledReason() const;
     virtual bool isEnabled() const;
 
@@ -170,14 +169,15 @@ public:
 
     void update();
 
+    const Utils::MacroExpander *macroExpander() const { return &m_expander; }
+
 signals:
     void enabledChanged();
 
 protected:
     RunConfiguration(Target *target, Core::Id id);
 
-    /// convenience function to get current build configuration.
-    BuildConfiguration *activeBuildConfiguration() const;
+    /// convenience function to get current build system. Try to avoid.
     BuildSystem *activeBuildSystem() const;
 
     using Updater = std::function<void()>;
@@ -199,6 +199,7 @@ private:
     QString m_buildKey;
     CommandLineGetter m_commandLineGetter;
     Updater m_updater;
+    Utils::MacroExpander m_expander;
 };
 
 class RunConfigurationCreationInfo

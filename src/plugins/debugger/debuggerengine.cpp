@@ -1756,11 +1756,11 @@ void DebuggerEngine::showMessage(const QString &msg, int channel, int timeout) c
         case AppOutput:
         case AppStuff:
             d->m_logWindow->showOutput(channel, msg);
-            emit appendMessageRequested(msg, StdOutFormatSameLine, false);
+            emit appendMessageRequested(msg, StdOutFormat, false);
             break;
         case AppError:
             d->m_logWindow->showOutput(channel, msg);
-            emit appendMessageRequested(msg, StdErrFormatSameLine, false);
+            emit appendMessageRequested(msg, StdErrFormat, false);
             break;
         default:
             d->m_logWindow->showOutput(channel, msg);
@@ -2138,6 +2138,10 @@ void DebuggerEngine::createSnapshot()
 
 void DebuggerEngine::updateLocals()
 {
+    // if the engine is not running - do nothing
+    if (state() == DebuggerState::DebuggerFinished || state() == DebuggerState::DebuggerNotReady)
+        return;
+
     watchHandler()->resetValueCache();
     doUpdateLocals(UpdateParameters());
 }
@@ -2286,6 +2290,12 @@ void DebuggerEngine::openDisassemblerView(const Location &location)
 void DebuggerEngine::raiseWatchersWindow()
 {
     if (d->m_watchersView && d->m_watchersWindow) {
+        auto currentPerspective = DebuggerMainWindow::currentPerspective();
+        QTC_ASSERT(currentPerspective, return);
+        // if a companion engine has taken over - do not raise the watchers
+        if (currentPerspective->name() != d->m_engine->displayName())
+            return;
+
         if (auto dock = qobject_cast<QDockWidget *>(d->m_watchersWindow->parentWidget())) {
             if (QAction *act = dock->toggleViewAction()) {
                 if (!act->isChecked())
@@ -2567,7 +2577,8 @@ bool DebuggerRunParameters::isCppDebugging() const
 {
     return cppEngineType == GdbEngineType
         || cppEngineType == LldbEngineType
-        || cppEngineType == CdbEngineType;
+        || cppEngineType == CdbEngineType
+        || cppEngineType == UvscEngineType;
 }
 
 bool DebuggerRunParameters::isNativeMixedDebugging() const

@@ -1,5 +1,5 @@
 add_qtc_plugin(LanguageClient
-  DEPENDS LanguageServerProtocol Qt5::Core
+  PUBLIC_DEPENDS LanguageServerProtocol Qt5::Core
   PLUGIN_DEPENDS ProjectExplorer Core TextEditor
   SOURCES
     client.cpp client.h
@@ -19,5 +19,6 @@ add_qtc_plugin(LanguageClient
     languageclientutils.cpp languageclientutils.h
     languageclient_global.h
     locatorfilter.cpp locatorfilter.h
+    lsplogger.cpp lsplogger.h
     semantichighlightsupport.cpp semantichighlightsupport.h
 )

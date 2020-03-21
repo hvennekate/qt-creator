@@ -29,7 +29,6 @@
 #include "outputformat.h"
 
 #include <QObject>
-#include <QFont>
 
 QT_BEGIN_NAMESPACE
 class QPlainTextEdit;
@@ -43,38 +42,70 @@ class FormattedText;
 
 namespace Internal { class OutputFormatterPrivate; }
 
+class QTCREATOR_UTILS_EXPORT AggregatingOutputFormatter;
+
 class QTCREATOR_UTILS_EXPORT OutputFormatter : public QObject
 {
-    Q_OBJECT
-
+    friend class AggregatingOutputFormatter;
 public:
     OutputFormatter();
     ~OutputFormatter() override;
 
     QPlainTextEdit *plainTextEdit() const;
-    virtual void setPlainTextEdit(QPlainTextEdit *plainText);
+    void setPlainTextEdit(QPlainTextEdit *plainText);
 
     void flush();
 
-    virtual void appendMessage(const QString &text, OutputFormat format);
-    virtual void handleLink(const QString &href);
-    virtual QList<QWidget *> toolbarWidgets() const { return {}; }
-    virtual void clear() {}
-    void setBoldFontEnabled(bool enabled);
+    void appendMessage(const QString &text, OutputFormat format);
 
-signals:
-    void contentChanged();
+    virtual bool handleLink(const QString &href);
+    void clear();
+    void setBoldFontEnabled(bool enabled);
+    static QTextCharFormat linkFormat(const QTextCharFormat &inputFormat, const QString &href);
+
+    // For unit testing only
+    void overrideTextCharFormat(const QTextCharFormat &fmt);
 
 protected:
-    void initFormats();
-    virtual void clearLastLine();
+    enum class Status { Done, InProgress, NotHandled };
+
+    void appendMessageDefault(const QString &text, OutputFormat format);
+    void clearLastLine();
     QTextCharFormat charFormat(OutputFormat format) const;
     QList<FormattedText> parseAnsi(const QString &text, const QTextCharFormat &format);
-    void append(const QString &text, const QTextCharFormat &format);
+    QTextCursor &cursor() const;
 
 private:
-    virtual void appendMessage(const QString &text, const QTextCharFormat &format);
+    // text contains at most one line feed character, and if it does occur, it's the last character.
+    // Either way, the input is to be considered "complete" for formatting purposes.
+    void doAppendMessage(const QString &text, OutputFormat format);
+
+    virtual Status handleMessage(const QString &text, OutputFormat format);
+    virtual void reset() {}
+
+    void doAppendMessage(const QString &text, const QTextCharFormat &format);
+    void append(const QString &text, const QTextCharFormat &format);
+    void initFormats();
+    void flushIncompleteLine();
+    void dumpIncompleteLine(const QString &line, OutputFormat format);
+
     Internal::OutputFormatterPrivate *d;
+};
+
+class QTCREATOR_UTILS_EXPORT AggregatingOutputFormatter : public OutputFormatter
+{
+public:
+    AggregatingOutputFormatter();
+    ~AggregatingOutputFormatter();
+
+    void setFormatters(const QList<OutputFormatter *> &formatters);
+    bool handleLink(const QString &href) override;
+
+private:
+    Status handleMessage(const QString &text, OutputFormat format) override;
+
+    class Private;
+    Private * const d;
 };
 
 } // namespace Utils

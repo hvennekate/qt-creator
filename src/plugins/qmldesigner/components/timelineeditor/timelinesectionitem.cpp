@@ -46,15 +46,13 @@
 #include <QAction>
 #include <QApplication>
 #include <QColorDialog>
-#include <QComboBox>
-#include <QGraphicsProxyWidget>
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QPainter>
-#include <QToolBar>
+#include <QPainterPath>
 
 #include <QGraphicsView>
 
@@ -533,7 +531,7 @@ static void drawCenteredText(QPainter *p, int x, int y, const QString &text)
     p->drawText(rect, Qt::AlignCenter, text);
 }
 
-TimelineRulerSectionItem *TimelineRulerSectionItem::create(QGraphicsScene *parentScene,
+TimelineRulerSectionItem *TimelineRulerSectionItem::create(QGraphicsScene * ,
                                                            TimelineItem *parent)
 {
     auto item = new TimelineRulerSectionItem(parent);
@@ -541,19 +539,6 @@ TimelineRulerSectionItem *TimelineRulerSectionItem::create(QGraphicsScene *paren
 
     auto widget = new QWidget;
     widget->setFixedWidth(TimelineConstants::sectionWidth);
-
-    auto toolBar = new QToolBar;
-    toolBar->setFixedHeight(TimelineConstants::rulerHeight);
-
-    auto layout = new QHBoxLayout(widget);
-    layout->addWidget(toolBar);
-    layout->setContentsMargins(0, 0, 0, 0);
-
-    layout->addWidget(toolBar);
-    layout->setContentsMargins(0, 0, 0, 0);
-
-    QGraphicsProxyWidget *proxy = parentScene->addWidget(widget);
-    proxy->setParentItem(item);
 
     return item;
 }

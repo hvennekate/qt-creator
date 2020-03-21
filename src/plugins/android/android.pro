@@ -9,6 +9,8 @@ HEADERS += \
     androidconstants.h \
     androidconfigurations.h \
     androidmanager.h \
+    androidmanifesteditoriconcontainerwidget.h \
+    androidmanifesteditoriconwidget.h \
     androidrunconfiguration.h \
     androidruncontrol.h \
     androidsettingswidget.h \
@@ -48,11 +50,14 @@ HEADERS += \
     androidsdkmanagerwidget.h \
     androidpackageinstallationstep.h \
     androidextralibrarylistmodel.h \
-    createandroidmanifestwizard.h
+    createandroidmanifestwizard.h \
+    androidsdkdownloader.h
 
 SOURCES += \
     androidconfigurations.cpp \
     androidmanager.cpp \
+    androidmanifesteditoriconcontainerwidget.cpp \
+    androidmanifesteditoriconwidget.cpp \
     androidrunconfiguration.cpp \
     androidruncontrol.cpp \
     androidsettingswidget.cpp \
@@ -90,7 +95,8 @@ SOURCES += \
     androidsdkmanagerwidget.cpp \
     androidpackageinstallationstep.cpp \
     androidextralibrarylistmodel.cpp \
-    createandroidmanifestwizard.cpp
+    createandroidmanifestwizard.cpp \
+    androidsdkdownloader.cpp
 
 FORMS += \
     androidsettingswidget.ui \

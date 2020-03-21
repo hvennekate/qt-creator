@@ -35,6 +35,8 @@
 #include <coreplugin/icore.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/task.h>
+#include <projectexplorer/toolchain.h>
+#include <projectexplorer/toolchainmanager.h>
 #include <utils/algorithm.h>
 #include <utils/buildablehelperlibrary.h>
 #include <utils/macroexpander.h>
@@ -207,9 +209,56 @@ void QtKitAspect::fix(ProjectExplorer::Kit *k)
 {
     QTC_ASSERT(QtVersionManager::isLoaded(), return);
     BaseQtVersion *version = qtVersion(k);
-    if (!version && qtVersionId(k) >= 0) {
-        qWarning("Qt version is no longer known, removing from kit \"%s\".", qPrintable(k->displayName()));
-        setQtVersionId(k, -1);
+    if (!version) {
+        if (qtVersionId(k) >= 0) {
+            qWarning("Qt version is no longer known, removing from kit \"%s\".",
+                     qPrintable(k->displayName()));
+            setQtVersionId(k, -1);
+        }
+        return;
+    }
+
+    // Set a matching toolchain if we don't have one.
+    if (ToolChainKitAspect::cxxToolChain(k))
+        return;
+
+    const QString spec = version->mkspec();
+    QList<ToolChain *> possibleTcs = ToolChainManager::toolChains(
+                [version](const ToolChain *t) {
+        return t->isValid()
+                && t->language() == Core::Id(ProjectExplorer::Constants::CXX_LANGUAGE_ID)
+                && contains(version->qtAbis(), [t](const Abi &qtAbi) {
+                       return qtAbi.isFullyCompatibleWith(t->targetAbi());
+                   });
+    });
+    if (!possibleTcs.isEmpty()) {
+        // Prefer exact matches.
+        // TODO: We should probably prefer the compiler with the highest version number instead,
+        //       but this information is currently not exposed by the ToolChain class.
+        sort(possibleTcs, [version](const ToolChain *tc1, const ToolChain *tc2) {
+            const QVector<Abi> &qtAbis = version->qtAbis();
+            const bool tc1ExactMatch = qtAbis.contains(tc1->targetAbi());
+            const bool tc2ExactMatch = qtAbis.contains(tc2->targetAbi());
+            return tc1ExactMatch && !tc2ExactMatch;
+        });
+
+        const QList<ToolChain *> goodTcs = Utils::filtered(possibleTcs,
+                                                           [&spec](const ToolChain *t) {
+            return t->suggestedMkspecList().contains(spec);
+        });
+        // Hack to prefer a tool chain from PATH (e.g. autodetected) over other matches.
+        // This improves the situation a bit if a cross-compilation tool chain has the
+        // same ABI as the host.
+        const Environment systemEnvironment = Environment::systemEnvironment();
+        ToolChain *bestTc = Utils::findOrDefault(goodTcs,
+                                                 [&systemEnvironment](const ToolChain *t) {
+            return systemEnvironment.path().contains(t->compilerCommand().parentDir());
+        });
+        if (!bestTc) {
+            bestTc = goodTcs.isEmpty() ? possibleTcs.last() : goodTcs.last();
+        }
+        if (bestTc)
+            ToolChainKitAspect::setAllToolChainsToMatch(k, bestTc);
     }
 }
 

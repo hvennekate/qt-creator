@@ -40,7 +40,6 @@ namespace QmlDesigner {
 class ZoomAction;
 class LineEditAction;
 class BackgroundAction;
-class Option3DAction;
 class FormEditorView;
 class FormEditorScene;
 class FormEditorGraphicsView;
@@ -54,7 +53,6 @@ public:
     FormEditorWidget(FormEditorView *view);
 
     ZoomAction *zoomAction() const;
-    Option3DAction *option3DAction() const;
     QAction *showBoundingRectAction() const;
     QAction *snappingAction() const;
     QAction *snappingAndAnchoringAction() const;
@@ -98,6 +96,7 @@ private:
     void changeRootItemWidth(const QString &widthText);
     void changeRootItemHeight(const QString &heightText);
     void changeBackgound(const QColor &color);
+    void registerActionAsCommand(QAction *action, Core::Id id, const QKeySequence &keysequence);
 
     QPointer<FormEditorView> m_formEditorView;
     QPointer<FormEditorGraphicsView> m_graphicsView;
@@ -112,9 +111,9 @@ private:
     QPointer<LineEditAction> m_rootWidthAction;
     QPointer<LineEditAction> m_rootHeightAction;
     QPointer<BackgroundAction> m_backgroundAction;
-    QPointer<Option3DAction> m_option3DAction;
     QPointer<QAction> m_resetAction;
     QPointer<DocumentWarningWidget> m_documentErrorWidget;
+    Core::IContext *m_context = nullptr;
 };
 
 } // namespace QmlDesigner

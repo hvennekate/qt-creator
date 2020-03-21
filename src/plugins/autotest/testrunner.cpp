@@ -44,6 +44,7 @@
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/buildmanager.h>
+#include <projectexplorer/buildsystem.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/projectexplorer.h>
 #include <projectexplorer/projectexplorersettings.h>
@@ -64,6 +65,7 @@
 #include <QFutureInterface>
 #include <QLabel>
 #include <QLoggingCategory>
+#include <QPointer>
 #include <QProcess>
 #include <QPushButton>
 #include <QTimer>
@@ -317,6 +319,7 @@ void TestRunner::resetInternalPointers()
 void TestRunner::prepareToRunTests(TestRunMode mode)
 {
     QTC_ASSERT(!m_executingTests, return);
+    m_skipTargetsCheck = false;
     m_runMode = mode;
     ProjectExplorer::Internal::ProjectExplorerSettings projectExplorerSettings =
         ProjectExplorerPlugin::projectExplorerSettings();
@@ -448,6 +451,17 @@ int TestRunner::precheckTestConfigurations()
     return testCaseCount;
 }
 
+void TestRunner::onBuildSystemUpdated()
+{
+    Target *target = SessionManager::startupTarget();
+    if (QTC_GUARD(target))
+        disconnect(target, &Target::buildSystemUpdated, this, &TestRunner::onBuildSystemUpdated);
+    if (!m_skipTargetsCheck) {
+        m_skipTargetsCheck = true;
+        runOrDebugTests();
+    }
+}
+
 void TestRunner::runTests()
 {
     QList<TestConfiguration *> toBeRemoved;
@@ -497,8 +511,8 @@ static void processOutput(TestOutputReader *outputreader, const QString &msg,
 {
     QByteArray message = msg.toUtf8();
     switch (format) {
-    case Utils::OutputFormat::StdErrFormatSameLine:
-    case Utils::OutputFormat::StdOutFormatSameLine:
+    case Utils::OutputFormat::StdErrFormat:
+    case Utils::OutputFormat::StdOutFormat:
     case Utils::OutputFormat::DebugFormat: {
         static const QByteArray gdbSpecialOut = "Qt: gdb: -nograb added to command-line options.\n"
                                                 "\t Use the -dograb option to enforce grabbing.";
@@ -507,7 +521,7 @@ static void processOutput(TestOutputReader *outputreader, const QString &msg,
         message.chop(1); // all messages have an additional \n at the end
 
         for (auto line : message.split('\n')) {
-            if (format == Utils::OutputFormat::StdOutFormatSameLine)
+            if (format == Utils::OutputFormat::StdOutFormat)
                 outputreader->processStdOutput(line);
             else
                 outputreader->processStdError(line);
@@ -555,12 +569,6 @@ void TestRunner::debugTests()
     QString errorMessage;
     auto runControl = new RunControl(ProjectExplorer::Constants::DEBUG_RUN_MODE);
     runControl->setRunConfiguration(config->runConfiguration());
-    if (!runControl) {
-        reportResult(ResultType::MessageFatal,
-                     tr("Failed to create run configuration.\n%1").arg(errorMessage));
-        onFinished();
-        return;
-    }
 
     QStringList omitted;
     Runnable inferior = config->runnable();
@@ -625,8 +633,34 @@ void TestRunner::debugTests()
         AutotestPlugin::popupResultsPane();
 }
 
+static bool executablesEmpty()
+{
+    Target *target = SessionManager::startupTarget();
+    const QList<RunConfiguration *> configs = target->runConfigurations();
+    QTC_ASSERT(!configs.isEmpty(), return false);
+    if (auto execAspect = configs.first()->aspect<ExecutableAspect>())
+        return execAspect->executable().isEmpty();
+    return false;
+}
+
 void TestRunner::runOrDebugTests()
 {
+    if (!m_skipTargetsCheck) {
+        if (executablesEmpty()) {
+            m_skipTargetsCheck = true;
+            Target * target = SessionManager::startupTarget();
+            QTimer::singleShot(5000, this, [this, target = QPointer<Target>(target)]() {
+                if (target) {
+                    disconnect(target, &Target::buildSystemUpdated,
+                               this, &TestRunner::onBuildSystemUpdated);
+                }
+                runOrDebugTests();
+            });
+            connect(target, &Target::buildSystemUpdated, this, &TestRunner::onBuildSystemUpdated);
+            return;
+        }
+    }
+
     switch (m_runMode) {
     case TestRunMode::Run:
     case TestRunMode::RunWithoutDeploy:
@@ -746,7 +780,6 @@ RunConfigurationSelectionDialog::RunConfigurationSelectionDialog(const QString &
                                                                  QWidget *parent)
     : QDialog(parent)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setWindowTitle(tr("Select Run Configuration"));
 
     QString details = tr("Could not determine which run configuration to choose for running tests");

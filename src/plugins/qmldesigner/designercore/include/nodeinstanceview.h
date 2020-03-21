@@ -39,6 +39,7 @@
 #include <QPointer>
 #include <QRectF>
 #include <QTime>
+#include <QtGui/qevent.h>
 
 namespace ProjectExplorer {
 class Target;
@@ -94,7 +95,6 @@ public:
     void customNotification(const AbstractView *view, const QString &identifier, const QList<ModelNode> &nodeList, const QList<QVariant> &data) override;
     void nodeSourceChanged(const ModelNode &modelNode, const QString &newNodeSource) override;
 
-
     void currentStateChanged(const ModelNode &node) override;
 
     QList<NodeInstance> instances() const;
@@ -128,15 +128,13 @@ public:
     void sendToken(const QString &token, int number, const QVector<ModelNode> &nodeVector);
 
     void selectionChanged(const ChangeSelectionCommand &command) override;
-    void library3DItemDropped(const Drop3DLibraryItemCommand &command) override;
-    void view3DClosed(const View3DClosedCommand &command) override;
 
     void selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
                               const QList<ModelNode> &lastSelectedNodeList) override;
 
-    void mainWindowStateChanged(Qt::WindowStates previousStates, Qt::WindowStates currentStates);
-    void mainWindowActiveChanged(bool active, bool hasPopup);
-    void enable3DView(bool enable);
+    void sendInputEvent(QInputEvent *e) const;
+    void view3DAction(const View3DActionCommand &command);
+    void edit3DViewResized(const QSize &size) const;
 
     void handlePuppetToCreatorCommand(const PuppetToCreatorCommand &command) override;
 
@@ -211,7 +209,9 @@ private: // functions
     ProjectExplorer::Target *m_currentTarget = nullptr;
     int m_restartProcessTimerId;
     RewriterTransaction m_puppetTransaction;
-    QVariantMap m_edit3DToolStates;
+
+    // key: fileUrl value: (key: instance qml id, value: related tool states)
+    QHash<QUrl, QHash<QString, QVariantMap>> m_edit3DToolStates;
 };
 
 } // namespace ProxyNodeInstanceView

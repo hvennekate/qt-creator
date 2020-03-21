@@ -30,7 +30,6 @@
 
 #include <QEasingCurve>
 #include <QPainter>
-#include <QPainterPath>
 
 #include <algorithm>
 #include <cmath>
@@ -39,41 +38,31 @@
 namespace DesignTools {
 
 CurveItem::CurveItem(QGraphicsItem *parent)
-    : QGraphicsObject(parent)
+    : CurveEditorItem(parent)
     , m_id(0)
     , m_style()
     , m_type(ValueType::Undefined)
     , m_component(PropertyTreeItem::Component::Generic)
     , m_transform()
     , m_keyframes()
-    , m_underMouse(false)
     , m_itemDirty(false)
 {}
 
 CurveItem::CurveItem(unsigned int id, const AnimationCurve &curve, QGraphicsItem *parent)
-    : QGraphicsObject(parent)
+    : CurveEditorItem(parent)
     , m_id(id)
     , m_style()
     , m_type(ValueType::Undefined)
     , m_component(PropertyTreeItem::Component::Generic)
     , m_transform()
     , m_keyframes()
-    , m_underMouse(false)
     , m_itemDirty(false)
 {
-    setAcceptHoverEvents(true);
-
     setFlag(QGraphicsItem::ItemIsMovable, false);
-
     setCurve(curve);
 }
 
 CurveItem::~CurveItem() {}
-
-bool CurveItem::isUnderMouse() const
-{
-    return m_underMouse;
-}
 
 int CurveItem::type() const
 {
@@ -128,7 +117,9 @@ void CurveItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidg
             if (segment.interpolation() == Keyframe::Interpolation::Easing) {
                 pen.setColor(m_style.easingCurveColor);
             } else {
-                if (m_underMouse)
+                if (locked())
+                    pen.setColor(Qt::black);
+                else if (isUnderMouse())
                     pen.setColor(Qt::red);
                 else if (hasSelection())
                     pen.setColor(m_style.selectionColor);
@@ -140,6 +131,14 @@ void CurveItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidg
         }
         painter->restore();
     }
+}
+
+void CurveItem::lockedCallback()
+{
+    for (auto frame : m_keyframes)
+        frame->setLocked(locked());
+
+    setHandleVisibility(!locked());
 }
 
 bool CurveItem::isDirty() const
@@ -294,6 +293,7 @@ void CurveItem::setCurve(const AnimationCurve &curve)
 
     for (auto frame : curve.keyframes()) {
         auto *item = new KeyframeItem(frame, this);
+        item->setLocked(locked());
         item->setComponentTransform(m_transform);
         m_keyframes.push_back(item);
         QObject::connect(item, &KeyframeItem::redrawCurve, this, &CurveItem::emitCurveChanged);
@@ -351,14 +351,6 @@ void CurveItem::connect(GraphicsScene *scene)
     for (auto *frame : m_keyframes) {
         QObject::connect(frame, &KeyframeItem::keyframeMoved, scene, &GraphicsScene::keyframeMoved);
         QObject::connect(frame, &KeyframeItem::handleMoved, scene, &GraphicsScene::handleMoved);
-    }
-}
-
-void CurveItem::setIsUnderMouse(bool under)
-{
-    if (under != m_underMouse) {
-        m_underMouse = under;
-        update();
     }
 }
 

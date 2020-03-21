@@ -45,6 +45,8 @@
 #include <QTextCursor>
 #include <QUrl>
 
+#include <tuple>
+
 using namespace ProjectExplorer;
 using namespace Utils;
 
@@ -81,7 +83,6 @@ public:
     const QRegularExpression qtTestFailUnix;
     const QRegularExpression qtTestFailWin;
     QPointer<Project> project;
-    QList<FormattedText> lastLine;
     FileInProjectFinder projectFinder;
     QTextCursor cursor;
 };
@@ -92,21 +93,17 @@ public:
     explicit QtOutputFormatter(Target *target);
     ~QtOutputFormatter() override;
 
-    void appendMessage(const QString &text, Utils::OutputFormat format) override;
-    void handleLink(const QString &href) override;
-    void setPlainTextEdit(QPlainTextEdit *plainText) override;
-
 protected:
-    void clearLastLine() override;
     virtual void openEditor(const QString &fileName, int line, int column = -1);
 
 private:
+    Status handleMessage(const QString &text, Utils::OutputFormat format) override;
+    bool handleLink(const QString &href) override;
+
     void updateProjectFileList();
     LinkResult matchLine(const QString &line) const;
-    void appendMessagePart(const QString &txt, const QTextCharFormat &fmt);
-    void appendLine(const LinkResult &lr, const QString &line, Utils::OutputFormat format);
     void appendLine(const LinkResult &lr, const QString &line, const QTextCharFormat &format);
-    void appendMessage(const QString &text, const QTextCharFormat &format) override;
+    Status doAppendMessage(const QString &txt, const QTextCharFormat &format);
 
     QtOutputFormatterPrivate *d;
     friend class QtSupportPlugin; // for testing
@@ -164,92 +161,50 @@ LinkResult QtOutputFormatter::matchLine(const QString &line) const
     return lr;
 }
 
-void QtOutputFormatter::appendMessage(const QString &txt, OutputFormat format)
+OutputFormatter::Status QtOutputFormatter::doAppendMessage(const QString &txt,
+                                                           const QTextCharFormat &format)
 {
-    appendMessage(txt, charFormat(format));
-}
-
-void QtOutputFormatter::appendMessagePart(const QString &txt, const QTextCharFormat &fmt)
-{
-    QString deferredText;
-
-    const int length = txt.length();
-    for (int start = 0, pos = -1; start < length; start = pos + 1) {
-        bool linkHandled = false;
-        pos = txt.indexOf('\n', start);
-        const QString newPart = txt.mid(start, (pos == -1) ? -1 : pos - start + 1);
-        QString line = newPart;
-        QTextCharFormat format = fmt;
-        if (!d->lastLine.isEmpty()) {
-            line = d->lastLine.last().text + newPart;
-            format = d->lastLine.last().format;
-        }
-
-        LinkResult lr = matchLine(line);
-        if (!lr.href.isEmpty()) {
-            // Found something && line continuation
-            d->cursor.insertText(deferredText, fmt);
-            deferredText.clear();
-            if (!d->lastLine.isEmpty())
-                clearLastLine();
-            appendLine(lr, line, format);
-            linkHandled = true;
-        } else {
-            // Found nothing, just emit the new part
-            deferredText += newPart;
-        }
-
-        if (pos == -1) {
-            d->lastLine.clear();
-            if (!linkHandled)
-                d->lastLine.append(FormattedText(line, format));
-            break;
-        }
-        d->lastLine.clear(); // Handled line continuation
-    }
-    d->cursor.insertText(deferredText, fmt);
-}
-
-void QtOutputFormatter::appendMessage(const QString &txt, const QTextCharFormat &format)
-{
-    if (!d->cursor.atEnd())
-        d->cursor.movePosition(QTextCursor::End);
-    d->cursor.beginEditBlock();
-
+    // FIXME: We'll do the ANSI parsing twice if there is no match.
+    //        Ideally, we'd (optionally) pre-process ANSI escape codes in the
+    //        base class before passing the text here, but then we can no longer
+    //        pass complete lines...
     const QList<FormattedText> ansiTextList = parseAnsi(txt, format);
-    for (const FormattedText &output : ansiTextList)
-        appendMessagePart(output.text, output.format);
-
-    d->cursor.endEditBlock();
-
-    emit contentChanged();
+    QList<std::tuple<QString, QTextCharFormat, LinkResult>> parts;
+    bool hasMatches = false;
+    for (const FormattedText &output : ansiTextList) {
+        const LinkResult lr = matchLine(output.text);
+        if (!lr.href.isEmpty())
+            hasMatches = true;
+        parts << std::make_tuple(output.text, output.format, lr);
+    }
+    if (!hasMatches)
+        return Status::NotHandled;
+    for (const auto &part : parts) {
+        const LinkResult &lr = std::get<2>(part);
+        const QString &text = std::get<0>(part);
+        const QTextCharFormat &fmt = std::get<1>(part);
+        if (!lr.href.isEmpty())
+            appendLine(lr, text, fmt);
+        else
+            cursor().insertText(text, fmt);
+    }
+    return Status::Done;
 }
 
-void QtOutputFormatter::appendLine(const LinkResult &lr, const QString &line, OutputFormat format)
+QtOutputFormatter::Status QtOutputFormatter::handleMessage(const QString &txt, OutputFormat format)
 {
-    appendLine(lr, line, charFormat(format));
-}
-
-static QTextCharFormat linkFormat(const QTextCharFormat &inputFormat, const QString &href)
-{
-    QTextCharFormat result = inputFormat;
-    result.setForeground(creatorTheme()->color(Theme::TextColorLink));
-    result.setUnderlineStyle(QTextCharFormat::SingleUnderline);
-    result.setAnchor(true);
-    result.setAnchorHref(href);
-
-    return result;
+    return doAppendMessage(txt, charFormat(format));
 }
 
 void QtOutputFormatter::appendLine(const LinkResult &lr, const QString &line,
                                    const QTextCharFormat &format)
 {
-    d->cursor.insertText(line.left(lr.start), format);
-    d->cursor.insertText(line.mid(lr.start, lr.end - lr.start), linkFormat(format, lr.href));
-    d->cursor.insertText(line.mid(lr.end), format);
+    cursor().insertText(line.left(lr.start), format);
+    cursor().insertText(line.mid(lr.start, lr.end - lr.start), linkFormat(format, lr.href));
+    cursor().insertText(line.mid(lr.end), format);
 }
 
-void QtOutputFormatter::handleLink(const QString &href)
+bool QtOutputFormatter::handleLink(const QString &href)
 {
     if (!href.isEmpty()) {
         static const QRegularExpression qmlLineColumnLink("^(" QT_QML_URL_REGEXP ")" // url
@@ -265,7 +220,7 @@ void QtOutputFormatter::handleLink(const QString &href)
             const int line = qmlLineColumnMatch.captured(2).toInt();
             const int column = qmlLineColumnMatch.captured(3).toInt();
             openEditor(getFileToOpen(fileUrl), line, column - 1);
-            return;
+            return true;
         }
 
         static const QRegularExpression qmlLineLink("^(" QT_QML_URL_REGEXP ")" // url
@@ -280,7 +235,7 @@ void QtOutputFormatter::handleLink(const QString &href)
                 fileUrl = QUrl::fromLocalFile(filePath.mid(int(strlen(scheme))));
             const int line = qmlLineMatch.captured(2).toInt();
             openEditor(getFileToOpen(fileUrl), line);
-            return;
+            return true;
         }
 
         QString fileName;
@@ -310,22 +265,10 @@ void QtOutputFormatter::handleLink(const QString &href)
         if (!fileName.isEmpty()) {
             fileName = getFileToOpen(QUrl::fromLocalFile(fileName));
             openEditor(fileName, line);
-            return;
+            return true;
         }
     }
-}
-
-void QtOutputFormatter::setPlainTextEdit(QPlainTextEdit *plainText)
-{
-    OutputFormatter::setPlainTextEdit(plainText);
-    d->cursor = plainText ? plainText->textCursor() : QTextCursor();
-}
-
-void QtOutputFormatter::clearLastLine()
-{
-    OutputFormatter::clearLastLine();
-    if (!d->lastLine.isEmpty())
-        d->lastLine.removeLast();
+    return false;
 }
 
 void QtOutputFormatter::openEditor(const QString &fileName, int line, int column)
@@ -554,7 +497,7 @@ void QtSupportPlugin::testQtOutputFormatter_appendMessage_data()
             << "Object::Test in test.cpp:123"
             << "Object::Test in test.cpp:123"
             << QTextCharFormat()
-            << linkFormat(QTextCharFormat(), "test.cpp:123");
+            << OutputFormatter::linkFormat(QTextCharFormat(), "test.cpp:123");
     QTest::newRow("colored")
             << "blue da ba dee"
             << "blue da ba dee"
@@ -577,8 +520,13 @@ void QtSupportPlugin::testQtOutputFormatter_appendMessage()
     QFETCH(QString, outputText);
     QFETCH(QTextCharFormat, inputFormat);
     QFETCH(QTextCharFormat, outputFormat);
+    if (outputFormat == QTextCharFormat())
+        outputFormat = formatter.charFormat(DebugFormat);
+    if (inputFormat != QTextCharFormat())
+        formatter.overrideTextCharFormat(inputFormat);
 
-    formatter.appendMessage(inputText, inputFormat);
+    formatter.appendMessage(inputText, DebugFormat);
+    formatter.flush();
 
     QCOMPARE(edit.toPlainText(), outputText);
     QCOMPARE(edit.currentCharFormat(), outputFormat);
@@ -599,7 +547,7 @@ void QtSupportPlugin::testQtOutputFormatter_appendMixedAssertAndAnsi()
                 "file://test.cpp:123 "
                 "Blue\n";
 
-    formatter.appendMessage(inputText, QTextCharFormat());
+    formatter.doAppendMessage(inputText, QTextCharFormat());
 
     QCOMPARE(edit.toPlainText(), outputText);
 
@@ -608,7 +556,7 @@ void QtSupportPlugin::testQtOutputFormatter_appendMixedAssertAndAnsi()
 
     edit.moveCursor(QTextCursor::WordRight);
     edit.moveCursor(QTextCursor::Right);
-    QCOMPARE(edit.currentCharFormat(), linkFormat(QTextCharFormat(), "file://test.cpp:123"));
+    QCOMPARE(edit.currentCharFormat(), OutputFormatter::linkFormat(QTextCharFormat(), "file://test.cpp:123"));
 
     edit.moveCursor(QTextCursor::End);
     QCOMPARE(edit.currentCharFormat(), blueFormat());

@@ -82,6 +82,8 @@ public:
     static Project *projectForNode(const Node *node);
     static Node *nodeForFile(const Utils::FilePath &fileName);
 
+    void expandCurrentNodeRecursively();
+
     void collapseAll();
     void expandAll();
 
@@ -93,6 +95,7 @@ public:
 signals:
     void currentProjectChanged(ProjectExplorer::Project *project);
     void currentNodeChanged();
+    void nodeActionsChanged();
 
     // Emitted whenever the model needs to send a update signal.
     void subtreeChanged(ProjectExplorer::FolderNode *node);
@@ -117,6 +120,7 @@ private:
 
     void updateExternalFileWarning();
     static bool hasFocus(Internal::ProjectTreeWidget *widget);
+    Internal::ProjectTreeWidget *currentWidget() const;
     void hideContextMenu();
 
 private:

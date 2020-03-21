@@ -35,6 +35,8 @@
 #include <qmldesignerplugin.h>
 #include <viewmanager.h>
 #include <nodeinstanceview.h>
+#include "qmldesignerconstants.h"
+#include "qmlvisualnode.h"
 
 #include <projectexplorer/projecttree.h>
 #include <projectexplorer/project.h>
@@ -44,6 +46,7 @@
 #include <qtsupport/qtkitinformation.h>
 #include <qtsupport/qtsupportconstants.h>
 #include <qtsupport/qtversionmanager.h>
+#include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
 #include <coreplugin/editormanager/editormanager.h>
 
@@ -269,6 +272,14 @@ void DesignDocument::changeToDocumentModel()
     viewManager().attachViewsExceptRewriterAndComponetView();
 }
 
+bool DesignDocument::isQtForMCUsProject() const
+{
+    if (m_currentTarget)
+        return m_currentTarget->additionalData("CustomQtForMCUs").toBool();
+
+    return true;
+}
+
 void DesignDocument::changeToInFileComponentModel(ComponentTextModifier *textModifer)
 {
     m_inFileComponentTextModifier.reset(textModifer);
@@ -394,6 +405,9 @@ static void scatterItem(const ModelNode &pastedNode, const ModelNode &targetNode
     if (targetNode.metaInfo().isValid() && targetNode.metaInfo().isLayoutable())
         return;
 
+    if (!(pastedNode.hasVariantProperty("x") && pastedNode.hasVariantProperty("y")))
+        return;
+
     bool scatter = false;
     foreach (const ModelNode &childNode, targetNode.directSubModelNodes()) {
         if ((childNode.variantProperty("x").value() == pastedNode.variantProperty("x").value()) &&
@@ -438,7 +452,7 @@ void DesignDocument::paste()
     if (rootNode.type() == "empty")
         return;
 
-    if (rootNode.id() == "designer__Selection") {
+    if (rootNode.id() == "designer__Selection") { // pasting multiple objects
         currentModel()->attachView(&view);
 
         ModelNode targetNode;
@@ -447,8 +461,22 @@ void DesignDocument::paste()
             targetNode = view.selectedModelNodes().constFirst();
 
         //In case we copy and paste a selection we paste in the parent item
-        if ((view.selectedModelNodes().count() == selectedNodes.count()) && targetNode.isValid() && targetNode.hasParentProperty())
+        if ((view.selectedModelNodes().count() == selectedNodes.count()) && targetNode.isValid() && targetNode.hasParentProperty()) {
             targetNode = targetNode.parentProperty().parentModelNode();
+        } else {
+            // if selection is empty and copied nodes are all 3D nodes, paste them under the active scene
+            bool all3DNodes = std::find_if(selectedNodes.begin(), selectedNodes.end(),
+                                           [](const ModelNode &node) { return !node.isSubclassOf("QtQuick3D.Node"); })
+                              == selectedNodes.end();
+            if (all3DNodes) {
+                int activeSceneId = rootModelNode().auxiliaryData("3d-active-scene").toInt();
+                if (activeSceneId != -1) {
+                    NodeListProperty sceneNodeProperty
+                            = QmlVisualNode::findSceneNodeProperty(rootModelNode().view(), activeSceneId);
+                    targetNode = sceneNodeProperty.parentModelNode();
+                }
+            }
+        }
 
         if (!targetNode.isValid())
             targetNode = view.rootModelNode();
@@ -476,24 +504,35 @@ void DesignDocument::paste()
             view.setSelectedModelNodes(pastedNodeList);
         });
 
-    } else {
-        rewriterView()->executeInTransaction("DesignDocument::paste1", [this, &view, selectedNodes, rootNode](){
+    } else { // pasting single object
+        rewriterView()->executeInTransaction("DesignDocument::paste1", [this, &view, selectedNodes, rootNode]() {
             currentModel()->attachView(&view);
             ModelNode pastedNode(view.insertModel(rootNode));
             ModelNode targetNode;
 
-            if (!view.selectedModelNodes().isEmpty())
+            if (!view.selectedModelNodes().isEmpty()) {
                 targetNode = view.selectedModelNodes().constFirst();
+            } else {
+                // if selection is empty and this is a 3D Node, paste it under the active scene
+                if (pastedNode.isSubclassOf("QtQuick3D.Node")) {
+                    int activeSceneId = rootModelNode().auxiliaryData("3d-active-scene").toInt();
+                    if (activeSceneId != -1) {
+                        NodeListProperty sceneNodeProperty
+                                = QmlVisualNode::findSceneNodeProperty(rootModelNode().view(), activeSceneId);
+                        targetNode = sceneNodeProperty.parentModelNode();
+                    }
+                }
+            }
 
             if (!targetNode.isValid())
                 targetNode = view.rootModelNode();
 
             if (targetNode.hasParentProperty() &&
-                    (pastedNode.simplifiedTypeName() == targetNode.simplifiedTypeName()) &&
-                    (pastedNode.variantProperty("width").value() == targetNode.variantProperty("width").value()) &&
-                    (pastedNode.variantProperty("height").value() == targetNode.variantProperty("height").value()))
-
+                pastedNode.simplifiedTypeName() == targetNode.simplifiedTypeName() &&
+                pastedNode.variantProperty("width").value() == targetNode.variantProperty("width").value() &&
+                pastedNode.variantProperty("height").value() == targetNode.variantProperty("height").value()) {
                 targetNode = targetNode.parentProperty().parentModelNode();
+            }
 
             PropertyName defaultProperty(targetNode.metaInfo().defaultPropertyName());
 

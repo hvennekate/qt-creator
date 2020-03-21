@@ -45,11 +45,10 @@ extend_qtc_executable(qml2puppet
     synchronizecommand.cpp synchronizecommand.h
     tokencommand.cpp tokencommand.h
     changeselectioncommand.cpp changeselectioncommand.h
-    drop3dlibraryitemcommand.cpp drop3dlibraryitemcommand.h
     update3dviewstatecommand.cpp update3dviewstatecommand.h
-    enable3dviewcommand.cpp enable3dviewcommand.h
-    view3dclosedcommand.cpp view3dclosedcommand.h
     puppettocreatorcommand.cpp puppettocreatorcommand.h
+    inputeventcommand.cpp inputeventcommand.h
+    view3dactioncommand.cpp view3dactioncommand.h
     valueschangedcommand.cpp
 )
 
@@ -92,12 +91,22 @@ extend_qtc_executable(qml2puppet
     nodeinstanceclientproxy.cpp nodeinstanceclientproxy.h
 )
 
-find_package(Qt5 COMPONENTS Quick3D QUIET)
+find_package(Qt5 5.15.0 COMPONENTS Quick3D QUIET)
 extend_qtc_executable(qml2puppet
   CONDITION TARGET Qt5::Quick3D
   FEATURE_INFO "Qt Quick 3D"
   DEPENDS Qt5::Quick3D Qt5::Quick3DPrivate
   DEFINES QUICK3D_MODULE
+
+  SOURCES_PREFIX "${SRCDIR}/qmlpuppet/editor3d"
+  SOURCES
+    generalhelper.cpp generalhelper.h
+    mousearea3d.cpp mousearea3d.h
+    camerageometry.cpp camerageometry.h
+    lightgeometry.cpp lightgeometry.h
+    gridgeometry.cpp gridgeometry.h
+    selectionboxgeometry.cpp selectionboxgeometry.h
+    linegeometry.cpp linegeometry.h
 )
 
 extend_qtc_executable(qml2puppet
@@ -107,17 +116,6 @@ extend_qtc_executable(qml2puppet
     nodeinstanceclientinterface.h
     nodeinstanceglobal.h
     nodeinstanceserverinterface.cpp nodeinstanceserverinterface.h
-)
-
-extend_qtc_executable(qml2puppet
-  SOURCES_PREFIX "${SRCDIR}/qml2puppet/editor3d"
-  SOURCES
-    generalhelper.cpp generalhelper.h
-    mousearea3d.cpp mousearea3d.h
-    camerageometry.cpp camerageometry.h
-    gridgeometry.cpp gridgeometry.h
-    selectionboxgeometry.cpp selectionboxgeometry.h
-    linegeometry.cpp linegeometry.h
 )
 
 extend_qtc_executable(qml2puppet

@@ -49,11 +49,10 @@ class RemoteAdditionDialog : public QDialog
 {
 public:
     RemoteAdditionDialog(const QStringList &remoteNames) :
-        m_invalidRemoteNameChars(GitPluginPrivate::invalidBranchAndRemoteNamePattern()),
+        m_invalidRemoteNameChars(GitPlugin::invalidBranchAndRemoteNamePattern()),
         m_remoteNames(remoteNames)
     {
         m_ui.setupUi(this);
-        setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
         m_ui.nameEdit->setValidationFunction([this](Utils::FancyLineEdit *edit, QString *errorMessage) {
             if (!edit)
                 return false;
@@ -127,7 +126,6 @@ RemoteDialog::RemoteDialog(QWidget *parent) :
     m_remoteModel(new RemoteModel(this))
 {
     setModal(false);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setAttribute(Qt::WA_DeleteOnClose, true); // Do not update unnecessarily
 
     m_ui->setupUi(this);
@@ -157,7 +155,7 @@ void RemoteDialog::refresh(const QString &repository, bool force)
     if (m_remoteModel->workingDirectory() == repository && !force)
         return;
     // Refresh
-    m_ui->repositoryLabel->setText(GitPluginPrivate::msgRepositoryLabel(repository));
+    m_ui->repositoryLabel->setText(GitPlugin::msgRepositoryLabel(repository));
     if (repository.isEmpty()) {
         m_remoteModel->clear();
     } else {
@@ -205,7 +203,7 @@ void RemoteDialog::pushToRemote()
 
     const int row = indexList.at(0).row();
     const QString remoteName = m_remoteModel->remoteName(row);
-    GitPluginPrivate::client()->push(m_remoteModel->workingDirectory(), {remoteName});
+    GitClient::instance()->push(m_remoteModel->workingDirectory(), {remoteName});
 }
 
 void RemoteDialog::fetchFromRemote()
@@ -216,7 +214,7 @@ void RemoteDialog::fetchFromRemote()
 
     int row = indexList.at(0).row();
     const QString remoteName = m_remoteModel->remoteName(row);
-    GitPluginPrivate::client()->fetch(m_remoteModel->workingDirectory(), remoteName);
+    GitClient::instance()->fetch(m_remoteModel->workingDirectory(), remoteName);
 }
 
 void RemoteDialog::updateButtonState()

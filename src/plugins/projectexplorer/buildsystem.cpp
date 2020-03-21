@@ -30,6 +30,8 @@
 #include "runcontrol.h"
 #include "target.h"
 
+#include <projectexplorer/buildaspects.h>
+
 #include <utils/qtcassert.h>
 
 #include <QTimer>
@@ -101,6 +103,7 @@ void BuildSystem::emitParsingStarted()
 
     d->m_isParsing = true;
     d->m_hasParsingData = false;
+    emit parsingStarted();
     emit d->m_target->parsingStarted();
 }
 
@@ -112,6 +115,7 @@ void BuildSystem::emitParsingFinished(bool success)
 
     d->m_isParsing = false;
     d->m_hasParsingData = success;
+    emit parsingFinished(success);
     emit d->m_target->parsingFinished(success);
 }
 
@@ -138,6 +142,26 @@ void BuildSystem::requestParse()
 void BuildSystem::requestDelayedParse()
 {
     requestParseHelper(1000);
+}
+
+void BuildSystem::requestParseWithCustomDelay(int delayInMs)
+{
+    requestParseHelper(delayInMs);
+}
+
+void BuildSystem::cancelDelayedParseRequest()
+{
+    d->m_delayedParsingTimer.stop();
+}
+
+void BuildSystem::setParseDelay(int delayInMs)
+{
+    d->m_delayedParsingTimer.setInterval(delayInMs);
+}
+
+int BuildSystem::parseDelay() const
+{
+    return d->m_delayedParsingTimer.interval();
 }
 
 bool BuildSystem::isParsing() const
@@ -314,7 +338,7 @@ void BuildSystem::emitBuildSystemUpdated()
 
 QString BuildSystem::disabledReason(const QString &buildKey) const
 {
-    if (hasParsingData()) {
+    if (!hasParsingData()) {
         QString msg = isParsing() ? tr("The project is currently being parsed.")
                                   : tr("The project could not be fully parsed.");
         const FilePath projectFilePath = buildTarget(buildKey).projectFilePath;

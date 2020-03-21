@@ -15,6 +15,7 @@ Project {
                 "core-private", "quickwidgets"
             ]
         }
+        Depends { name: "AdvancedDockingSystem" }
         Depends { name: "Core" }
         Depends { name: "QmlJS" }
         Depends { name: "QmlEditorWidgets" }
@@ -50,12 +51,14 @@ Project {
              "components/importmanager",
              "components/integration",
              "components/propertyeditor",
+             "components/edit3d",
              "components/formeditor",
              "components/itemlibrary",
              "components/navigator",
              "components/pluginmanager",
              "components/stateseditor",
-             "components/texteditor"
+             "components/texteditor",
+             "components/timelineeditor",
         ])
 
         Properties {
@@ -68,6 +71,7 @@ Project {
             cpp.includePaths: base.concat([
                 product.sourceDirectory,
                 product.sourceDirectory + "/components/componentcore",
+                product.sourceDirectory + "/components/edit3d",
                 product.sourceDirectory + "/components/formeditor",
                 product.sourceDirectory + "/components/integration",
                 product.sourceDirectory + "/designercore",
@@ -169,16 +173,14 @@ Project {
                 "commands/valueschangedcommand.h",
                 "commands/changeselectioncommand.cpp",
                 "commands/changeselectioncommand.h",
-                "commands/drop3dlibraryitemcommand.cpp",
-                "commands/drop3dlibraryitemcommand.h",
                 "commands/update3dviewstatecommand.cpp",
                 "commands/update3dviewstatecommand.h",
-                "commands/enable3dviewcommand.cpp",
-                "commands/enable3dviewcommand.h",
-                "commands/view3dclosedcommand.cpp",
-                "commands/view3dclosedcommand.h",
                 "commands/puppettocreatorcommand.cpp",
                 "commands/puppettocreatorcommand.h",
+                "commands/inputeventcommand.cpp",
+                "commands/inputeventcommand.h",
+                "commands/view3dactioncommand.cpp",
+                "commands/view3dactioncommand.h",
                 "container/addimportcontainer.cpp",
                 "container/addimportcontainer.h",
                 "container/idcontainer.cpp",
@@ -245,6 +247,7 @@ Project {
                 "include/abstractproperty.h",
                 "include/abstractview.h",
                 "include/anchorline.h",
+                "include/annotation.h",
                 "include/basetexteditmodifier.h",
                 "include/bindingproperty.h",
                 "include/componenttextmodifier.h",
@@ -321,6 +324,7 @@ Project {
                 "model/abstractproperty.cpp",
                 "model/abstractview.cpp",
                 "model/anchorline.cpp",
+                "model/annotation.cpp",
                 "model/basetexteditmodifier.cpp",
                 "model/bindingproperty.cpp",
                 "model/componenttextmodifier.cpp",
@@ -440,6 +444,15 @@ Project {
                 "debugview/debugviewwidget.cpp",
                 "debugview/debugviewwidget.h",
                 "debugview/debugviewwidget.ui",
+                "edit3d/edit3dview.cpp",
+                "edit3d/edit3dview.h",
+                "edit3d/edit3dwidget.cpp",
+                "edit3d/edit3dwidget.h",
+                "edit3d/edit3dcanvas.cpp",
+                "edit3d/edit3dcanvas.h",
+                "edit3d/edit3dactions.cpp",
+                "edit3d/edit3dactions.h",
+                "edit3d/edit3d.qrc",
                 "formeditor/abstractcustomtool.cpp",
                 "formeditor/abstractcustomtool.h",
                 "formeditor/abstractformeditortool.cpp",
@@ -461,6 +474,8 @@ Project {
                 "formeditor/dragtool.cpp",
                 "formeditor/dragtool.h",
                 "formeditor/formeditor.qrc",
+                "formeditor/formeditorannotationicon.cpp",
+                "formeditor/formeditorannotationicon.h",
                 "formeditor/formeditorgraphicsview.cpp",
                 "formeditor/formeditorgraphicsview.h",
                 "formeditor/formeditoritem.cpp",
@@ -515,8 +530,6 @@ Project {
                 "formeditor/toolbox.h",
                 "formeditor/formeditortoolbutton.cpp",
                 "formeditor/formeditortoolbutton.h",
-                "formeditor/option3daction.cpp",
-                "formeditor/option3daction.h",
                 "importmanager/importlabel.cpp",
                 "importmanager/importlabel.h",
                 "importmanager/importmanagercombobox.cpp",
@@ -636,6 +649,16 @@ Project {
             name: "extension"
             prefix: "components/"
             files: [
+                "annotationeditor/annotationcommenttab.cpp",
+                "annotationeditor/annotationcommenttab.h",
+                "annotationeditor/annotationcommenttab.ui",
+                "annotationeditor/annotationeditor.cpp",
+                "annotationeditor/annotationeditor.h",
+                "annotationeditor/annotationeditordialog.cpp",
+                "annotationeditor/annotationeditordialog.h",
+                "annotationeditor/annotationeditordialog.ui",
+                "annotationeditor/annotationtool.cpp",
+                "annotationeditor/annotationtool.h",
                 "bindingeditor/bindingeditor.cpp",
                 "bindingeditor/bindingeditor.h",
                 "bindingeditor/actioneditor.cpp",

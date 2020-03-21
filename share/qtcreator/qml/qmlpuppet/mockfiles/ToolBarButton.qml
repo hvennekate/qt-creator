@@ -35,13 +35,14 @@ Rectangle {
     property string tool
     property string buttonGroup
     property bool togglable: true
+    property string sceneId
 
     property int _buttonGroupIndex: -1
     property var _buttonGroupArray: []
 
     id: root
-    width: img.width + 5
-    height: img.height + 5
+    width: 16
+    height: 16
     color: root.selected ? "#aa000000" : (mouseArea.containsMouse ? "#44000000" : "#00000000")
     radius: 3
 
@@ -64,13 +65,6 @@ Rectangle {
         delay: 1000
     }
 
-    Image {
-        id: img
-        anchors.centerIn: parent
-        source: root.selected ? "qrc:///qtquickplugin/mockfiles/images/" + root.tool + "_selected.png"
-                         : "qrc:///qtquickplugin/mockfiles/images/" + root.tool + "_active.png"
-    }
-
     Shortcut {
         sequence: root.currentShortcut
         onActivated: mouseArea.onClicked(null)
@@ -89,7 +83,7 @@ Rectangle {
 
                 root.selected = true;
                 if (_buttonGroupIndex >= 0)
-                    _generalHelper.storeToolState(root.buttonGroup, root._buttonGroupIndex)
+                    _generalHelper.storeToolState(sceneId, root.buttonGroup, root._buttonGroupIndex)
 
                 if (!root.togglable) {
                     // Deselect button after a short while (selection acts as simple click indicator)

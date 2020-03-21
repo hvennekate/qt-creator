@@ -26,22 +26,22 @@
 #include "buildconfiguration.h"
 
 #include "buildaspects.h"
-#include "buildenvironmentwidget.h"
 #include "buildinfo.h"
 #include "buildsteplist.h"
 #include "buildstepspage.h"
 #include "buildsystem.h"
-#include "namedwidget.h"
+#include "environmentwidget.h"
 #include "kit.h"
 #include "kitinformation.h"
 #include "kitmanager.h"
-#include "project.h"
-#include "projectexplorer.h"
+#include "namedwidget.h"
 #include "projectexplorerconstants.h"
+#include "projectexplorer.h"
+#include "project.h"
 #include "projectmacroexpander.h"
 #include "projecttree.h"
-#include "target.h"
 #include "session.h"
+#include "target.h"
 #include "toolchain.h"
 
 #include <coreplugin/idocument.h>
@@ -54,8 +54,10 @@
 #include <utils/mimetypes/mimetype.h>
 #include <utils/qtcassert.h>
 
+#include <QCheckBox>
 #include <QDebug>
 #include <QFormLayout>
+#include <QVBoxLayout>
 
 using namespace Utils;
 
@@ -66,6 +68,45 @@ const char USER_ENVIRONMENT_CHANGES_KEY[] = "ProjectExplorer.BuildConfiguration.
 
 namespace ProjectExplorer {
 namespace Internal {
+
+class BuildEnvironmentWidget : public NamedWidget
+{
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::BuildEnvironmentWidget)
+
+public:
+    explicit BuildEnvironmentWidget(BuildConfiguration *bc)
+        : NamedWidget(tr("Build Environment"))
+    {
+        auto clearBox = new QCheckBox(tr("Clear system environment"), this);
+        clearBox->setChecked(!bc->useSystemEnvironment());
+
+        auto envWidget = new EnvironmentWidget(this, EnvironmentWidget::TypeLocal, clearBox);
+        envWidget->setBaseEnvironment(bc->baseEnvironment());
+        envWidget->setBaseEnvironmentText(bc->baseEnvironmentText());
+        envWidget->setUserChanges(bc->userEnvironmentChanges());
+
+        connect(envWidget, &EnvironmentWidget::userChangesChanged, this, [bc, envWidget] {
+            bc->setUserEnvironmentChanges(envWidget->userChanges());
+        });
+
+        connect(clearBox, &QAbstractButton::toggled, this, [bc, envWidget](bool checked) {
+            bc->setUseSystemEnvironment(!checked);
+            envWidget->setBaseEnvironment(bc->baseEnvironment());
+            envWidget->setBaseEnvironmentText(bc->baseEnvironmentText());
+        });
+
+        connect(bc, &BuildConfiguration::environmentChanged, this, [bc, envWidget] {
+            envWidget->setBaseEnvironment(bc->baseEnvironment());
+            envWidget->setBaseEnvironmentText(bc->baseEnvironmentText());
+        });
+
+        auto vbox = new QVBoxLayout(this);
+        vbox->setContentsMargins(0, 0, 0, 0);
+        vbox->addWidget(clearBox);
+        vbox->addWidget(envWidget);
+    }
+};
+
 
 class BuildConfigurationPrivate
 {
@@ -86,6 +127,7 @@ public:
     bool m_configWidgetHasFrame = false;
     QList<Core::Id> m_initialBuildSteps;
     QList<Core::Id> m_initialCleanSteps;
+    Utils::MacroExpander m_macroExpander;
 
     // FIXME: Remove.
     BuildConfiguration::BuildType m_initialBuildType = BuildConfiguration::Unknown;
@@ -130,7 +172,7 @@ BuildConfiguration::BuildConfiguration(Target *target, Core::Id id)
     d->m_buildDirectoryAspect->setEnvironment(environment());
     d->m_buildDirectoryAspect->setMacroExpanderProvider([this] { return macroExpander(); });
     connect(d->m_buildDirectoryAspect, &BaseStringAspect::changed,
-            this, &BuildConfiguration::buildDirectoryChanged);
+            this, &BuildConfiguration::emitBuildDirectoryChanged);
     connect(this, &BuildConfiguration::environmentChanged, this, [this] {
         d->m_buildDirectoryAspect->setEnvironment(environment());
         this->target()->buildEnvironmentChanged(this);
@@ -141,7 +183,7 @@ BuildConfiguration::BuildConfiguration(Target *target, Core::Id id)
     connect(this, &BuildConfiguration::enabledChanged, this, [this] {
         if (isActive() && project() == SessionManager::startupProject()) {
             ProjectExplorerPlugin::updateActions();
-            emit ProjectExplorerPlugin::instance()->updateRunActions();
+            ProjectExplorerPlugin::updateRunActions();
         }
     });
 }
@@ -204,6 +246,19 @@ void BuildConfiguration::doInitialize(const BuildInfo &info)
         d->m_initializer(info);
 }
 
+MacroExpander *BuildConfiguration::macroExpander() const
+{
+    return &d->m_macroExpander;
+}
+
+bool BuildConfiguration::createBuildDirectory()
+{
+    QDir dir;
+    const auto result = dir.mkpath(buildDirectory().toString());
+    buildDirectoryAspect()->validateInput();
+    return result;
+}
+
 void BuildConfiguration::setInitializer(const std::function<void(const BuildInfo &)> &initializer)
 {
     d->m_initializer = initializer;
@@ -239,7 +294,7 @@ NamedWidget *BuildConfiguration::createConfigWidget()
 
 QList<NamedWidget *> BuildConfiguration::createSubConfigWidgets()
 {
-    return {new BuildEnvironmentWidget(this)};
+    return {new Internal::BuildEnvironmentWidget(this)};
 }
 
 BuildSystem *BuildConfiguration::buildSystem() const
@@ -470,8 +525,7 @@ bool BuildConfiguration::isActive() const
 
 void BuildConfiguration::prependCompilerPathToEnvironment(Kit *k, Environment &env)
 {
-    const ToolChain *tc
-            = ToolChainKitAspect::toolChain(k, ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    const ToolChain *tc = ToolChainKitAspect::cxxToolChain(k);
 
     if (!tc)
         return;

@@ -47,6 +47,7 @@
 #include <projectexplorer/target.h>
 
 #include <qtsupport/baseqtversion.h>
+#include <qtsupport/qtbuildaspects.h>
 #include <qtsupport/qtkitinformation.h>
 
 #include <utils/algorithm.h>
@@ -87,9 +88,7 @@ CMakeBuildConfiguration::CMakeBuildConfiguration(Target *target, Core::Id id)
         const QString sysRoot = SysRootKitAspect::sysRoot(k).toString();
         if (!sysRoot.isEmpty()) {
             config.append(CMakeConfigItem("CMAKE_SYSROOT", sysRoot.toUtf8()));
-            ToolChain *tc = ToolChainKitAspect::toolChain(k,
-                                  ProjectExplorer::Constants::CXX_LANGUAGE_ID);
-            if (tc) {
+            if (ToolChain *tc = ToolChainKitAspect::cxxToolChain(k)) {
                 const QByteArray targetTriple = tc->originalTargetTriple().toUtf8();
                 config.append(CMakeConfigItem("CMAKE_C_COMPILER_TARGET", targetTriple));
                 config.append(CMakeConfigItem("CMAKE_CXX_COMPILER_TARGET ", targetTriple));
@@ -157,17 +156,17 @@ CMakeBuildConfiguration::CMakeBuildConfiguration(Target *target, Core::Id id)
 
         setConfigurationForCMake(config);
     });
+
+    const auto qmlDebuggingAspect = addAspect<QtSupport::QmlDebuggingAspect>();
+    qmlDebuggingAspect->setKit(target->kit());
+    connect(qmlDebuggingAspect, &QtSupport::QmlDebuggingAspect::changed,
+            this, &CMakeBuildConfiguration::configurationForCMakeChanged);
+
 }
 
 CMakeBuildConfiguration::~CMakeBuildConfiguration()
 {
     delete m_buildSystem;
-}
-
-
-QString CMakeBuildConfiguration::disabledReason() const
-{
-    return error();
 }
 
 QVariantMap CMakeBuildConfiguration::toMap() const
@@ -193,12 +192,6 @@ bool CMakeBuildConfiguration::fromMap(const QVariantMap &map)
 
     return true;
 }
-
-
-
-
-
-
 
 FilePath CMakeBuildConfiguration::shadowBuildDirectory(const FilePath &projectFilePath,
                                                        const Kit *k,
@@ -285,10 +278,7 @@ void CMakeBuildConfiguration::setConfigurationForCMake(const QList<ConfigModel::
             return item.key.startsWith("ANDROID_BUILD_ABI_");
         }) != -1) {
         // We always need to clean when we change the ANDROID_BUILD_ABI_ variables
-        QList<ProjectExplorer::BuildStepList *> stepLists;
-        const Core::Id clean = ProjectExplorer::Constants::BUILDSTEPS_CLEAN;
-        stepLists << cleanSteps();
-        BuildManager::buildLists(stepLists, QStringList() << ProjectExplorerPlugin::displayNameForStepId(clean));
+        BuildManager::buildLists({cleanSteps()});
     }
 }
 
@@ -302,11 +292,6 @@ void CMakeBuildConfiguration::clearError(ForceEnabledChanged fec)
         qCDebug(cmakeBuildConfigurationLog) << "Emitting enabledChanged signal";
         emit enabledChanged();
     }
-}
-
-void CMakeBuildConfiguration::emitBuildTypeChanged()
-{
-    emit buildTypeChanged();
 }
 
 static CMakeConfig removeDuplicates(const CMakeConfig &config)
@@ -370,7 +355,7 @@ void CMakeBuildConfiguration::setError(const QString &message)
         qCDebug(cmakeBuildConfigurationLog) << "Emitting enabledChanged signal";
         emit enabledChanged();
     }
-    emit errorOccured(m_error);
+    emit errorOccurred(m_error);
 }
 
 void CMakeBuildConfiguration::setWarning(const QString &message)
@@ -378,9 +363,8 @@ void CMakeBuildConfiguration::setWarning(const QString &message)
     if (m_warning == message)
         return;
     m_warning = message;
-    emit warningOccured(m_warning);
+    emit warningOccurred(m_warning);
 }
-
 
 QString CMakeBuildConfiguration::error() const
 {

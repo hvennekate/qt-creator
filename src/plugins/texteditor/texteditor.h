@@ -190,7 +190,7 @@ public:
     virtual void openFinishedSuccessfully();
     // IEditor
     QByteArray saveState() const;
-    bool restoreState(const QByteArray &state);
+    virtual bool restoreState(const QByteArray &state);
     void gotoLine(int line, int column = 0, bool centerLine = true, bool animate = false);
     int position(TextPositionOperation posOp = CurrentPosition,
          int at = -1) const;
@@ -556,6 +556,7 @@ public:
     void setContextHelpItem(const Core::HelpItem &item);
 
     static TextEditorWidget *currentTextEditorWidget();
+    static TextEditorWidget *fromEditor(const Core::IEditor *editor);
 
 protected:
     /*!
@@ -633,15 +634,15 @@ private:
 
 class TEXTEDITOR_EXPORT TextEditorFactory : public Core::IEditorFactory
 {
-    Q_OBJECT
 
 public:
-    TextEditorFactory(QObject *parent = nullptr);
+    TextEditorFactory();
     ~TextEditorFactory() override;
 
     using EditorCreator = std::function<BaseTextEditor *()>;
     using DocumentCreator = std::function<TextDocument *()>;
-    using EditorWidgetCreator = std::function<TextEditorWidget *()>;
+    // editor widget must be castable (qobject_cast or Aggregate::query) to TextEditorWidget
+    using EditorWidgetCreator = std::function<QWidget *()>;
     using SyntaxHighLighterCreator = std::function<SyntaxHighlighter *()>;
     using IndenterCreator = std::function<Indenter *(QTextDocument *)>;
     using AutoCompleterCreator = std::function<AutoCompleter *()>;
@@ -653,8 +654,6 @@ public:
     void setSyntaxHighlighterCreator(const SyntaxHighLighterCreator &creator);
     void setUseGenericHighlighter(bool enabled);
     void setAutoCompleterCreator(const AutoCompleterCreator &creator);
-
-    void setEditorActionHandlers(Core::Id contextId, uint optionalActions);
     void setEditorActionHandlers(uint optionalActions);
 
     void addHoverHandler(BaseHoverHandler *handler);
@@ -665,8 +664,6 @@ public:
     void setMarksVisible(bool on);
     void setParenthesesMatchingEnabled(bool on);
     void setCodeFoldingSupported(bool on);
-
-    Core::IEditor *createEditor() override;
 
 private:
     friend class BaseTextEditor;

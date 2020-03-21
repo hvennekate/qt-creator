@@ -32,6 +32,8 @@
 #include <utils/environment.h>
 #include <utils/fileutils.h>
 
+namespace Utils { class MacroExpander; }
+
 namespace ProjectExplorer {
 
 namespace Internal { class BuildConfigurationPrivate; }
@@ -103,7 +105,7 @@ public:
 
     static QString buildTypeName(BuildType type);
 
-    bool isActive() const override;
+    bool isActive() const;
 
     static void prependCompilerPathToEnvironment(Kit *k, Utils::Environment &env);
     void updateCacheAndEmitEnvironmentChanged();
@@ -117,6 +119,10 @@ public:
     void addConfigWidgets(const std::function<void (NamedWidget *)> &adder);
 
     void doInitialize(const BuildInfo &info);
+
+    Utils::MacroExpander *macroExpander() const;
+
+    bool createBuildDirectory();
 
 signals:
     void environmentChanged();

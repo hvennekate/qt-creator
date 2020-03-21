@@ -48,13 +48,11 @@
 #include "changefileurlcommand.h"
 #include "reparentinstancescommand.h"
 #include "update3dviewstatecommand.h"
-#include "enable3dviewcommand.h"
 #include "changevaluescommand.h"
 #include "changeauxiliarycommand.h"
 #include "changebindingscommand.h"
 #include "changeidscommand.h"
 #include "changeselectioncommand.h"
-#include "drop3dlibraryitemcommand.h"
 #include "changenodesourcecommand.h"
 #include "removeinstancescommand.h"
 #include "removepropertiescommand.h"
@@ -71,6 +69,8 @@
 #include "debugoutputcommand.h"
 #include "nodeinstanceserverproxy.h"
 #include "puppettocreatorcommand.h"
+#include "inputeventcommand.h"
+#include "view3dactioncommand.h"
 
 #ifndef QMLDESIGNER_TEST
 #include <qmldesignerplugin.h>
@@ -984,7 +984,7 @@ CreateSceneCommand NodeInstanceView::createCreateSceneCommand()
                               importVector,
                               mockupTypesVector,
                               model()->fileUrl(),
-                              m_edit3DToolStates);
+                              m_edit3DToolStates[model()->fileUrl()]);
 }
 
 ClearSceneCommand NodeInstanceView::createClearSceneCommand() const
@@ -1089,7 +1089,7 @@ ChangeValuesCommand NodeInstanceView::createChangeValueCommand(const QList<Varia
 {
     QVector<PropertyValueContainer> containerList;
 
-    const bool reflectionFlag = m_puppetTransaction.isValid();
+    const bool reflectionFlag = m_puppetTransaction.isValid() && (!currentTimeline().isValid() || !currentTimeline().isRecording());
 
     foreach (const VariantProperty &property, propertyList) {
         ModelNode node = property.parentModelNode();
@@ -1245,10 +1245,10 @@ void NodeInstanceView::valuesModified(const ValuesModifiedCommand &command)
         if (hasInstanceForId(container.instanceId())) {
             NodeInstance instance = instanceForId(container.instanceId());
             if (instance.isValid()) {
-                ModelNode node = instance.modelNode();
-                VariantProperty property = instance.modelNode().variantProperty(container.name());
-                if (property.value() != container.value())
-                    property.setValue(container.value());
+                // QmlVisualNode is needed so timeline and state are updated
+                QmlVisualNode node = instance.modelNode();
+                if (node.instanceValue(container.name()) != container.value())
+                    node.setVariantProperty(container.name(), container.value());
             }
         }
     }
@@ -1446,63 +1446,25 @@ void NodeInstanceView::selectionChanged(const ChangeSelectionCommand &command)
             selectModelNode(modelNodeForInternalId(instanceId));
     }
 }
-void NodeInstanceView::library3DItemDropped(const Drop3DLibraryItemCommand &command)
-{
-    QDataStream stream(command.itemData());
-    ItemLibraryEntry itemLibraryEntry;
-    stream >> itemLibraryEntry;
-    QmlVisualNode::createQmlVisualNode(this, itemLibraryEntry, {});
-}
 
 void NodeInstanceView::handlePuppetToCreatorCommand(const PuppetToCreatorCommand &command)
 {
-    if (command.type() == PuppetToCreatorCommand::KeyPressed) {
-        QPair<int, int> data = qvariant_cast<QPair<int, int>>(command.data());
-        int key = data.first;
-        Qt::KeyboardModifiers modifiers = Qt::KeyboardModifiers(data.second);
-
-        handlePuppetKeyPress(key, modifiers);
-    } else if (command.type() == PuppetToCreatorCommand::Edit3DToolState) {
+    if (command.type() == PuppetToCreatorCommand::Edit3DToolState) {
         if (!m_nodeInstanceServer.isNull()) {
-            auto data = qvariant_cast<QPair<QString, QVariant>>(command.data());
-            m_edit3DToolStates[data.first] = data.second;
+            auto data = qvariant_cast<QVariantList>(command.data());
+            if (data.size() == 3) {
+                QString qmlId = data[0].toString();
+                m_edit3DToolStates[model()->fileUrl()][qmlId].insert(data[1].toString(), data[2]);
+            }
         }
+    } else if (command.type() == PuppetToCreatorCommand::Render3DView) {
+        ImageContainer container = qvariant_cast<ImageContainer>(command.data());
+        if (!container.image().isNull())
+            emitRenderImage3DChanged(container.image());
+    } else if (command.type() == PuppetToCreatorCommand::ActiveSceneChanged) {
+        const auto sceneState = qvariant_cast<QVariantMap>(command.data());
+        emitUpdateActiveScene3D(sceneState);
     }
-}
-
-// puppet to creator command handlers
-void NodeInstanceView::handlePuppetKeyPress(int key, Qt::KeyboardModifiers modifiers)
-{
-    // TODO: optimal way to handle key events is to just pass them on. This is done
-    // using the code below but it is so far not working, if someone could get it to work then
-    // it should be utilized and the rest of the method deleted
-//    QCoreApplication::postEvent([receiver], new QKeyEvent(QEvent::KeyPress, key, modifiers));
-
-#ifndef QMLDESIGNER_TEST
-    // handle common keyboard actions coming from puppet
-    if (Core::ActionManager::command(Core::Constants::UNDO)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
-        QmlDesignerPlugin::instance()->currentDesignDocument()->undo();
-    else if (Core::ActionManager::command(Core::Constants::REDO)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
-        QmlDesignerPlugin::instance()->currentDesignDocument()->redo();
-    else if (Core::ActionManager::command(Core::Constants::SAVE)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
-        Core::EditorManager::saveDocument();
-    else if (Core::ActionManager::command(Core::Constants::SAVEAS)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
-        Core::EditorManager::saveDocumentAs();
-    else if (Core::ActionManager::command(Core::Constants::SAVEALL)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
-        Core::DocumentManager::saveAllModifiedDocuments();
-    else if (Core::ActionManager::command(QmlDesigner::Constants::C_DELETE)->keySequence().matches(key + modifiers) == QKeySequence::ExactMatch)
-        QmlDesignerPlugin::instance()->currentDesignDocument()->deleteSelected();
-#else
-    Q_UNUSED(key);
-    Q_UNUSED(modifiers);
-#endif
-}
-
-void NodeInstanceView::view3DClosed(const View3DClosedCommand &command)
-{
-    Q_UNUSED(command)
-
-    rootModelNode().removeAuxiliaryData("3d-view");
 }
 
 void NodeInstanceView::selectedNodesChanged(const QList<ModelNode> &selectedNodeList,
@@ -1511,22 +1473,19 @@ void NodeInstanceView::selectedNodesChanged(const QList<ModelNode> &selectedNode
     nodeInstanceServer()->changeSelection(createChangeSelectionCommand(selectedNodeList));
 }
 
-void NodeInstanceView::mainWindowStateChanged(Qt::WindowStates previousStates, Qt::WindowStates currentStates)
+void NodeInstanceView::sendInputEvent(QInputEvent *e) const
 {
-    if (nodeInstanceServer())
-        nodeInstanceServer()->update3DViewState(Update3dViewStateCommand(previousStates, currentStates));
+    nodeInstanceServer()->inputEvent(InputEventCommand(e));
 }
 
-void NodeInstanceView::mainWindowActiveChanged(bool active, bool hasPopup)
+void NodeInstanceView::view3DAction(const View3DActionCommand &command)
 {
-    if (nodeInstanceServer())
-        nodeInstanceServer()->update3DViewState(Update3dViewStateCommand(active, hasPopup));
+    nodeInstanceServer()->view3DAction(command);
 }
 
-// enable / disable 3D edit View
-void NodeInstanceView::enable3DView(bool enable)
+void NodeInstanceView::edit3DViewResized(const QSize &size) const
 {
-    nodeInstanceServer()->enable3DView(Enable3DViewCommand(enable));
+    nodeInstanceServer()->update3DViewState(Update3dViewStateCommand(size));
 }
 
 void NodeInstanceView::timerEvent(QTimerEvent *event)

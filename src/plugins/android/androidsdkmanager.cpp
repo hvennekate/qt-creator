@@ -69,15 +69,19 @@ using SdkCmdFutureInterface = QFutureInterface<AndroidSdkManager::OperationOutpu
 int platformNameToApiLevel(const QString &platformName)
 {
     int apiLevel = -1;
-    QRegularExpression re("(android-)(?<apiLevel>[0-9Q]{1,})",
+    QRegularExpression re("(android-)(?<apiLevel>[0-9A-Z]{1,})",
                           QRegularExpression::CaseInsensitiveOption);
     QRegularExpressionMatch match = re.match(platformName);
     if (match.hasMatch()) {
         QString apiLevelStr = match.captured("apiLevel");
-        if (apiLevelStr == 'Q')
-            apiLevel = 29;
-        else
-            apiLevel = apiLevelStr.toInt();
+        bool isUInt;
+        apiLevel = apiLevelStr.toUInt(&isUInt);
+        if (!isUInt) {
+            if (apiLevelStr == 'Q')
+                apiLevel = 29;
+            else if (apiLevelStr == 'R')
+                apiLevel = 30;
+        }
     }
     return apiLevel;
 }
@@ -271,7 +275,8 @@ public:
         SdkToolsMarker              = 0x100,
         PlatformToolsMarker         = 0x200,
         EmulatorToolsMarker         = 0x400,
-        ExtrasMarker                = 0x800,
+        NdkMarker                   = 0x800,
+        ExtrasMarker                = 0x1000,
         SectionMarkers = InstalledPackagesMarker | AvailablePackagesMarkers | AvailableUpdatesMarker
     };
 
@@ -292,6 +297,7 @@ private:
     SdkTools *parseSdkToolsPackage(const QStringList &data) const;
     PlatformTools *parsePlatformToolsPackage(const QStringList &data) const;
     EmulatorTools *parseEmulatorToolsPackage(const QStringList &data) const;
+    Ndk *parseNdkPackage(const QStringList &data) const;
     ExtraTools *parseExtraToolsPackage(const QStringList &data) const;
     MarkerTag parseMarkers(const QString &line);
 
@@ -309,6 +315,7 @@ const std::map<SdkManagerOutputParser::MarkerTag, const char *> markerTags {
     {SdkManagerOutputParser::MarkerTag::SdkToolsMarker,             "tools"},
     {SdkManagerOutputParser::MarkerTag::PlatformToolsMarker,        "platform-tools"},
     {SdkManagerOutputParser::MarkerTag::EmulatorToolsMarker,        "emulator"},
+    {SdkManagerOutputParser::MarkerTag::NdkMarker,                  "ndk"},
     {SdkManagerOutputParser::MarkerTag::ExtrasMarker,               "extras"}
 };
 
@@ -358,6 +365,13 @@ SystemImageList AndroidSdkManager::installedSystemImages()
     }
 
     return result;
+}
+
+NdkList AndroidSdkManager::installedNdkPackages()
+{
+    AndroidSdkPackageList list = m_d->filteredPackages(AndroidSdkPackage::Installed,
+                                                       AndroidSdkPackage::NDKPackage);
+    return Utils::static_container_cast<Ndk *>(list);
 }
 
 SdkPlatform *AndroidSdkManager::latestAndroidSdkPlatform(AndroidSdkPackage::PackageState state)
@@ -476,6 +490,10 @@ void SdkManagerOutputParser::parsePackageListing(const QString &output)
 
         // NOTE: we don't want to parse Dependencies part as it does not add value
         if (outputLine.startsWith("        "))
+            continue;
+
+        // We don't need to parse this because they would still be listed on available packages
+        if (m_currentSection == AvailableUpdatesMarker)
             continue;
 
         MarkerTag marker = parseMarkers(outputLine.trimmed());
@@ -599,6 +617,10 @@ void SdkManagerOutputParser::parsePackageData(MarkerTag packageMarker, const QSt
             package = result.first;
         }
     }
+        break;
+
+    case MarkerTag::NdkMarker:
+        createPackage(&SdkManagerOutputParser::parseNdkPackage);
         break;
 
     case MarkerTag::ExtrasMarker:
@@ -769,6 +791,24 @@ EmulatorTools *SdkManagerOutputParser::parseEmulatorToolsPackage(const QStringLi
                                   "unavailable:" << data;
     }
     return emulatorTools;
+}
+
+Ndk *SdkManagerOutputParser::parseNdkPackage(const QStringList &data) const
+{
+    Ndk *ndk = nullptr;
+    GenericPackageData packageData;
+    if (parseAbstractData(packageData, data, 1, "NDK")) {
+        ndk = new Ndk(packageData.revision, data.at(0));
+        ndk->setDescriptionText(packageData.description);
+        ndk->setDisplayText(packageData.description);
+        ndk->setInstalledLocation(packageData.installedLocation);
+        if (packageData.description == "NDK")
+            ndk->setAsNdkBundle(true);
+    } else {
+        qCDebug(sdkManagerLog) << "NDK: Parsing failed. Minimum required data unavailable:"
+                               << data;
+    }
+    return ndk;
 }
 
 ExtraTools *SdkManagerOutputParser::parseExtraToolsPackage(const QStringList &data) const

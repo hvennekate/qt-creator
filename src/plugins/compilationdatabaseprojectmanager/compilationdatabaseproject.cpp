@@ -43,7 +43,6 @@
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/projectnodes.h>
 #include <projectexplorer/target.h>
-#include <projectexplorer/toolchainconfigwidget.h>
 #include <projectexplorer/toolchainmanager.h>
 #include <texteditor/textdocument.h>
 
@@ -53,7 +52,6 @@
 #include <utils/runextensions.h>
 
 #include <QFileDialog>
-#include <QTimer>
 
 #ifdef Q_OS_WIN
 #include <Windows.h>
@@ -340,20 +338,15 @@ void createTree(std::unique_ptr<ProjectNode> &root,
 CompilationDatabaseBuildSystem::CompilationDatabaseBuildSystem(Target *target)
     : BuildSystem(target)
     , m_cppCodeModelUpdater(std::make_unique<CppTools::CppProjectUpdater>())
-    , m_parseDelay(new QTimer(this))
     , m_deployFileWatcher(new FileSystemWatcher(this))
 {
     connect(target->project(), &CompilationDatabaseProject::rootProjectDirectoryChanged,
             this, [this] {
         m_projectFileHash.clear();
-        m_parseDelay->start();
+        requestDelayedParse();
     });
 
-    connect(m_parseDelay, &QTimer::timeout, this, &CompilationDatabaseBuildSystem::reparseProject);
-
-    m_parseDelay->setSingleShot(true);
-    m_parseDelay->setInterval(1000);
-    m_parseDelay->start();
+    requestDelayedParse();
 
     connect(project(), &Project::projectFileIsDirty, this, &CompilationDatabaseBuildSystem::reparseProject);
 
@@ -376,8 +369,8 @@ void CompilationDatabaseBuildSystem::triggerParsing()
 
 void CompilationDatabaseBuildSystem::buildTreeAndProjectParts()
 {
-    Kit *kit = target()->kit();
-    ProjectExplorer::KitInfo kitInfo(kit);
+    Kit *k = kit();
+    ProjectExplorer::KitInfo kitInfo(k);
     QTC_ASSERT(kitInfo.isValid(), return);
     // Reset toolchains to pick them based on the database entries.
     kitInfo.cToolChain = nullptr;
@@ -396,7 +389,7 @@ void CompilationDatabaseBuildSystem::buildTreeAndProjectParts()
         prevEntry = &entry;
 
         RawProjectPart rpp = makeRawProjectPart(projectFilePath(),
-                                                kit,
+                                                k,
                                                 kitInfo,
                                                 entry.workingDir,
                                                 entry.fileName,
@@ -439,12 +432,7 @@ CompilationDatabaseProject::CompilationDatabaseProject(const Utils::FilePath &pr
     setId(Constants::COMPILATIONDATABASEPROJECT_ID);
     setProjectLanguages(Core::Context(ProjectExplorer::Constants::CXX_LANGUAGE_ID));
     setDisplayName(projectDirectory().fileName());
-
     setBuildSystemCreator([](Target *t) { return new CompilationDatabaseBuildSystem(t); });
-
-    m_kit.reset(KitManager::defaultKit()->clone());
-    addTargetForKit(m_kit.get());
-
     setExtraProjectFiles(
         {projectFile.stringAppended(Constants::COMPILATIONDATABASEPROJECT_FILES_SUFFIX)});
 }
@@ -457,6 +445,12 @@ Utils::FilePath CompilationDatabaseProject::rootPathFromSettings() const
     return Utils::FilePath::fromString(
         namedSettings(ProjectExplorer::Constants::PROJECT_ROOT_PATH_KEY).toString());
 #endif
+}
+
+void CompilationDatabaseProject::configureAsExampleProject()
+{
+    if (KitManager::defaultKit())
+        addTargetForKit(KitManager::defaultKit());
 }
 
 void CompilationDatabaseBuildSystem::reparseProject()
@@ -510,7 +504,7 @@ static TextEditor::TextDocument *createCompilationDatabaseDocument()
 CompilationDatabaseEditorFactory::CompilationDatabaseEditorFactory()
 {
     setId(Constants::COMPILATIONDATABASEPROJECT_ID);
-    setDisplayName("Compilation Database");
+    setDisplayName(QCoreApplication::translate("OpenWith::Editors", "Compilation Database"));
     addMimeType(Constants::COMPILATIONDATABASEMIMETYPE);
 
     setEditorCreator([]() { return new TextEditor::BaseTextEditor; });

@@ -141,16 +141,14 @@ QString QMakeStep::allArguments(const BaseQtVersion *v, ArgumentFlags flags) con
 
 QMakeStepConfig QMakeStep::deducedArguments() const
 {
-    ProjectExplorer::Kit *kit = target()->kit();
+    Kit *kit = target()->kit();
     QMakeStepConfig config;
-    ProjectExplorer::ToolChain *tc
-            = ProjectExplorer::ToolChainKitAspect::toolChain(kit, ProjectExplorer::Constants::CXX_LANGUAGE_ID);
-    ProjectExplorer::Abi targetAbi;
-    if (tc) {
+    Abi targetAbi;
+    if (ToolChain *tc = ToolChainKitAspect::cxxToolChain(kit)) {
         targetAbi = tc->targetAbi();
         if (HostOsInfo::isWindowsHost()
             && tc->typeId() == ProjectExplorer::Constants::CLANG_TOOLCHAIN_TYPEID) {
-            config.sysRoot = ProjectExplorer::SysRootKitAspect::sysRoot(kit).toString();
+            config.sysRoot = SysRootKitAspect::sysRoot(kit).toString();
             config.targetTriple = tc->originalTargetTriple();
         }
     }
@@ -571,14 +569,8 @@ QMakeStepConfigWidget::QMakeStepConfigWidget(QMakeStep *step)
     connect(step->target(), &Target::kitChanged, this, &QMakeStepConfigWidget::qtVersionChanged);
     connect(abisListWidget, &QListWidget::itemChanged, this, [this]{
         abisChanged();
-        QmakeBuildConfiguration *bc = m_step->qmakeBuildConfiguration();
-        if (!bc)
-            return;
-
-        QList<ProjectExplorer::BuildStepList *> stepLists;
-        const Core::Id clean = ProjectExplorer::Constants::BUILDSTEPS_CLEAN;
-        stepLists << bc->cleanSteps();
-        BuildManager::buildLists(stepLists, {ProjectExplorerPlugin::displayNameForStepId(clean)});
+        if (QmakeBuildConfiguration *bc = m_step->qmakeBuildConfiguration())
+            BuildManager::buildLists({bc->cleanSteps()});
     });
     auto chooser = new Core::VariableChooser(qmakeAdditonalArgumentsLineEdit);
     chooser->addMacroExpanderProvider([step] { return step->macroExpander(); });
@@ -738,14 +730,9 @@ void QMakeStepConfigWidget::updateSummaryLabel()
         abisChanged();
     }
 
-    // We don't want the full path to the .pro file
-    const QString args = m_step->allArguments(
-                qtVersion,
-                QMakeStep::ArgumentFlag::OmitProjectPath
-                | QMakeStep::ArgumentFlag::Expand);
-    // And we only use the .pro filename not the full path
     const QString program = qtVersion->qmakeCommand().fileName();
-    setSummaryText(tr("<b>qmake:</b> %1 %2").arg(program, args));
+    setSummaryText(tr("<b>qmake:</b> %1 %2").arg(program,
+                                                 m_step->project()->projectFilePath().fileName()));
 }
 
 void QMakeStepConfigWidget::updateEffectiveQMakeCall()
@@ -756,15 +743,8 @@ void QMakeStepConfigWidget::updateEffectiveQMakeCall()
 void QMakeStepConfigWidget::recompileMessageBoxFinished(int button)
 {
     if (button == QMessageBox::Yes) {
-        BuildConfiguration *bc = m_step->buildConfiguration();
-        if (!bc)
-            return;
-
-        const Core::Id clean = ProjectExplorer::Constants::BUILDSTEPS_CLEAN;
-        const Core::Id build = ProjectExplorer::Constants::BUILDSTEPS_BUILD;
-        BuildManager::buildLists({bc->cleanSteps(), bc->buildSteps()},
-                                 QStringList() << ProjectExplorerPlugin::displayNameForStepId(clean)
-                       << ProjectExplorerPlugin::displayNameForStepId(build));
+        if (BuildConfiguration *bc = m_step->buildConfiguration())
+            BuildManager::buildLists({bc->cleanSteps(), bc->buildSteps()});
     }
 }
 

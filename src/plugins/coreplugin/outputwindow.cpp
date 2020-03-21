@@ -27,10 +27,10 @@
 
 #include "actionmanager/actionmanager.h"
 #include "coreconstants.h"
+#include "coreplugin.h"
 #include "icore.h"
 
 #include <utils/outputformatter.h>
-#include <utils/synchronousprocess.h>
 
 #include <QAction>
 #include <QCursor>
@@ -39,6 +39,10 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QTextBlock>
+
+#ifdef WITH_TESTS
+#include <QtTest>
+#endif
 
 using namespace Utils;
 
@@ -49,7 +53,7 @@ namespace Internal {
 class OutputWindowPrivate
 {
 public:
-    OutputWindowPrivate(QTextDocument *document)
+    explicit OutputWindowPrivate(QTextDocument *document)
         : cursor(document)
     {
     }
@@ -61,11 +65,9 @@ public:
     }
 
     IContext *outputWindowContext = nullptr;
-    QPointer<Utils::OutputFormatter> formatter;
     QString settingsKey;
+    AggregatingOutputFormatter formatter;
 
-    bool enforceNewline = false;
-    bool prependCarriageReturn = false;
     bool scrollToBottom = true;
     bool linksActive = true;
     bool zoomEnabled = false;
@@ -93,6 +95,7 @@ OutputWindow::OutputWindow(Context context, const QString &settingsKey, QWidget 
     setFrameShape(QFrame::NoFrame);
     setMouseTracking(true);
     setUndoRedoEnabled(false);
+    d->formatter.setPlainTextEdit(this);
 
     d->settingsKey = settingsKey;
 
@@ -159,7 +162,7 @@ OutputWindow::~OutputWindow()
     delete d;
 }
 
-void OutputWindow::mousePressEvent(QMouseEvent * e)
+void OutputWindow::mousePressEvent(QMouseEvent *e)
 {
     d->mouseButtonPressed = e->button();
     QPlainTextEdit::mousePressEvent(e);
@@ -169,8 +172,7 @@ void OutputWindow::mouseReleaseEvent(QMouseEvent *e)
 {
     if (d->linksActive && d->mouseButtonPressed == Qt::LeftButton) {
         const QString href = anchorAt(e->pos());
-        if (d->formatter)
-            d->formatter->handleLink(href);
+        d->formatter.handleLink(href);
     }
 
     // Mouse was released, activate links again
@@ -214,16 +216,9 @@ void OutputWindow::keyPressEvent(QKeyEvent *ev)
         verticalScrollBar()->triggerAction(QAbstractSlider::SliderToMaximum);
 }
 
-OutputFormatter *OutputWindow::formatter() const
+void OutputWindow::setFormatters(const QList<OutputFormatter *> &formatters)
 {
-    return d->formatter;
-}
-
-void OutputWindow::setFormatter(OutputFormatter *formatter)
-{
-    d->formatter = formatter;
-    if (d->formatter)
-        d->formatter->setPlainTextEdit(this);
+    d->formatter.setFormatters(formatters);
 }
 
 void OutputWindow::showEvent(QShowEvent *e)
@@ -364,23 +359,6 @@ void OutputWindow::filterNewContent()
         scrollToBottom();
 }
 
-QString OutputWindow::doNewlineEnforcement(const QString &out)
-{
-    d->scrollToBottom = true;
-    QString s = out;
-    if (d->enforceNewline) {
-        s.prepend(QLatin1Char('\n'));
-        d->enforceNewline = false;
-    }
-
-    if (s.endsWith(QLatin1Char('\n'))) {
-        d->enforceNewline = true; // make appendOutputInline put in a newline next time
-        s.chop(1);
-    }
-
-    return s;
-}
-
 void OutputWindow::setMaxCharCount(int count)
 {
     d->maxCharCount = count;
@@ -395,16 +373,6 @@ int OutputWindow::maxCharCount() const
 void OutputWindow::appendMessage(const QString &output, OutputFormat format)
 {
     QString out = output;
-    if (d->prependCarriageReturn) {
-        d->prependCarriageReturn = false;
-        out.prepend('\r');
-    }
-    out = SynchronousProcess::normalizeNewlines(out);
-    if (out.endsWith('\r')) {
-        d->prependCarriageReturn = true;
-        out.chop(1);
-    }
-
     if (out.size() > d->maxCharCount) {
         // Current line alone exceeds limit, we need to cut it.
         out.truncate(d->maxCharCount);
@@ -427,49 +395,8 @@ void OutputWindow::appendMessage(const QString &output, OutputFormat format)
     }
 
     const bool atBottom = isScrollbarAtBottom() || m_scrollTimer.isActive();
-
-    if (format == ErrorMessageFormat || format == NormalMessageFormat) {
-        if (d->formatter)
-            d->formatter->appendMessage(doNewlineEnforcement(out), format);
-    } else {
-
-        bool sameLine = format == StdOutFormatSameLine
-                     || format == StdErrFormatSameLine;
-
-        if (sameLine) {
-            d->scrollToBottom = true;
-
-            int newline = -1;
-            bool enforceNewline = d->enforceNewline;
-            d->enforceNewline = false;
-
-            if (enforceNewline) {
-                out.prepend('\n');
-            } else {
-                newline = out.indexOf(QLatin1Char('\n'));
-                moveCursor(QTextCursor::End);
-                if (newline != -1) {
-                    if (d->formatter)
-                        d->formatter->appendMessage(out.left(newline), format);// doesn't enforce new paragraph like appendPlainText
-                    out = out.mid(newline);
-                }
-            }
-
-            if (out.isEmpty()) {
-                d->enforceNewline = true;
-            } else {
-                if (out.endsWith(QLatin1Char('\n'))) {
-                    d->enforceNewline = true;
-                    out.chop(1);
-                }
-                if (d->formatter)
-                    d->formatter->appendMessage(out, format);
-            }
-        } else {
-            if (d->formatter)
-                d->formatter->appendMessage(doNewlineEnforcement(out), format);
-        }
-    }
+    d->scrollToBottom = true;
+    d->formatter.appendMessage(out, format);
 
     if (atBottom) {
         if (m_lastMessage.elapsed() < 5) {
@@ -482,31 +409,6 @@ void OutputWindow::appendMessage(const QString &output, OutputFormat format)
 
     m_lastMessage.start();
     enableUndoRedo();
-}
-
-// TODO rename
-void OutputWindow::appendText(const QString &textIn, const QTextCharFormat &format)
-{
-    const QString text = SynchronousProcess::normalizeNewlines(textIn);
-    if (d->maxCharCount > 0 && document()->characterCount() >= d->maxCharCount)
-        return;
-    const bool atBottom = isScrollbarAtBottom();
-    if (!d->cursor.atEnd())
-        d->cursor.movePosition(QTextCursor::End);
-    d->cursor.beginEditBlock();
-    d->cursor.insertText(doNewlineEnforcement(text), format);
-
-    if (d->maxCharCount > 0 && document()->characterCount() >= d->maxCharCount) {
-        QTextCharFormat tmp;
-        tmp.setFontWeight(QFont::Bold);
-        d->cursor.insertText(doNewlineEnforcement(tr("Additional output omitted. You can increase "
-                                                     "the limit in the \"Build & Run\" settings.")
-                                                  + QLatin1Char('\n')), tmp);
-    }
-
-    d->cursor.endEditBlock();
-    if (atBottom)
-        scrollToBottom();
 }
 
 bool OutputWindow::isScrollbarAtBottom() const
@@ -543,11 +445,12 @@ QMimeData *OutputWindow::createMimeDataFromSelection() const
 
 void OutputWindow::clear()
 {
-    d->enforceNewline = false;
-    d->prependCarriageReturn = false;
-    QPlainTextEdit::clear();
-    if (d->formatter)
-        d->formatter->clear();
+    d->formatter.clear();
+}
+
+void OutputWindow::flush()
+{
+    d->formatter.flush();
 }
 
 void OutputWindow::scrollToBottom()
@@ -596,4 +499,89 @@ void OutputWindow::setWordWrapEnabled(bool wrap)
         setWordWrapMode(QTextOption::NoWrap);
 }
 
+#ifdef WITH_TESTS
+
+// Handles all lines starting with "A" and the following ones up to and including the next
+// one starting with "A".
+class TestFormatterA : public OutputFormatter
+{
+private:
+    Status handleMessage(const QString &text, OutputFormat format) override
+    {
+        if (m_handling) {
+            appendMessageDefault("handled by A\n", format);
+            if (text.startsWith("A")) {
+                m_handling = false;
+                return Status::Done;
+            }
+            return Status::InProgress;
+        }
+        if (text.startsWith("A")) {
+            m_handling = true;
+            appendMessageDefault("handled by A\n", format);
+            return Status::InProgress;
+        }
+        return Status::NotHandled;
+    }
+
+    void reset() override { m_handling = false; }
+
+    bool m_handling = false;
+};
+
+// Handles all lines starting with "B". No continuation logic
+class TestFormatterB : public OutputFormatter
+{
+private:
+    Status handleMessage(const QString &text, OutputFormat format) override
+    {
+        if (text.startsWith("B")) {
+            appendMessageDefault("handled by B\n", format);
+            return Status::Done;
+        }
+        return Status::NotHandled;
+    }
+};
+
+void Internal::CorePlugin::testOutputFormatter()
+{
+    const QString input =
+            "B to be handled by B\r\n"
+            "not to be handled\n"
+            "A to be handled by A\n"
+            "continuation for A\r\n"
+            "B looks like B, but still continuation for A\r\n"
+            "A end of A\n"
+            "A next A\n"
+            "A end of next A\n"
+            " A trick\r\n"
+            "B to be handled by B\n";
+    const QString output =
+            "handled by B\n"
+            "not to be handled\n"
+            "handled by A\n"
+            "handled by A\n"
+            "handled by A\n"
+            "handled by A\n"
+            "handled by A\n"
+            "handled by A\n"
+            " A trick\n"
+            "handled by B\n";
+    TestFormatterA formatterA;
+    TestFormatterB formatterB;
+    AggregatingOutputFormatter formatter;
+    QPlainTextEdit textEdit;
+    formatter.setPlainTextEdit(&textEdit);
+    formatter.setFormatters({&formatterB, &formatterA});
+
+    // Stress-test the implementation by providing the input in chunks, splitting at all possible
+    // offsets.
+    for (int i = 0; i < input.length(); ++i) {
+        formatter.appendMessage(input.left(i), NormalMessageFormat);
+        formatter.appendMessage(input.mid(i), NormalMessageFormat);
+        QCOMPARE(textEdit.toPlainText(), output);
+        formatter.clear();
+    }
+}
+#endif // WITH_TESTS
 } // namespace Core

@@ -107,6 +107,8 @@ uint qHash(FileOrigin fo) { return ::qHash(int(fo)); }
 
 namespace Internal {
 
+Q_LOGGING_CATEGORY(qmakeNodesLog, "qtc.qmake.nodes", QtWarningMsg)
+
 class QmakeEvalInput
 {
 public:
@@ -182,8 +184,6 @@ void QmakePriFile::finishInitialization(QmakeBuildSystem *buildSystem, QmakeProF
     QTC_ASSERT(buildSystem, return);
     m_buildSystem = buildSystem;
     m_qmakeProFile = qmakeProFile;
-    m_priFileDocument = std::make_unique<QmakePriFileDocument>(this, filePath());
-    Core::DocumentManager::addDocument(m_priFileDocument.get());
 }
 
 FilePath QmakePriFile::filePath() const
@@ -413,8 +413,11 @@ void QmakePriFile::watchFolders(const QSet<FilePath> &folders)
     QSet<QString> toWatch = folderStrings;
     toWatch.subtract(m_watchedFolders);
 
-    m_buildSystem->unwatchFolders(Utils::toList(toUnwatch), this);
-    m_buildSystem->watchFolders(Utils::toList(toWatch), this);
+    if (m_buildSystem) {
+        // Check needed on early exit of QmakeProFile::applyEvaluate?
+        m_buildSystem->unwatchFolders(Utils::toList(toUnwatch), this);
+        m_buildSystem->watchFolders(Utils::toList(toWatch), this);
+    }
 
     m_watchedFolders = folderStrings;
 }
@@ -900,6 +903,8 @@ void QmakePriFile::changeFiles(const QString &mimeType,
     if (!includeFile)
         return;
 
+    qCDebug(qmakeNodesLog) << Q_FUNC_INFO << "mime type:" << mimeType << "file paths:"
+                           << filePaths << "change type:" << int(change) << "mode:" << int(mode);
     if (change == AddToProFile) {
         // Use the first variable for adding.
         ProWriter::addFiles(includeFile, &lines, filePaths, varNameForAdding(mimeType),
@@ -1202,12 +1207,13 @@ QmakeProFile::QmakeProFile(const FilePath &filePath) : QmakePriFile(filePath) { 
 QmakeProFile::~QmakeProFile()
 {
     qDeleteAll(m_extraCompilers);
-    m_parseFutureWatcher->cancel();
-    m_parseFutureWatcher->waitForFinished();
-    delete m_parseFutureWatcher;
-    if (m_readerExact)
-        applyAsyncEvaluate();
-
+    if (m_parseFutureWatcher) {
+        m_parseFutureWatcher->cancel();
+        m_parseFutureWatcher->waitForFinished();
+        if (m_readerExact)
+            applyAsyncEvaluate();
+        delete m_parseFutureWatcher;
+    }
     cleanupProFileReaders();
 }
 

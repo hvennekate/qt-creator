@@ -103,6 +103,11 @@ void QbsSettings::setSettingsData(const QbsSettingsData &settings)
     }
 }
 
+QbsSettingsData QbsSettings::rawSettingsData()
+{
+    return instance().m_settings;
+}
+
 QbsSettings::QbsSettings()
 {
     loadSettings();
@@ -112,8 +117,9 @@ void QbsSettings::loadSettings()
 {
     QSettings * const s = Core::ICore::settings();
     m_settings.qbsExecutableFilePath = FilePath::fromString(s->value(QBS_EXE_KEY).toString());
-    m_settings.defaultInstallDirTemplate = s->value(QBS_DEFAULT_INSTALL_DIR_KEY,
-                                                    "%{CurrentBuild:QbsBuildRoot}").toString();
+    m_settings.defaultInstallDirTemplate = s->value(
+                QBS_DEFAULT_INSTALL_DIR_KEY,
+                "%{CurrentBuild:QbsBuildRoot}/install-root").toString();
     m_settings.useCreatorSettings = s->value(USE_CREATOR_SETTINGS_KEY, true).toBool();
 }
 
@@ -148,8 +154,8 @@ public:
 
     void apply()
     {
-        QbsSettingsData settings;
-        if (m_qbsExePathChooser.isValid())
+        QbsSettingsData settings = QbsSettings::rawSettingsData();
+        if (m_qbsExePathChooser.fileName() != QbsSettings::qbsExecutableFilePath())
             settings.qbsExecutableFilePath = m_qbsExePathChooser.fileName();
         settings.defaultInstallDirTemplate = m_defaultInstallDirLineEdit.text();
         settings.useCreatorSettings = m_settingsDirCheckBox.isChecked();

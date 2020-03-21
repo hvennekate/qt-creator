@@ -24,14 +24,14 @@
 ****************************************************************************/
 
 import QtQuick 2.12
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 
 Item {
     id: cameraCtrl
 
     property Camera camera: null
     property View3D view3d: null
-
+    property string sceneId
     property vector3d _lookAtPoint
     property vector3d _pressPoint
     property vector3d _prevPoint
@@ -42,10 +42,13 @@ Item {
     property bool _dragging
     property int _button
     property real _zoomFactor: 1
-    property real _defaultCameraLookAtDistance: 0
     property Camera _prevCamera: null
+    readonly property vector3d _defaultCameraPosition: Qt.vector3d(0, 600, 600)
+    readonly property vector3d _defaultCameraRotation: Qt.vector3d(-45, 0, 0)
+    readonly property real _defaultCameraLookAtDistance: _defaultCameraPosition.length()
 
-    function restoreCameraState(cameraState) {
+    function restoreCameraState(cameraState)
+    {
         if (!camera)
             return;
 
@@ -57,7 +60,21 @@ Item {
                                   _zoomFactor, false);
     }
 
-    function storeCameraState(delay) {
+    function restoreDefaultState()
+    {
+        if (!camera)
+            return;
+
+        _lookAtPoint = Qt.vector3d(0, 0, 0);
+        _zoomFactor = 1;
+        camera.position = _defaultCameraPosition;
+        camera.eulerRotation = _defaultCameraRotation;
+        _generalHelper.zoomCamera(camera, 0, _defaultCameraLookAtDistance, _lookAtPoint,
+                                  _zoomFactor, false);
+    }
+
+    function storeCameraState(delay)
+    {
         if (!camera)
             return;
 
@@ -66,7 +83,7 @@ Item {
         cameraState[1] = _zoomFactor;
         cameraState[2] = camera.position;
         cameraState[3] = camera.rotation;
-        _generalHelper.storeToolState("editCamState", cameraState, delay);
+        _generalHelper.storeToolState(sceneId, "editCamState", cameraState, delay);
     }
 
 
@@ -75,7 +92,7 @@ Item {
         if (!camera)
             return;
 
-        camera.rotation = rotation;
+        camera.eulerRotation = rotation;
         var newLookAtAndZoom = _generalHelper.focusObjectToCamera(
                     camera, _defaultCameraLookAtDistance, targetObject, view3d, _zoomFactor, updateZoom);
         _lookAtPoint = newLookAtAndZoom.toVector3d();
@@ -90,10 +107,6 @@ Item {
 
         _zoomFactor = _generalHelper.zoomCamera(camera, distance, _defaultCameraLookAtDistance,
                                                 _lookAtPoint, _zoomFactor, true);
-    }
-
-    Component.onCompleted: {
-        cameraCtrl._defaultCameraLookAtDistance = Qt.vector3d(0, 600, -600).length();
     }
 
     onCameraChanged: {
@@ -138,7 +151,7 @@ Item {
         onPressed: {
             if (cameraCtrl.camera && mouse.modifiers === Qt.AltModifier) {
                 cameraCtrl._dragging = true;
-                cameraCtrl._startRotation = cameraCtrl.camera.rotation;
+                cameraCtrl._startRotation = cameraCtrl.camera.eulerRotation;
                 cameraCtrl._startPosition = cameraCtrl.camera.position;
                 cameraCtrl._startLookAtPoint = _lookAtPoint;
                 cameraCtrl._pressPoint = Qt.vector3d(mouse.x, mouse.y, 0);
@@ -160,7 +173,7 @@ Item {
 
         onWheel: {
             if (cameraCtrl.camera) {
-                // Emprically determined divisor for nice zoom
+                // Empirically determined divisor for nice zoom
                 cameraCtrl.zoomRelative(wheel.angleDelta.y / -40);
                 cameraCtrl.storeCameraState(500);
             }

@@ -173,8 +173,6 @@ private:
     CppTools::CppProjectUpdaterInterface *m_cppCodeModelUpdater = nullptr;
 
     Utils::FileSystemWatcher m_deployFileWatcher;
-
-    ParseGuard m_guard;
 };
 
 
@@ -263,7 +261,6 @@ GenericBuildSystem::~GenericBuildSystem()
 
 void GenericBuildSystem::triggerParsing()
 {
-    m_guard = guardParsingRun();
     refresh(Everything);
 }
 
@@ -576,11 +573,10 @@ void GenericBuildSystem::updateDeploymentData()
 {
     static const QString fileName("QtCreatorDeployment.txt");
     Utils::FilePath deploymentFilePath;
-    Target *target = project()->activeTarget();
-    if (target && target->activeBuildConfiguration()) {
-        deploymentFilePath = target->activeBuildConfiguration()->buildDirectory()
-                .pathAppended(fileName);
-    }
+    BuildConfiguration *bc = target()->activeBuildConfiguration();
+    if (bc)
+        deploymentFilePath = bc->buildDirectory().pathAppended(fileName);
+
     bool hasDeploymentData = QFileInfo::exists(deploymentFilePath.toString());
     if (!hasDeploymentData) {
         deploymentFilePath = projectDirectory().pathAppended(fileName);
@@ -602,7 +598,8 @@ void GenericBuildSystem::updateDeploymentData()
 void GenericBuildSystem::removeFiles(const QStringList &filesToRemove)
 {
     if (removeFiles(nullptr, filesToRemove, nullptr) == RemovedFilesFromProject::Error) {
-        TaskHub::addTask(BuildSystemTask(Task::Error, tr("Project files list update failed."),
+        TaskHub::addTask(BuildSystemTask(Task::Error,
+                                         GenericProject::tr("Project files list update failed."),
                                          filesFilePath()));
     }
 }

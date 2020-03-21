@@ -25,7 +25,6 @@
 ****************************************************************************/
 
 #include "baremetalconstants.h"
-#include "baremetalcustomrunconfiguration.h"
 #include "baremetaldebugsupport.h"
 #include "baremetaldevice.h"
 #include "baremetalplugin.h"
@@ -71,7 +70,7 @@ class BareMetalPluginPrivate
 {
 public:
     IarToolChainFactory iarToolChainFactory;
-    KeilToolchainFactory keilToolChainFactory;
+    KeilToolChainFactory keilToolChainFactory;
     SdccToolChainFactory sdccToolChainFactory;
     BareMetalDeviceFactory deviceFactory;
     BareMetalRunConfigurationFactory runConfigurationFactory;

@@ -31,6 +31,8 @@
 #include "texteditorconstants.h"
 #include "texteditorplugin.h"
 
+#include <aggregation/aggregate.h>
+
 #include <coreplugin/locator/locatormanager.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/editormanager/editormanager.h>
@@ -52,11 +54,9 @@ namespace Internal {
 class TextEditorActionHandlerPrivate : public QObject
 {
     Q_DECLARE_TR_FUNCTIONS(TextEditor::Internal::TextEditorActionHandler)
+
 public:
-    TextEditorActionHandlerPrivate(TextEditorActionHandler *parent,
-                                   Core::Id editorId,
-                                   Core::Id contextId,
-                                   uint optionalActions);
+    TextEditorActionHandlerPrivate(Core::Id editorId, Core::Id contextId, uint optionalActions);
 
     QAction *registerActionHelper(Core::Id id, bool scriptable, const QString &title,
                             const QKeySequence &keySequence, Core::Id menueGroup,
@@ -121,7 +121,6 @@ public:
     void updateCurrentEditor(Core::IEditor *editor);
 
 public:
-    TextEditorActionHandler *q = nullptr;
     TextEditorActionHandler::TextEditorWidgetResolver m_findTextWidget;
     QAction *m_undoAction = nullptr;
     QAction *m_redoAction = nullptr;
@@ -193,16 +192,9 @@ public:
     Core::Id m_contextId;
 };
 
-static TextEditorWidget *castWidgetToTextEditorWidget(Core::IEditor *editor)
-{
-    return qobject_cast<TextEditorWidget *>(editor->widget());
-}
-
 TextEditorActionHandlerPrivate::TextEditorActionHandlerPrivate
-    (TextEditorActionHandler *parent, Core::Id editorId, Core::Id contextId, uint optionalActions)
-  : q(parent)
-  , m_findTextWidget(castWidgetToTextEditorWidget)
-  , m_optionalActions(optionalActions)
+    (Core::Id editorId, Core::Id contextId, uint optionalActions)
+  : m_optionalActions(optionalActions)
   , m_editorId(editorId)
   , m_contextId(contextId)
 {
@@ -232,7 +224,7 @@ void TextEditorActionHandlerPrivate::createActions()
             QString locatorString = TextEditorPlugin::lineNumberFilter()->shortcutString();
             locatorString += QLatin1Char(' ');
             const int selectionStart = locatorString.size();
-            locatorString += TextEditorActionHandler::tr("<line>:<column>");
+            locatorString += tr("<line>:<column>");
             Core::LocatorManager::show(locatorString, selectionStart, locatorString.size() - selectionStart);
         });
     m_printAction = registerAction(PRINT,
@@ -593,21 +585,21 @@ void TextEditorActionHandlerPrivate::updateCurrentEditor(Core::IEditor *editor)
 
 } // namespace Internal
 
-TextEditorActionHandler::TextEditorActionHandler(QObject *parent, Core::Id editorId,
-                                                 Core::Id contextId, uint optionalActions)
-    : QObject(parent), d(new Internal::TextEditorActionHandlerPrivate(this, editorId, contextId,
-                                                                      optionalActions))
+TextEditorActionHandler::TextEditorActionHandler(Core::Id editorId,
+                                                 Core::Id contextId,
+                                                 uint optionalActions,
+                                                 const TextEditorWidgetResolver &resolver)
+    : d(new Internal::TextEditorActionHandlerPrivate(editorId, contextId, optionalActions))
 {
+    if (resolver)
+        d->m_findTextWidget = resolver;
+    else
+        d->m_findTextWidget = TextEditorWidget::fromEditor;
 }
 
 TextEditorActionHandler::~TextEditorActionHandler()
 {
     delete d;
-}
-
-void TextEditorActionHandler::setTextEditorWidgetResolver(const TextEditorWidgetResolver &resolver)
-{
-    d->m_findTextWidget = resolver;
 }
 
 } // namespace TextEditor

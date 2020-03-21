@@ -58,7 +58,6 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     ui(new Ui::ConnectionViewWidget)
 {
     m_actionEditor = new QmlDesigner::ActionEditor(this);
-    m_deleteShortcut = new QShortcut(this);
     QObject::connect(m_actionEditor, &QmlDesigner::ActionEditor::accepted,
                      [&]() {
         if (m_actionEditor->hasModelIndex()) {
@@ -85,9 +84,7 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     ui->setupUi(this);
 
     QStyle *style = QStyleFactory::create("fusion");
-    setStyle(style);
-
-    setStyleSheet(Theme::replaceCssColors(QLatin1String(Utils::FileReader::fetchQrc(QLatin1String(":/connectionview/stylesheet.css")))));
+    ui->stackedWidget->setStyle(style);
 
     //ui->tabWidget->tabBar()->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
@@ -98,6 +95,11 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
     ui->tabBar->addTab(tr("Bindings", "Title of connection view"));
     ui->tabBar->addTab(tr("Properties", "Title of dynamic properties view"));
 
+    const QList<QToolButton*> buttons = createToolBarWidgets();
+
+    for (auto toolButton : buttons)
+        ui->toolBar->addWidget(toolButton);
+
     auto settings = QmlDesignerPlugin::instance()->settings();
 
     if (!settings.value(DesignerSettingsKey::STANDALONE_MODE).toBool())
@@ -105,13 +107,9 @@ ConnectionViewWidget::ConnectionViewWidget(QWidget *parent) :
 
     ui->tabBar->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
 
-    const QString themedScrollBarCss = Theme::replaceCssColors(
-                QLatin1String(Utils::FileReader::fetchQrc(QLatin1String(":/qmldesigner/scrollbar.css"))));
-
-    ui->connectionView->setStyleSheet(themedScrollBarCss);
-    ui->bindingView->setStyleSheet(themedScrollBarCss);
-    ui->dynamicPropertiesView->setStyleSheet(themedScrollBarCss);
-    ui->backendView->setStyleSheet(themedScrollBarCss);
+    QByteArray sheet = Utils::FileReader::fetchQrc(":/connectionview/stylesheet.css");
+    sheet += Utils::FileReader::fetchQrc(":/qmldesigner/scrollbar.css");
+    setStyleSheet(Theme::replaceCssColors(QString::fromUtf8(sheet)));
 
     connect(ui->tabBar, &QTabBar::currentChanged,
             ui->stackedWidget, &QStackedWidget::setCurrentIndex);
@@ -126,7 +124,6 @@ ConnectionViewWidget::~ConnectionViewWidget()
 {
     delete m_actionEditor;
     delete ui;
-    delete m_deleteShortcut;
 }
 
 void ConnectionViewWidget::setBindingModel(BindingModel *model)
@@ -216,9 +213,11 @@ QList<QToolButton *> ConnectionViewWidget::createToolBarWidgets()
     connect(buttons.constLast(), &QAbstractButton::clicked, this, &ConnectionViewWidget::removeButtonClicked);
     connect(this, &ConnectionViewWidget::setEnabledRemoveButton, buttons.constLast(), &QWidget::setEnabled);
 
-    m_deleteShortcut->setKey(Qt::Key_Delete);
-    m_deleteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(m_deleteShortcut, &QShortcut::activated, this, &ConnectionViewWidget::removeButtonClicked);
+    QAction *deleteShortcut = new QAction(this);
+    this->addAction(deleteShortcut);
+    deleteShortcut->setShortcuts({QKeySequence::Delete, QKeySequence::Backspace});
+    deleteShortcut->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    connect(deleteShortcut, &QAction::triggered, this, &ConnectionViewWidget::removeButtonClicked);
 
     return buttons;
 }

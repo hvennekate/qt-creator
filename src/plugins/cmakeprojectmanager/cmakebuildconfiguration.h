@@ -42,7 +42,7 @@ class BuildDirManager;
 class CMakeBuildSystem;
 class CMakeBuildSettingsWidget;
 
-class CMakeBuildConfiguration : public ProjectExplorer::BuildConfiguration
+class CMakeBuildConfiguration final : public ProjectExplorer::BuildConfiguration
 {
     Q_OBJECT
 
@@ -51,8 +51,6 @@ class CMakeBuildConfiguration : public ProjectExplorer::BuildConfiguration
     ~CMakeBuildConfiguration() final;
 
 public:
-    void emitBuildTypeChanged();
-
     CMakeConfig configurationForCMake() const;
     CMakeConfig configurationFromCMake() const;
 
@@ -68,16 +66,14 @@ public:
     ProjectExplorer::BuildSystem *buildSystem() const final;
 
 signals:
-    void errorOccured(const QString &message);
-    void warningOccured(const QString &message);
+    void errorOccurred(const QString &message);
+    void warningOccurred(const QString &message);
 
     void configurationForCMakeChanged();
 
 private:
     QVariantMap toMap() const override;
     BuildType buildType() const override;
-
-    QString disabledReason() const override;
 
     ProjectExplorer::NamedWidget *createConfigWidget() override;
 

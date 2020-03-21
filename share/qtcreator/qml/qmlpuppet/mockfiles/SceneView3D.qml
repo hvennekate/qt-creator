@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.12
-import QtQuick3D 1.14
+import QtQuick3D 1.15
 
 View3D {
     id: sceneView
@@ -33,18 +33,31 @@ View3D {
     property bool usePerspective: false
     property bool showSceneLight: false
     property alias sceneHelpers: sceneHelpers
-    property alias perpectiveCamera: scenePerspectiveCamera
+    property alias perspectiveCamera: scenePerspectiveCamera
     property alias orthoCamera: sceneOrthoCamera
+    property double cameraZoomFactor: .55;
+
+    // Empirical cameraZoomFactor values at which the grid zoom level is doubled. The values are
+    // approximately uniformally distributed over the non-linear range of cameraZoomFactor.
+    readonly property var grid_thresholds: [0.55, 1.10, 2.35, 4.9, 10.0, 20.5, 42.0, 85.0, 999999.0]
+    property var thresIdx: 1
+    property var thresPerc: 1.0 // percentage of cameraZoomFactor to the current grid zoom threshold (0.0 - 1.0)
 
     camera: usePerspective ? scenePerspectiveCamera : sceneOrthoCamera
+
+    onCameraZoomFactorChanged: {
+        thresIdx = Math.max(1, grid_thresholds.findIndex(v => v > cameraZoomFactor));
+        thresPerc = (grid_thresholds[thresIdx] - cameraZoomFactor) / (grid_thresholds[thresIdx] - grid_thresholds[thresIdx - 1]);
+    }
 
     Node {
         id: sceneHelpers
 
         HelperGrid {
             id: helperGrid
-            lines: 50
-            step: 50
+            lines: Math.pow(2, grid_thresholds.length - thresIdx - 1);
+            step: 100 * grid_thresholds[0] * Math.pow(2, thresIdx - 1);
+            subdivAlpha: thresPerc;
         }
 
         PointLight {
@@ -61,18 +74,18 @@ View3D {
         // point.
         PerspectiveCamera {
             id: scenePerspectiveCamera
-            z: -600
+            z: 600
             y: 600
-            rotation.x: 45
+            eulerRotation.x: -45
             clipFar: 100000
             clipNear: 1
         }
 
         OrthographicCamera {
             id: sceneOrthoCamera
-            z: -600
+            z: 600
             y: 600
-            rotation.x: 45
+            eulerRotation.x: -45
             clipFar: 100000
             clipNear: -10000
         }

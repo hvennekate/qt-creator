@@ -167,27 +167,26 @@ RunConfiguration::RunConfiguration(Target *target, Core::Id id)
     QTC_CHECK(target && target == this->target());
     connect(target, &Target::parsingFinished, this, &RunConfiguration::update);
 
-    Utils::MacroExpander *expander = macroExpander();
-    expander->setDisplayName(tr("Run Settings"));
-    expander->setAccumulating(true);
-    expander->registerSubProvider([target] {
+    m_expander.setDisplayName(tr("Run Settings"));
+    m_expander.setAccumulating(true);
+    m_expander.registerSubProvider([target] {
         BuildConfiguration *bc = target->activeBuildConfiguration();
         return bc ? bc->macroExpander() : target->macroExpander();
     });
-    expander->registerPrefix("CurrentRun:Env", tr("Variables in the current run environment"),
+    m_expander.registerPrefix("CurrentRun:Env", tr("Variables in the current run environment"),
                              [this](const QString &var) {
         const auto envAspect = aspect<EnvironmentAspect>();
         return envAspect ? envAspect->environment().expandedValueForKey(var) : QString();
     });
 
-    expander->registerVariable(Constants::VAR_CURRENTRUN_WORKINGDIR,
+    m_expander.registerVariable(Constants::VAR_CURRENTRUN_WORKINGDIR,
                                tr("The currently active run configuration's working directory"),
-                               [this, expander] {
+                               [this] {
         const auto wdAspect = aspect<WorkingDirectoryAspect>();
-        return wdAspect ? wdAspect->workingDirectory(expander).toString() : QString();
+        return wdAspect ? wdAspect->workingDirectory(&m_expander).toString() : QString();
     });
 
-    expander->registerVariable(Constants::VAR_CURRENTRUN_NAME,
+    m_expander.registerVariable(Constants::VAR_CURRENTRUN_NAME,
             QCoreApplication::translate("ProjectExplorer", "The currently active run configuration's name."),
             [this] { return displayName(); }, false);
 
@@ -203,11 +202,6 @@ RunConfiguration::RunConfiguration(Target *target, Core::Id id)
 }
 
 RunConfiguration::~RunConfiguration() = default;
-
-bool RunConfiguration::isActive() const
-{
-    return target()->isActive() && target()->activeRunConfiguration() == this;
-}
 
 QString RunConfiguration::disabledReason() const
 {
@@ -232,7 +226,7 @@ QWidget *RunConfiguration::createConfigurationWidget()
         }
     }
 
-    Core::VariableChooser::addSupportForChildWidgets(widget, macroExpander());
+    Core::VariableChooser::addSupportForChildWidgets(widget, &m_expander);
 
     auto detailsWidget = new Utils::DetailsWidget;
     detailsWidget->setState(DetailsWidget::NoSummary);
@@ -251,11 +245,6 @@ QMap<Core::Id, QVariantMap> RunConfiguration::aspectData() const
     for (ProjectConfigurationAspect *aspect : m_aspects)
         aspect->toMap(data[aspect->id()]);
     return data;
-}
-
-BuildConfiguration *RunConfiguration::activeBuildConfiguration() const
-{
-    return target()->activeBuildConfiguration();
 }
 
 BuildSystem *RunConfiguration::activeBuildSystem() const
@@ -305,8 +294,10 @@ void RunConfiguration::update()
 
     emit enabledChanged();
 
-    if (isActive() && project() == SessionManager::startupProject())
-        emit ProjectExplorerPlugin::instance()->updateRunActions();
+    const bool isActive = target()->isActive() && target()->activeRunConfiguration() == this;
+
+    if (isActive && project() == SessionManager::startupProject())
+        ProjectExplorerPlugin::updateRunActions();
 }
 
 BuildTargetInfo RunConfiguration::buildTargetInfo() const
@@ -561,8 +552,10 @@ RunConfiguration *RunConfigurationFactory::restore(Target *parent, const QVarian
             const Core::Id id = idFromMap(map);
             if (id.name().startsWith(factory->m_runConfigBaseId.name())) {
                 RunConfiguration *rc = factory->create(parent);
-                if (rc->fromMap(map))
+                if (rc->fromMap(map)) {
+                    rc->update();
                     return rc;
+                }
                 delete rc;
                 return nullptr;
             }

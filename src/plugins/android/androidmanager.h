@@ -78,7 +78,6 @@ public:
                         QString *packageName = nullptr,
                         int *version = nullptr,
                         QString *activityPath = nullptr);
-    static QString intentName(ProjectExplorer::Target *target);
     static QString activityName(ProjectExplorer::Target *target);
 
     static QString deviceSerialNumber(ProjectExplorer::Target *target);
@@ -96,6 +95,7 @@ public:
     static int minimumSDK(const ProjectExplorer::Kit *kit);
 
     static QStringList applicationAbis(const ProjectExplorer::Target *target);
+    static QString archTriplet(const QString &abi);
 
     static Utils::FilePath dirPath(const ProjectExplorer::Target *target);
     static Utils::FilePath manifestPath(ProjectExplorer::Target *target);
@@ -126,6 +126,7 @@ public:
     static SdkToolResult runAaptCommand(const QStringList &args, int timeoutS = 30);
 
     static QJsonObject deploymentSettings(const ProjectExplorer::Target *target);
+    static bool isQtCreatorGenerated(const Utils::FilePath &deploymentFile);
 
 private:
     static SdkToolResult runCommand(const Utils::CommandLine &command,

@@ -32,6 +32,8 @@
 
 QT_FORWARD_DECLARE_CLASS(QIcon)
 
+namespace Utils { class MacroExpander; }
+
 namespace ProjectExplorer {
 class BuildConfiguration;
 class BuildTargetInfo;
@@ -67,22 +69,25 @@ public:
     QString displayName() const;
     QString toolTip() const;
 
+    static QString displayNameKey();
+    static QString deviceTypeKey();
+
     // Build configuration
     void addBuildConfiguration(BuildConfiguration *bc);
     bool removeBuildConfiguration(BuildConfiguration *bc);
 
-    QList<BuildConfiguration *> buildConfigurations() const;
+    const QList<BuildConfiguration *> buildConfigurations() const;
     BuildConfiguration *activeBuildConfiguration() const;
 
     // DeployConfiguration
     void addDeployConfiguration(DeployConfiguration *dc);
     bool removeDeployConfiguration(DeployConfiguration *dc);
 
-    QList<DeployConfiguration *> deployConfigurations() const;
+    const QList<DeployConfiguration *> deployConfigurations() const;
     DeployConfiguration *activeDeployConfiguration() const;
 
     // Running
-    QList<RunConfiguration *> runConfigurations() const;
+    const QList<RunConfiguration *> runConfigurations() const;
     void addRunConfiguration(RunConfiguration *rc);
     void removeRunConfiguration(RunConfiguration *rc);
 

@@ -30,6 +30,7 @@
 #include "deployconfiguration.h"
 #include "kitinformation.h"
 #include "project.h"
+#include "projectexplorerconstants.h"
 #include "target.h"
 
 #include <coreplugin/variablechooser.h>
@@ -117,6 +118,8 @@
     This signal needs to be emitted if the build step runs in the GUI thread.
 */
 
+using namespace Utils;
+
 static const char buildStepEnabledKey[] = "ProjectExplorer.BuildStep.Enabled";
 
 namespace ProjectExplorer {
@@ -127,10 +130,6 @@ BuildStep::BuildStep(BuildStepList *bsl, Core::Id id) :
     ProjectConfiguration(bsl, id)
 {
     QTC_CHECK(bsl->target() && bsl->target() == this->target());
-    Utils::MacroExpander *expander = macroExpander();
-    expander->setDisplayName(tr("Build Step"));
-    expander->setAccumulating(true);
-    expander->registerSubProvider([this] { return projectConfiguration()->macroExpander(); });
 }
 
 void BuildStep::run()
@@ -186,6 +185,13 @@ BuildConfiguration *BuildStep::buildConfiguration() const
     auto config = qobject_cast<BuildConfiguration *>(parent()->parent());
     if (config)
         return config;
+
+    // This situation should be avoided, as the step returned below is almost
+    // always not the right one, but the fallback is best we can do.
+    // A potential currently still valid path is accessing a build configuration
+    // from a BuildStep in a DeployConfiguration. Let's hunt those down and
+    // replace with explicit code there.
+    QTC_CHECK(false);
     // step is not part of a build configuration, use active build configuration of step's target
     return target()->activeBuildConfiguration();
 }
@@ -195,6 +201,8 @@ DeployConfiguration *BuildStep::deployConfiguration() const
     auto config = qobject_cast<DeployConfiguration *>(parent()->parent());
     if (config)
         return config;
+    // See comment in buildConfiguration()
+    QTC_CHECK(false);
     // step is not part of a deploy configuration, use active deploy configuration of step's target
     return target()->activeDeployConfiguration();
 }
@@ -211,15 +219,45 @@ BuildSystem *BuildStep::buildSystem() const
     return target()->buildSystem();
 }
 
+Environment BuildStep::buildEnvironment() const
+{
+    if (auto bc = buildConfiguration())
+        return bc->environment();
+    return Environment::systemEnvironment();
+}
+
+FilePath BuildStep::buildDirectory() const
+{
+    if (auto bc = buildConfiguration())
+        return bc->buildDirectory();
+    return {};
+}
+
+BuildConfiguration::BuildType BuildStep::buildType() const
+{
+    if (auto bc = buildConfiguration())
+        return bc->buildType();
+    return BuildConfiguration::Unknown;
+}
+
+Utils::MacroExpander *BuildStep::macroExpander() const
+{
+    if (auto bc = buildConfiguration())
+        return bc->macroExpander();
+    return Utils::globalMacroExpander();
+}
+
+QString BuildStep::fallbackWorkingDirectory() const
+{
+    if (auto bc = buildConfiguration())
+        return {Constants::DEFAULT_WORKING_DIR};
+    return {Constants::DEFAULT_WORKING_DIR_ALTERNATE};
+}
+
 void BuildStep::reportRunResult(QFutureInterface<bool> &fi, bool success)
 {
     fi.reportResult(success);
     fi.reportFinished();
-}
-
-bool BuildStep::isActive() const
-{
-    return projectConfiguration()->isActive();
 }
 
 bool BuildStep::widgetExpandedByDefault() const

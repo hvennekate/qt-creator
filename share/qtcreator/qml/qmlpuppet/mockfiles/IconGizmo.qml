@@ -24,10 +24,10 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import QtGraphicalEffects 1.12
 
-Node {
+Item {
     id: iconGizmo
 
     property Node activeScene: null
@@ -45,21 +45,18 @@ Node {
     }
 
     property alias iconSource: iconImage.source
-    property alias overlayColor: colorOverlay.color
+    //property alias overlayColor: colorOverlay.color
 
     signal positionCommit()
     signal clicked(Node node, bool multi)
 
-    position: targetNode ? targetNode.scenePosition : Qt.vector3d(0, 0, 0)
-    rotation: targetNode ? targetNode.sceneRotation : Qt.vector3d(0, 0, 0)
     visible: activeScene === scene && (targetNode ? targetNode.visible : false)
 
     Overlay2D {
         id: iconOverlay
-        targetNode: iconGizmo
+        targetNode: iconGizmo.targetNode
         targetView: view3D
         visible: iconGizmo.visible && !isBehindCamera
-        parent: view3D
 
         Rectangle {
             id: iconRect
@@ -94,15 +91,15 @@ Node {
                     acceptedButtons: Qt.LeftButton
                 }
             }
-            ColorOverlay {
-                id: colorOverlay
-                anchors.fill: parent
-                cached: true
-                source: iconImage
-                color: "transparent"
-                opacity: 0.6
-            }
-
+// ColorOverlay doesn't work correctly with hidden windows so commenting it out for now
+//            ColorOverlay {
+//                id: colorOverlay
+//                anchors.fill: parent
+//                cached: true
+//                source: iconImage
+//                color: "#00000000"
+//                opacity: 0.6
+//            }
         }
     }
 }

@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -25,7 +25,7 @@
 
 
 /*!
-    \contentspage {Qt Creator}
+    \contentspage index.html
     \page qtcreator-toc.html
 
     \title All Topics
@@ -38,6 +38,8 @@
                 \list
                     \li \l{Selecting Modes}
                     \li \l{Browsing Project Contents}
+                    \li \l{Working with Sidebars}
+                    \li \l{Managing Workspaces}
                     \li \l{Viewing Output}
                  \endlist
             \li \l{Configuring Qt Creator}
@@ -78,6 +80,7 @@
                 \li \l{Specifying Editor Settings}
                 \li \l{Specifying Code Style Settings}
                 \li \l{Specifying Dependencies}
+                \li \l{Specifying Environment Settings}
                 \li \l{Sharing Project Settings}
             \endlist
             \li \l{Managing Sessions}
@@ -88,25 +91,55 @@
             \list
                 \li \l {Creating Qt Quick Projects}
                 \li \l {Editing QML Files in Design Mode}
-                \li \l {Creating Components}
+                \li \l {Creating UIs}
                     \list
-                        \li \l {Creating Buttons}
-                        \li \l {Creating Scalable Buttons and Borders}
+                        \li \l {Creating Components}
+                        \list
+                            \li \l{Creating Buttons}
+                            \li \l{Creating Scalable Buttons and Borders}
+                        \endlist
+                        \li \l{Managing Item Hierarchy}
+                        \li \l{Specifying Item Properties}
+                        \li \l{Using Custom Fonts}
+                        \li \l{Annotating Designs}
+                        \li \l{Qt Quick UI Forms}
+                   \endlist
+                \li \l {Adding Dynamics}
+                    \list
+                        \li \l{Creating Animations}
+                        \li \l{Adding Connections}
+                        \list
+                            \li \l{Connecting Objects to Signals}
+                            \li \l{Specifying Dynamic Properties}
+                            \li \l{Adding Bindings Between Properties}
+                            \li \l{Managing C++ Backend Objects}
+                        \endlist
+                        \li \l {Adding States}
+                        \li \l {Editing PathView Properties}
                     \endlist
-                \li \l {Managing Item Hierarchy}
-                \li \l {Specifying Item Properties}
-                \li \l {Creating Animations}
-                \li \l {Adding Connections}
-                \list
-                    \li \l{Connecting Objects to Signals}
-                    \li \l{Specifying Dynamic Properties}
-                    \li \l{Adding Bindings Between Properties}
-                    \li \l{Managing C++ Backend Objects}
-                \endlist
-                \li \l {Adding States}
-                \li \l {Editing PathView Properties}
+                \li \l{Editing 3D Scenes}
+                        \list
+                            \li \l {Exporting 3D Assets}
+                                \list
+                                    \li \l{Exporting from Blender}{Blender}
+                                    \li \l{Exporting from Maya}{Maya}
+                                \endlist
+                            \li \l{Importing 3D Assets}
+                            \li \l{Editing 3D Assets in Design Mode}
+                            \li \l{Working in the 3D Editor}
+                            \li \l{Adding 3D Views}
+                            \li \l{Using 3D Components}
+                            \list
+                                \li \l{Setting Node Properties}
+                                \li \l{Adding Models}
+                                \li \l{Using Materials and Shaders}
+                                \li \l{Attaching Textures to Materials}
+                                \li \l{Using Lights}
+                                \li \l{Using Scene Camera}
+                                \li \l{Setting Scene Environment}
+                            \endlist
+                        \endlist
                 \li \l {Browsing ISO 7000 Icons}
-                \li \l {Qt Quick UI Forms}
                 \li \l {Using QML Modules with Plugins}
                 \li \l {Converting UI Projects to Applications}
             \endlist
@@ -222,6 +255,7 @@
             \li \l{Keyboard Shortcuts}
             \li \l{Using External Tools}
             \li \l{Showing Task List Files in Issues Pane}
+            \li \l{Managing Data Collection Settings}
         \endlist
         \li  \l{Getting Help}
         \list

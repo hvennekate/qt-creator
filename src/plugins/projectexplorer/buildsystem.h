@@ -62,6 +62,10 @@ public:
 
     void requestParse();
     void requestDelayedParse();
+    void requestParseWithCustomDelay(int delayInMs = 1000);
+    void cancelDelayedParseRequest();
+    void setParseDelay(int delayInMs);
+    int parseDelay() const;
 
     bool isParsing() const;
     bool hasParsingData() const;
@@ -125,6 +129,8 @@ public:
     virtual void triggerParsing() = 0;
 
 signals:
+    void parsingStarted();
+    void parsingFinished(bool success);
     void deploymentDataChanged();
     void applicationTargetsChanged();
 

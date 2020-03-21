@@ -249,9 +249,11 @@ void QmakeBuildConfiguration::updateProblemLabel()
     }
 
     const auto bs = qmakeBuildSystem();
-    if (bs->rootProFile()->parseInProgress() || !bs->rootProFile()->validParse()) {
-        buildDirectoryAspect()->setProblem({});
-        return;
+    if (QmakeProFile *rootProFile = bs->rootProFile()) {
+        if (rootProFile->parseInProgress() || !rootProFile->validParse()) {
+            buildDirectoryAspect()->setProblem({});
+            return;
+        }
     }
 
     bool targetMismatch = false;
@@ -317,16 +319,13 @@ void QmakeBuildConfiguration::updateProblemLabel()
             return;
         }
     } else if (targetMismatch) {
-        buildDirectoryAspect()->setProblem(tr("A build for a different project exists in %1, "
-                                              "which will be overwritten.",
-                                              "%1 build directory")
-                                           .arg(buildDirectory().toUserOutput()));
+        buildDirectoryAspect()->setProblem(tr("The build directory contains a build for "
+                                              "a different project, which will be overwritten."));
         return;
     } else if (incompatibleBuild) {
-        buildDirectoryAspect()->setProblem(tr("%1 The build in %2 will be overwritten.",
-                                              "%1 error message, %2 build directory")
-                                           .arg(errorString)
-                                           .arg(buildDirectory().toUserOutput()));
+        buildDirectoryAspect()->setProblem(tr("%1 The build will be overwritten.",
+                                              "%1 error message")
+                                           .arg(errorString));
         return;
     } else if (unalignedBuildDir) {
         buildDirectoryAspect()->setProblem(unalignedBuildDirWarning());
@@ -423,11 +422,6 @@ void QmakeBuildConfiguration::forceSeparateDebugInfo(bool sepDebugInfo)
 TriState QmakeBuildConfiguration::qmlDebugging() const
 {
     return aspect<QmlDebuggingAspect>()->setting();
-}
-
-bool QmakeBuildConfiguration::linkQmlDebuggingLibrary() const
-{
-    return qmlDebugging() == TriState::Enabled;
 }
 
 void QmakeBuildConfiguration::forceQmlDebugging(bool enable)
@@ -830,7 +824,7 @@ QmakeBuildConfiguration::LastKitState::LastKitState(Kit *k)
       m_sysroot(SysRootKitAspect::sysRoot(k).toString()),
       m_mkspec(QmakeKitAspect::mkspec(k))
 {
-    ToolChain *tc = ToolChainKitAspect::toolChain(k, ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    ToolChain *tc = ToolChainKitAspect::cxxToolChain(k);
     m_toolchain = tc ? tc->id() : QByteArray();
 }
 

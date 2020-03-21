@@ -52,8 +52,8 @@ namespace Core { class IEditor; }
 namespace Android {
 namespace Internal {
 class AndroidManifestEditor;
+class AndroidManifestEditorIconContainerWidget;
 class AndroidManifestEditorWidget;
-
 
 class PermissionsModel: public QAbstractListModel
 {
@@ -116,16 +116,6 @@ protected:
     void focusInEvent(QFocusEvent *event) override;
 
 private:
-    void setLDPIIcon();
-    void setMDPIIcon();
-    void setHDPIIcon();
-    void clearLDPIIcon();
-    void clearMDPIIcon();
-    void clearHDPIIcon();
-    void createDPIButton(QHBoxLayout *layout,
-                         QWidget *parent,
-                         QToolButton *&button, QToolButton *&clearButton,
-                         const QString &title, const QString &tooltip);
     void defaultPermissionOrFeatureCheckBoxClicked();
     void addPermission();
     void removePermission();
@@ -143,10 +133,6 @@ private:
 
     bool checkDocument(const QDomDocument &doc, QString *errorMessage,
                        int *errorLine, int *errorColumn);
-    enum IconDPI { LowDPI, MediumDPI, HighDPI };
-    QIcon icon(const QString &baseDir, IconDPI dpi);
-    QString iconPath(IconDPI dpi);
-    void copyIcon(IconDPI dpi, const QString &baseDir, const QString &filePath);
 
     void updateInfoBar(const QString &errorMessage, int line, int column);
     void hideInfoBar();
@@ -180,15 +166,8 @@ private:
     QLineEdit *m_appNameLineEdit;
     QLineEdit *m_activityNameLineEdit;
     QComboBox *m_targetLineEdit;
-    QToolButton *m_lIconButton;
-    QToolButton *m_lIconClearButton;
-    QToolButton *m_mIconButton;
-    QToolButton *m_mIconClearButton;
-    QToolButton *m_hIconButton;
-    QToolButton *m_hIconClearButton;
-    QString m_lIconPath; // only set if the user changed the icon
-    QString m_mIconPath;
-    QString m_hIconPath;
+    QComboBox *m_styleExtractMethod;
+    AndroidManifestEditorIconContainerWidget *m_iconButtons;
 
     // Permissions
     QCheckBox *m_defaultPermissonsCheckBox;

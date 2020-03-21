@@ -54,11 +54,12 @@
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/locator/commandlocator.h>
+#include <coreplugin/messagebox.h>
 #include <coreplugin/modemanager.h>
 #include <coreplugin/navigationwidget.h>
 #include <coreplugin/vcsmanager.h>
 
-#include <coreplugin/messagebox.h>
+#include <aggregation/aggregate.h>
 #include <utils/parameteraction.h>
 #include <utils/pathchooser.h>
 #include <utils/qtcassert.h>
@@ -74,6 +75,7 @@
 #include <vcsbase/basevcssubmiteditorfactory.h>
 #include <vcsbase/vcsoutputwindow.h>
 #include <vcsbase/cleandialog.h>
+#include <vcsbase/vcsbaseplugin.h>
 
 #include <QDebug>
 #include <QDir>
@@ -81,8 +83,10 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QFileDialog>
 #include <QMenu>
+#include <QVBoxLayout>
 
 #ifdef WITH_TESTS
 #include <QTest>
@@ -94,9 +98,12 @@ using namespace Core;
 using namespace TextEditor;
 using namespace Utils;
 using namespace VcsBase;
+using namespace std::placeholders;
 
 namespace Git {
 namespace Internal {
+
+using GitClientMemberFunc = void (GitClient::*)(const QString &);
 
 class GitTopicCache : public Core::IVersionControl::TopicCache
 {
@@ -121,48 +128,346 @@ private:
     GitClient *m_client;
 };
 
-const unsigned minimumRequiredVersion = 0x010900;
-
-const VcsBaseEditorParameters editorParameters[] = {
+class GitReflogEditorWidget : public GitEditorWidget
 {
-    OtherContent,
-    Git::Constants::GIT_COMMAND_LOG_EDITOR_ID,
-    Git::Constants::GIT_COMMAND_LOG_EDITOR_DISPLAY_NAME,
-    "text/vnd.qtcreator.git.commandlog"},
-{   LogOutput,
-    Git::Constants::GIT_LOG_EDITOR_ID,
-    Git::Constants::GIT_LOG_EDITOR_DISPLAY_NAME,
-    "text/vnd.qtcreator.git.log"},
-{   AnnotateOutput,
-    Git::Constants::GIT_BLAME_EDITOR_ID,
-    Git::Constants::GIT_BLAME_EDITOR_DISPLAY_NAME,
-    "text/vnd.qtcreator.git.annotation"},
-{   OtherContent,
-    Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID,
-    Git::Constants::GIT_COMMIT_TEXT_EDITOR_DISPLAY_NAME,
-    "text/vnd.qtcreator.git.commit"},
-{   OtherContent,
-    Git::Constants::GIT_REBASE_EDITOR_ID,
-    Git::Constants::GIT_REBASE_EDITOR_DISPLAY_NAME,
-    "text/vnd.qtcreator.git.rebase"},
+public:
+    GitReflogEditorWidget()
+    {
+        setLogEntryPattern("^([0-9a-f]{8,}) [^}]*\\}: .*$");
+    }
+
+    QString revisionSubject(const QTextBlock &inBlock) const override
+    {
+        const QString text = inBlock.text();
+        return text.mid(text.indexOf(' ') + 1);
+    }
 };
 
+class GitLogEditorWidget : public QWidget
+{
+public:
+    GitLogEditorWidget(GitEditorWidget *gitEditor)
+    {
+        auto vlayout = new QVBoxLayout;
+        vlayout->setSpacing(0);
+        vlayout->setContentsMargins(0, 0, 0, 0);
+        vlayout->addWidget(gitEditor->addFilterWidget());
+        vlayout->addWidget(gitEditor);
+        setLayout(vlayout);
+
+        auto textAgg = Aggregation::Aggregate::parentAggregate(gitEditor);
+        auto agg = textAgg ? textAgg : new Aggregation::Aggregate;
+        agg->add(this);
+        agg->add(gitEditor);
+        setFocusProxy(gitEditor);
+    }
+};
+
+template<class Editor>
+class GitLogEditorWidgetT : public GitLogEditorWidget
+{
+public:
+    GitLogEditorWidgetT() : GitLogEditorWidget(new Editor) {}
+};
+
+const unsigned minimumRequiredVersion = 0x010900;
+
+const VcsBaseSubmitEditorParameters submitParameters {
+    Git::Constants::SUBMIT_MIMETYPE,
+    Git::Constants::GITSUBMITEDITOR_ID,
+    Git::Constants::GITSUBMITEDITOR_DISPLAY_NAME,
+    VcsBaseSubmitEditorParameters::DiffRows
+};
+
+const VcsBaseEditorParameters svnLogEditorParameters {
+    OtherContent,
+    Git::Constants::GIT_SVN_LOG_EDITOR_ID,
+    Git::Constants::GIT_SVN_LOG_EDITOR_DISPLAY_NAME,
+    "text/vnd.qtcreator.git.svnlog"
+};
+
+const VcsBaseEditorParameters logEditorParameters {
+    LogOutput,
+    Git::Constants::GIT_LOG_EDITOR_ID,
+    Git::Constants::GIT_LOG_EDITOR_DISPLAY_NAME,
+    "text/vnd.qtcreator.git.log"
+};
+
+const VcsBaseEditorParameters reflogEditorParameters {
+    LogOutput,
+    Git::Constants::GIT_REFLOG_EDITOR_ID,
+    Git::Constants::GIT_REFLOG_EDITOR_DISPLAY_NAME,
+    "text/vnd.qtcreator.git.reflog"
+};
+
+const VcsBaseEditorParameters blameEditorParameters {
+    AnnotateOutput,
+    Git::Constants::GIT_BLAME_EDITOR_ID,
+    Git::Constants::GIT_BLAME_EDITOR_DISPLAY_NAME,
+    "text/vnd.qtcreator.git.annotation"
+};
+
+const VcsBaseEditorParameters commitTextEditorParameters {
+    OtherContent,
+    Git::Constants::GIT_COMMIT_TEXT_EDITOR_ID,
+    Git::Constants::GIT_COMMIT_TEXT_EDITOR_DISPLAY_NAME,
+    "text/vnd.qtcreator.git.commit"
+};
+
+const VcsBaseEditorParameters rebaseEditorParameters {
+    OtherContent,
+    Git::Constants::GIT_REBASE_EDITOR_ID,
+    Git::Constants::GIT_REBASE_EDITOR_DISPLAY_NAME,
+    "text/vnd.qtcreator.git.rebase"
+};
 
 // GitPlugin
+
+class GitPluginPrivate final : public VcsBase::VcsBasePluginPrivate
+{
+    Q_OBJECT
+
+public:
+    GitPluginPrivate();
+    ~GitPluginPrivate() final;
+
+    // IVersionControl
+    QString displayName() const final;
+    Core::Id id() const final;
+
+    bool isVcsFileOrDirectory(const Utils::FilePath &fileName) const final;
+
+    bool managesDirectory(const QString &directory, QString *topLevel) const final;
+    bool managesFile(const QString &workingDirectory, const QString &fileName) const final;
+    QStringList unmanagedFiles(const QString &workingDir, const QStringList &filePaths) const final;
+
+    bool isConfigured() const final;
+    bool supportsOperation(Operation operation) const final;
+    bool vcsOpen(const QString &fileName) final;
+    bool vcsAdd(const QString &fileName) final;
+    bool vcsDelete(const QString &filename) final;
+    bool vcsMove(const QString &from, const QString &to) final;
+    bool vcsCreateRepository(const QString &directory) final;
+
+    bool vcsAnnotate(const QString &file, int line) final;
+    QString vcsTopic(const QString &directory) final;
+
+    Core::ShellCommand *createInitialCheckoutCommand(const QString &url,
+                                                     const Utils::FilePath &baseDirectory,
+                                                     const QString &localName,
+                                                     const QStringList &extraArgs) final;
+
+    void fillLinkContextMenu(QMenu *menu,
+                             const QString &workingDirectory,
+                             const QString &reference) final
+    {
+        menu->addAction(tr("&Copy \"%1\"").arg(reference),
+                        [reference] { QApplication::clipboard()->setText(reference); });
+        QAction *action = menu->addAction(tr("&Describe Change %1").arg(reference),
+                                          [=] { describe(workingDirectory, reference); });
+        menu->setDefaultAction(action);
+        GitClient::addChangeActions(menu, workingDirectory, reference);
+    }
+
+    RepoUrl getRepoUrl(const QString &location) const override;
+
+    QStringList additionalToolsPath() const final;
+
+    bool isCommitEditorOpen() const;
+    void startCommit(CommitType commitType = SimpleCommit);
+    void updateBranches(const QString &repository);
+    void updateCurrentBranch();
+
+    void manageRemotes();
+    void initRepository();
+    void startRebaseFromCommit(const QString &workingDirectory, QString commit);
+
+    void updateActions(VcsBase::VcsBasePluginPrivate::ActionState) override;
+    bool submitEditorAboutToClose() override;
+
+    void diffCurrentFile();
+    void diffCurrentProject();
+    void commitFromEditor() override;
+    void logFile();
+    void blameFile();
+    void logProject();
+    void logRepository();
+    void reflogRepository();
+    void undoFileChanges(bool revertStaging);
+    void resetRepository();
+    void recoverDeletedFiles();
+    void startRebase();
+    void startChangeRelatedAction(const Core::Id &id);
+    void stageFile();
+    void unstageFile();
+    void gitkForCurrentFile();
+    void gitkForCurrentFolder();
+    void gitGui();
+    void cleanProject();
+    void cleanRepository();
+    void updateSubmodules();
+    void applyCurrentFilePatch();
+    void promptApplyPatch();
+
+    void stash(bool unstagedOnly = false);
+    void stashUnstaged();
+    void stashSnapshot();
+    void stashPop();
+    void branchList();
+    void stashList();
+    void fetch();
+    void pull();
+    void push();
+    void startMergeTool();
+    void continueOrAbortCommand();
+    void updateContinueAndAbortCommands();
+    void delayedPushToGerrit();
+
+    Core::Command *createCommand(QAction *action, Core::ActionContainer *ac, Core::Id id,
+                                 const Core::Context &context, bool addToLocator,
+                                 const std::function<void()> &callback, const QKeySequence &keys);
+
+    Utils::ParameterAction *createParameterAction(Core::ActionContainer *ac,
+                                                  const QString &defaultText, const QString &parameterText,
+                                                  Core::Id id, const Core::Context &context, bool addToLocator,
+                                                  const std::function<void()> &callback,
+                                                  const QKeySequence &keys = QKeySequence());
+
+    QAction *createFileAction(Core::ActionContainer *ac,
+                              const QString &defaultText, const QString &parameterText,
+                              Core::Id id, const Core::Context &context, bool addToLocator,
+                              const std::function<void()> &callback,
+                              const QKeySequence &keys = QKeySequence());
+
+    QAction *createProjectAction(Core::ActionContainer *ac,
+                                 const QString &defaultText, const QString &parameterText,
+                                 Core::Id id, const Core::Context &context, bool addToLocator,
+                                 void (GitPluginPrivate::*func)(),
+                                 const QKeySequence &keys = QKeySequence());
+
+    QAction *createRepositoryAction(Core::ActionContainer *ac, const QString &text, Core::Id id,
+                                    const Core::Context &context, bool addToLocator,
+                                    const std::function<void()> &callback,
+                                    const QKeySequence &keys = QKeySequence());
+    QAction *createRepositoryAction(Core::ActionContainer *ac, const QString &text, Core::Id id,
+                                    const Core::Context &context, bool addToLocator,
+                                    GitClientMemberFunc, const QKeySequence &keys = QKeySequence());
+
+    QAction *createChangeRelatedRepositoryAction(const QString &text, Core::Id id,
+                                                 const Core::Context &context);
+
+    void updateRepositoryBrowserAction();
+    Core::IEditor *openSubmitEditor(const QString &fileName, const CommitData &cd);
+    void cleanCommitMessageFile();
+    void cleanRepository(const QString &directory);
+    void applyPatch(const QString &workingDirectory, QString file = QString());
+    void updateVersionWarning();
+
+
+    void onApplySettings();;
+    void describe(const QString &source, const QString &id) { m_gitClient.show(source, id); };
+
+    Core::CommandLocator *m_commandLocator = nullptr;
+
+    QAction *m_menuAction = nullptr;
+    QAction *m_repositoryBrowserAction = nullptr;
+    QAction *m_mergeToolAction = nullptr;
+    QAction *m_submoduleUpdateAction = nullptr;
+    QAction *m_abortMergeAction = nullptr;
+    QAction *m_abortRebaseAction = nullptr;
+    QAction *m_abortCherryPickAction = nullptr;
+    QAction *m_abortRevertAction = nullptr;
+    QAction *m_skipRebaseAction = nullptr;
+    QAction *m_continueRebaseAction = nullptr;
+    QAction *m_continueCherryPickAction = nullptr;
+    QAction *m_continueRevertAction = nullptr;
+    QAction *m_fixupCommitAction = nullptr;
+    QAction *m_interactiveRebaseAction = nullptr;
+
+    QVector<Utils::ParameterAction *> m_fileActions;
+    QVector<Utils::ParameterAction *> m_projectActions;
+    QVector<QAction *> m_repositoryActions;
+    Utils::ParameterAction *m_applyCurrentFilePatchAction = nullptr;
+    Gerrit::Internal::GerritPlugin *m_gerritPlugin = nullptr;
+
+    GitSettings m_settings;
+    GitClient m_gitClient{&m_settings};
+    QPointer<StashDialog> m_stashDialog;
+    BranchViewFactory m_branchViewFactory;
+    QPointer<RemoteDialog> m_remoteDialog;
+    QString m_submitRepository;
+    QString m_commitMessageFileName;
+    bool m_submitActionTriggered = false;
+
+    GitSettingsPage settingPage{&m_settings, std::bind(&GitPluginPrivate::onApplySettings, this)};
+
+    GitGrep gitGrep{&m_gitClient};
+
+    VcsEditorFactory svnLogEditorFactory {
+        &svnLogEditorParameters,
+        [] { return new GitEditorWidget; },
+        std::bind(&GitPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory logEditorFactory {
+        &logEditorParameters,
+        [] { return new GitLogEditorWidgetT<GitEditorWidget>; },
+        std::bind(&GitPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory reflogEditorFactory {
+        &reflogEditorParameters,
+                [] { return new GitLogEditorWidgetT<GitReflogEditorWidget>; },
+        std::bind(&GitPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory blameEditorFactory {
+        &blameEditorParameters,
+        [] { return new GitEditorWidget; },
+        std::bind(&GitPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory commitTextEditorFactory {
+        &commitTextEditorParameters,
+        [] { return new GitEditorWidget; },
+        std::bind(&GitPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory rebaseEditorFactory {
+        &rebaseEditorParameters,
+        [] { return new GitEditorWidget; },
+        std::bind(&GitPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsSubmitEditorFactory submitEditorFactory {
+        submitParameters,
+        [] { return new GitSubmitEditor; },
+        this
+    };
+};
 
 static GitPluginPrivate *dd = nullptr;
 
 GitPluginPrivate::~GitPluginPrivate()
 {
     cleanCommitMessageFile();
-    delete m_gitClient;
-    delete m_branchViewFactory;
 }
 
 GitPlugin::~GitPlugin()
 {
     delete dd;
     dd = nullptr;
+}
+
+void GitPluginPrivate::onApplySettings()
+{
+    configurationChanged();
+    updateRepositoryBrowserAction();
+    bool gitFoundOk;
+    QString errorMessage;
+    m_settings.gitExecutable(&gitFoundOk, &errorMessage);
+    if (!gitFoundOk)
+        Core::AsynchronousMessageBox::warning(tr("Git Settings"), errorMessage);
 }
 
 void GitPluginPrivate::cleanCommitMessageFile()
@@ -178,17 +483,27 @@ bool GitPluginPrivate::isCommitEditorOpen() const
     return !m_commitMessageFileName.isEmpty();
 }
 
-GitPluginPrivate *GitPluginPrivate::instance()
+GitClient *GitPlugin::client()
+{
+    return &dd->m_gitClient;
+}
+
+IVersionControl *GitPlugin::versionControl()
 {
     return dd;
 }
 
-GitClient *GitPluginPrivate::client()
+const GitSettings &GitPlugin::settings()
 {
-    return dd->m_gitClient;
+    return dd->m_settings;
 }
 
-QString GitPluginPrivate::msgRepositoryLabel(const QString &repository)
+const VcsBasePluginState &GitPlugin::currentState()
+{
+    return dd->currentState();
+}
+
+QString GitPlugin::msgRepositoryLabel(const QString &repository)
 {
     return repository.isEmpty() ?
             tr("<No repository>")  :
@@ -197,7 +512,7 @@ QString GitPluginPrivate::msgRepositoryLabel(const QString &repository)
 
 // Returns a regular expression pattern with characters not allowed
 // in branch and remote names.
-QString GitPluginPrivate::invalidBranchAndRemoteNamePattern()
+QString GitPlugin::invalidBranchAndRemoteNamePattern()
 {
     return QLatin1String(
         "\\s"     // no whitespace
@@ -216,13 +531,6 @@ QString GitPluginPrivate::invalidBranchAndRemoteNamePattern()
         "|(^|[A-Z]+_)HEAD" // no HEAD, FETCH_HEAD etc.
     );
 }
-
-const VcsBaseSubmitEditorParameters submitParameters = {
-    Git::Constants::SUBMIT_MIMETYPE,
-    Git::Constants::GITSUBMITEDITOR_ID,
-    Git::Constants::GITSUBMITEDITOR_DISPLAY_NAME,
-    VcsBaseSubmitEditorParameters::DiffRows
-};
 
 Command *GitPluginPrivate::createCommand(QAction *action, ActionContainer *ac, Id id,
                                   const Context &context, bool addToLocator,
@@ -304,7 +612,7 @@ QAction *GitPluginPrivate::createRepositoryAction(ActionContainer *ac, const QSt
 {
     auto cb = [this, func]() -> void {
         QTC_ASSERT(currentState().hasTopLevel(), return);
-        (m_gitClient->*func)(currentState().topLevel());
+        (m_gitClient.*func)(currentState().topLevel());
     };
     // Set the member func as data and connect to GitClient method
     return createRepositoryAction(ac, text, id, context, addToLocator, cb, keys);
@@ -335,40 +643,13 @@ GitPluginPrivate::GitPluginPrivate()
 {
     dd = this;
 
-    m_gitClient = new GitClient(&m_settings);
-    setTopicCache(new GitTopicCache(m_gitClient));
+    setTopicCache(new GitTopicCache(&m_gitClient));
 
     m_fileActions.reserve(10);
     m_projectActions.reserve(10);
     m_repositoryActions.reserve(50);
 
     Context context(Constants::GIT_CONTEXT);
-
-    // Create the settings Page
-    auto onApply = [this] {
-        configurationChanged();
-        updateRepositoryBrowserAction();
-        bool gitFoundOk;
-        QString errorMessage;
-        m_settings.gitExecutable(&gitFoundOk, &errorMessage);
-        if (!gitFoundOk)
-            Core::AsynchronousMessageBox::warning(tr("Git Settings"), errorMessage);
-    };
-    new GitSettingsPage(&m_settings, onApply, this);
-
-    new GitGrep(this);
-    m_branchViewFactory = new BranchViewFactory;
-
-    const auto describeFunc = [this](const QString &source, const QString &id) {
-        m_gitClient->show(source, id);
-    };
-    const int editorCount = sizeof(editorParameters) / sizeof(editorParameters[0]);
-    const auto widgetCreator = []() { return new GitEditorWidget; };
-    for (int i = 0; i < editorCount; i++)
-        new VcsEditorFactory(editorParameters + i, widgetCreator, describeFunc, this);
-
-    new VcsSubmitEditorFactory(&submitParameters,
-        []() { return new GitSubmitEditor(&submitParameters); }, this);
 
     const QString prefix = "git";
     m_commandLocator = new CommandLocator("Git", prefix, prefix, this);
@@ -447,7 +728,7 @@ GitPluginPrivate::GitPluginPrivate()
                            context, true, std::bind(&GitPluginPrivate::logRepository, this));
 
     createRepositoryAction(localRepositoryMenu, tr("Reflog"), "Git.ReflogRepository",
-                           context, true, &GitClient::reflog);
+                           context, true, std::bind(&GitPluginPrivate::reflogRepository, this));
 
     createRepositoryAction(localRepositoryMenu, tr("Clean..."), "Git.CleanRepository",
                            context, true, [this] { cleanRepository(); });
@@ -709,13 +990,24 @@ GitPluginPrivate::GitPluginPrivate()
     m_gerritPlugin->initialize(remoteRepositoryMenu);
     m_gerritPlugin->updateActions(currentState());
     m_gerritPlugin->addToLocator(m_commandLocator);
+
+    connect(VcsOutputWindow::instance(), &VcsOutputWindow::referenceClicked,
+            this, [this](const QString &name) {
+        const VcsBasePluginState state = currentState();
+        QTC_ASSERT(state.hasTopLevel(), return);
+        if (name.contains(".."))
+            m_gitClient.log(state.topLevel(), {}, false, {name});
+        else
+            m_gitClient.show(state.topLevel(), name);
+    });
+
 }
 
 void GitPluginPrivate::diffCurrentFile()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasFile(), return);
-    m_gitClient->diffFile(state.currentFileTopLevel(), state.relativeCurrentFile());
+    m_gitClient.diffFile(state.currentFileTopLevel(), state.relativeCurrentFile());
 }
 
 void GitPluginPrivate::diffCurrentProject()
@@ -724,16 +1016,16 @@ void GitPluginPrivate::diffCurrentProject()
     QTC_ASSERT(state.hasProject(), return);
     const QString relativeProject = state.relativeCurrentProject();
     if (relativeProject.isEmpty())
-        m_gitClient->diffRepository(state.currentProjectTopLevel());
+        m_gitClient.diffRepository(state.currentProjectTopLevel());
     else
-        m_gitClient->diffProject(state.currentProjectTopLevel(), relativeProject);
+        m_gitClient.diffProject(state.currentProjectTopLevel(), relativeProject);
 }
 
 void GitPluginPrivate::logFile()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasFile(), return);
-    m_gitClient->log(state.currentFileTopLevel(), state.relativeCurrentFile(), true);
+    m_gitClient.log(state.currentFileTopLevel(), state.relativeCurrentFile(), true);
 }
 
 void GitPluginPrivate::blameFile()
@@ -768,7 +1060,7 @@ void GitPluginPrivate::blameFile()
             }
         }
     }
-    VcsBaseEditorWidget *editor = m_gitClient->annotate(
+    VcsBaseEditorWidget *editor = m_gitClient.annotate(
                 state.currentFileTopLevel(), state.relativeCurrentFile(), QString(),
                 lineNumber, extraOptions);
     if (firstLine > 0)
@@ -779,14 +1071,21 @@ void GitPluginPrivate::logProject()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasProject(), return);
-    m_gitClient->log(state.currentProjectTopLevel(), state.relativeCurrentProject());
+    m_gitClient.log(state.currentProjectTopLevel(), state.relativeCurrentProject());
 }
 
 void GitPluginPrivate::logRepository()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    m_gitClient->log(state.topLevel());
+    m_gitClient.log(state.topLevel());
+}
+
+void GitPluginPrivate::reflogRepository()
+{
+    const VcsBasePluginState state = currentState();
+    QTC_ASSERT(state.hasTopLevel(), return);
+    m_gitClient.reflog(state.topLevel());
 }
 
 void GitPluginPrivate::undoFileChanges(bool revertStaging)
@@ -798,7 +1097,7 @@ void GitPluginPrivate::undoFileChanges(bool revertStaging)
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasFile(), return);
     FileChangeBlocker fcb(state.currentFile());
-    m_gitClient->revert({state.currentFile()}, revertStaging);
+    m_gitClient.revert({state.currentFile()}, revertStaging);
 }
 
 class ResetItemDelegate : public LogItemDelegate
@@ -840,7 +1139,7 @@ void GitPluginPrivate::resetRepository()
     ResetItemDelegate delegate(dialog.widget());
     dialog.setWindowTitle(tr("Undo Changes to %1").arg(QDir::toNativeSeparators(topLevel)));
     if (dialog.runDialog(topLevel, QString(), LogChangeWidget::IncludeRemotes))
-        m_gitClient->reset(topLevel, dialog.resetFlag(), dialog.commit());
+        m_gitClient.reset(topLevel, dialog.resetFlag(), dialog.commit());
 }
 
 void GitPluginPrivate::recoverDeletedFiles()
@@ -849,7 +1148,7 @@ void GitPluginPrivate::recoverDeletedFiles()
         return;
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    m_gitClient->recoverDeletedFiles(state.topLevel());
+    m_gitClient.recoverDeletedFiles(state.topLevel());
 }
 
 void GitPluginPrivate::startRebase()
@@ -865,7 +1164,7 @@ void GitPluginPrivate::startRebaseFromCommit(const QString &workingDirectory, QS
 {
     if (!DocumentManager::saveAllModifiedDocuments())
         return;
-    if (workingDirectory.isEmpty() || !m_gitClient->canRebase(workingDirectory))
+    if (workingDirectory.isEmpty() || !m_gitClient.canRebase(workingDirectory))
         return;
 
     if (commit.isEmpty()) {
@@ -877,8 +1176,8 @@ void GitPluginPrivate::startRebaseFromCommit(const QString &workingDirectory, QS
         commit = dialog.commit();
     }
 
-    if (m_gitClient->beginStashScope(workingDirectory, "Rebase-i"))
-        m_gitClient->interactiveRebase(workingDirectory, commit, false);
+    if (m_gitClient.beginStashScope(workingDirectory, "Rebase-i"))
+        m_gitClient.interactiveRebase(workingDirectory, commit, false);
 }
 
 void GitPluginPrivate::startChangeRelatedAction(const Id &id)
@@ -900,10 +1199,10 @@ void GitPluginPrivate::startChangeRelatedAction(const Id &id)
         return;
 
     if (dialog.command() == Show) {
-        m_gitClient->show(workingDirectory, change);
+        m_gitClient.show(workingDirectory, change);
         return;
     } else if (dialog.command() == Archive) {
-        m_gitClient->archive(workingDirectory, change);
+        m_gitClient.archive(workingDirectory, change);
         return;
     }
 
@@ -912,13 +1211,13 @@ void GitPluginPrivate::startChangeRelatedAction(const Id &id)
 
     switch (dialog.command()) {
     case CherryPick:
-        m_gitClient->synchronousCherryPick(workingDirectory, change);
+        m_gitClient.synchronousCherryPick(workingDirectory, change);
         break;
     case Revert:
-        m_gitClient->synchronousRevert(workingDirectory, change);
+        m_gitClient.synchronousRevert(workingDirectory, change);
         break;
     case Checkout:
-        m_gitClient->checkout(workingDirectory, change);
+        m_gitClient.checkout(workingDirectory, change);
         break;
     default:
         return;
@@ -929,21 +1228,21 @@ void GitPluginPrivate::stageFile()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasFile(), return);
-    m_gitClient->addFile(state.currentFileTopLevel(), state.relativeCurrentFile());
+    m_gitClient.addFile(state.currentFileTopLevel(), state.relativeCurrentFile());
 }
 
 void GitPluginPrivate::unstageFile()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasFile(), return);
-    m_gitClient->synchronousReset(state.currentFileTopLevel(), {state.relativeCurrentFile()});
+    m_gitClient.synchronousReset(state.currentFileTopLevel(), {state.relativeCurrentFile()});
 }
 
 void GitPluginPrivate::gitkForCurrentFile()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasFile(), return);
-    m_gitClient->launchGitK(state.currentFileTopLevel(), state.relativeCurrentFile());
+    m_gitClient.launchGitK(state.currentFileTopLevel(), state.relativeCurrentFile());
 }
 
 void GitPluginPrivate::gitkForCurrentFolder()
@@ -954,7 +1253,7 @@ void GitPluginPrivate::gitkForCurrentFolder()
     /*
      *  entire lower part of the code can be easily replaced with one line:
      *
-     *  m_gitClient->launchGitK(dir.currentFileDirectory(), ".");
+     *  m_gitClient.launchGitK(dir.currentFileDirectory(), ".");
      *
      *  However, there is a bug in gitk in version 1.7.9.5, and if you run above
      *  command, there will be no documents listed in lower right section.
@@ -967,12 +1266,12 @@ void GitPluginPrivate::gitkForCurrentFolder()
      */
     QDir dir(state.currentFileDirectory());
     if (QFileInfo(dir,".git").exists() || dir.cd(".git")) {
-        m_gitClient->launchGitK(state.currentFileDirectory());
+        m_gitClient.launchGitK(state.currentFileDirectory());
     } else {
         QString folderName = dir.absolutePath();
         dir.cdUp();
         folderName = folderName.remove(0, dir.absolutePath().length() + 1);
-        m_gitClient->launchGitK(dir.absolutePath(), folderName);
+        m_gitClient.launchGitK(dir.absolutePath(), folderName);
     }
 }
 
@@ -980,7 +1279,7 @@ void GitPluginPrivate::gitGui()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    m_gitClient->launchGitGui(state.topLevel());
+    m_gitClient.launchGitGui(state.topLevel());
 }
 
 void GitPluginPrivate::startCommit(CommitType commitType)
@@ -1000,7 +1299,7 @@ void GitPluginPrivate::startCommit(CommitType commitType)
 
     QString errorMessage, commitTemplate;
     CommitData data(commitType);
-    if (!m_gitClient->getCommitData(state.topLevel(), &commitTemplate, data, &errorMessage)) {
+    if (!m_gitClient.getCommitData(state.topLevel(), &commitTemplate, data, &errorMessage)) {
         VcsOutputWindow::appendError(errorMessage);
         return;
     }
@@ -1024,7 +1323,7 @@ void GitPluginPrivate::startCommit(CommitType commitType)
 
 void GitPluginPrivate::updateVersionWarning()
 {
-    unsigned version = m_gitClient->gitVersion();
+    unsigned version = m_gitClient.gitVersion();
     if (!version || version >= minimumRequiredVersion)
         return;
     IDocument *curDocument = EditorManager::currentDocument();
@@ -1113,7 +1412,7 @@ bool GitPluginPrivate::submitEditorAboutToClose()
         if (!DocumentManager::saveDocument(editorDocument))
             return false;
 
-        if (!m_gitClient->addAndCommit(m_submitRepository, editor->panelData(), commitType,
+        if (!m_gitClient.addAndCommit(m_submitRepository, editor->panelData(), commitType,
                                        amendSHA1, m_commitMessageFileName, model)) {
             editor->updateFileModel();
             return false;
@@ -1121,15 +1420,15 @@ bool GitPluginPrivate::submitEditorAboutToClose()
     }
     cleanCommitMessageFile();
     if (commitType == FixupCommit) {
-        if (!m_gitClient->beginStashScope(m_submitRepository, "Rebase-fixup",
+        if (!m_gitClient.beginStashScope(m_submitRepository, "Rebase-fixup",
                                           NoPrompt, editor->panelData().pushAction)) {
             return false;
         }
-        m_gitClient->interactiveRebase(m_submitRepository, amendSHA1, true);
+        m_gitClient.interactiveRebase(m_submitRepository, amendSHA1, true);
     } else {
-        m_gitClient->continueCommandIfNeeded(m_submitRepository);
+        m_gitClient.continueCommandIfNeeded(m_submitRepository);
         if (editor->panelData().pushAction == NormalPush) {
-            m_gitClient->push(m_submitRepository);
+            m_gitClient.push(m_submitRepository);
         } else if (editor->panelData().pushAction == PushToGerrit) {
             connect(editor, &QObject::destroyed, this, &GitPluginPrivate::delayedPushToGerrit,
                     Qt::QueuedConnection);
@@ -1141,7 +1440,7 @@ bool GitPluginPrivate::submitEditorAboutToClose()
 
 void GitPluginPrivate::fetch()
 {
-    m_gitClient->fetch(currentState().topLevel(), QString());
+    m_gitClient.fetch(currentState().topLevel(), QString());
 }
 
 void GitPluginPrivate::pull()
@@ -1154,31 +1453,31 @@ void GitPluginPrivate::pull()
     bool rebase = m_settings.boolValue(GitSettings::pullRebaseKey);
 
     if (!rebase) {
-        QString currentBranch = m_gitClient->synchronousCurrentLocalBranch(topLevel);
+        QString currentBranch = m_gitClient.synchronousCurrentLocalBranch(topLevel);
         if (!currentBranch.isEmpty()) {
             currentBranch.prepend("branch.");
             currentBranch.append(".rebase");
-            rebase = (m_gitClient->readConfigValue(topLevel, currentBranch) == "true");
+            rebase = (m_gitClient.readConfigValue(topLevel, currentBranch) == "true");
         }
     }
 
-    if (!m_gitClient->beginStashScope(topLevel, "Pull", rebase ? Default : AllowUnstashed))
+    if (!m_gitClient.beginStashScope(topLevel, "Pull", rebase ? Default : AllowUnstashed))
         return;
-    m_gitClient->pull(topLevel, rebase);
+    m_gitClient.pull(topLevel, rebase);
 }
 
 void GitPluginPrivate::push()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    m_gitClient->push(state.topLevel());
+    m_gitClient.push(state.topLevel());
 }
 
 void GitPluginPrivate::startMergeTool()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    m_gitClient->merge(state.topLevel());
+    m_gitClient.merge(state.topLevel());
 }
 
 void GitPluginPrivate::continueOrAbortCommand()
@@ -1190,21 +1489,21 @@ void GitPluginPrivate::continueOrAbortCommand()
     QObject *action = QObject::sender();
 
     if (action == m_abortMergeAction)
-        m_gitClient->synchronousMerge(state.topLevel(), "--abort");
+        m_gitClient.synchronousMerge(state.topLevel(), "--abort");
     else if (action == m_abortRebaseAction)
-        m_gitClient->rebase(state.topLevel(), "--abort");
+        m_gitClient.rebase(state.topLevel(), "--abort");
     else if (action == m_abortCherryPickAction)
-        m_gitClient->synchronousCherryPick(state.topLevel(), "--abort");
+        m_gitClient.synchronousCherryPick(state.topLevel(), "--abort");
     else if (action == m_abortRevertAction)
-        m_gitClient->synchronousRevert(state.topLevel(), "--abort");
+        m_gitClient.synchronousRevert(state.topLevel(), "--abort");
     else if (action == m_skipRebaseAction)
-        m_gitClient->rebase(state.topLevel(), "--skip");
+        m_gitClient.rebase(state.topLevel(), "--skip");
     else if (action == m_continueRebaseAction)
-        m_gitClient->rebase(state.topLevel(), "--continue");
+        m_gitClient.rebase(state.topLevel(), "--continue");
     else if (action == m_continueCherryPickAction)
-        m_gitClient->cherryPick(state.topLevel(), "--continue");
+        m_gitClient.cherryPick(state.topLevel(), "--continue");
     else if (action == m_continueRevertAction)
-        m_gitClient->revert(state.topLevel(), "--continue");
+        m_gitClient.revert(state.topLevel(), "--continue");
 
     updateContinueAndAbortCommands();
 }
@@ -1230,11 +1529,11 @@ void GitPluginPrivate::cleanRepository(const QString &directory)
     QStringList files;
     QStringList ignoredFiles;
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    const bool gotFiles = m_gitClient->synchronousCleanList(directory, QString(), &files, &ignoredFiles, &errorMessage);
+    const bool gotFiles = m_gitClient.synchronousCleanList(directory, QString(), &files, &ignoredFiles, &errorMessage);
     QApplication::restoreOverrideCursor();
 
     if (!gotFiles) {
-        Core::AsynchronousMessageBox::warning(tr("Unable to retrieve file list"), errorMessage);
+        Core::AsynchronousMessageBox::warning(tr("Unable to Retrieve File List"), errorMessage);
         return;
     }
     if (files.isEmpty() && ignoredFiles.isEmpty()) {
@@ -1253,7 +1552,7 @@ void GitPluginPrivate::updateSubmodules()
 {
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    m_gitClient->updateSubmodulesIfNeeded(state.topLevel(), false);
+    m_gitClient.updateSubmodulesIfNeeded(state.topLevel(), false);
 }
 
 // If the file is modified in an editor, make sure it is saved.
@@ -1282,20 +1581,20 @@ void GitPluginPrivate::promptApplyPatch()
 void GitPluginPrivate::applyPatch(const QString &workingDirectory, QString file)
 {
     // Ensure user has been notified about pending changes
-    if (!m_gitClient->beginStashScope(workingDirectory, "Apply-Patch", AllowUnstashed))
+    if (!m_gitClient.beginStashScope(workingDirectory, "Apply-Patch", AllowUnstashed))
         return;
     // Prompt for file
     if (file.isEmpty()) {
         const QString filter = tr("Patches (*.patch *.diff)");
         file = QFileDialog::getOpenFileName(ICore::dialogParent(), tr("Choose Patch"), QString(), filter);
         if (file.isEmpty()) {
-            m_gitClient->endStashScope(workingDirectory);
+            m_gitClient.endStashScope(workingDirectory);
             return;
         }
     }
     // Run!
     QString errorMessage;
-    if (m_gitClient->synchronousApplyPatch(workingDirectory, file, &errorMessage)) {
+    if (m_gitClient.synchronousApplyPatch(workingDirectory, file, &errorMessage)) {
         if (errorMessage.isEmpty())
             VcsOutputWindow::appendMessage(tr("Patch %1 successfully applied to %2").arg(file, workingDirectory));
         else
@@ -1303,7 +1602,7 @@ void GitPluginPrivate::applyPatch(const QString &workingDirectory, QString file)
     } else {
         VcsOutputWindow::appendError(errorMessage);
     }
-    m_gitClient->endStashScope(workingDirectory);
+    m_gitClient.endStashScope(workingDirectory);
 }
 
 void GitPluginPrivate::stash(bool unstagedOnly)
@@ -1315,7 +1614,7 @@ void GitPluginPrivate::stash(bool unstagedOnly)
     QTC_ASSERT(state.hasTopLevel(), return);
 
     const QString topLevel = state.topLevel();
-    m_gitClient->executeSynchronousStash(topLevel, QString(), unstagedOnly);
+    m_gitClient.executeSynchronousStash(topLevel, QString(), unstagedOnly);
     if (m_stashDialog)
         m_stashDialog->refresh(topLevel, true);
 }
@@ -1330,7 +1629,7 @@ void GitPluginPrivate::stashSnapshot()
     // Prompt for description, restore immediately and keep on working.
     const VcsBasePluginState state = currentState();
     QTC_ASSERT(state.hasTopLevel(), return);
-    const QString id = m_gitClient->synchronousStash(state.topLevel(), QString(),
+    const QString id = m_gitClient.synchronousStash(state.topLevel(), QString(),
                 GitClient::StashImmediateRestore | GitClient::StashPromptDescription);
     if (!id.isEmpty() && m_stashDialog)
         m_stashDialog->refresh(state.topLevel(), true);
@@ -1341,7 +1640,7 @@ void GitPluginPrivate::stashPop()
     if (!DocumentManager::saveAllModifiedDocuments())
         return;
     const QString repository = currentState().topLevel();
-    m_gitClient->stashPop(repository);
+    m_gitClient.stashPop(repository);
     if (m_stashDialog)
         m_stashDialog->refresh(repository, true);
 }
@@ -1388,8 +1687,8 @@ void GitPluginPrivate::updateActions(VcsBasePluginPrivate::ActionState as)
     const bool repositoryEnabled = state.hasTopLevel();
     if (m_stashDialog)
         m_stashDialog->refresh(state.topLevel(), false);
-    if (m_branchViewFactory && m_branchViewFactory->view())
-        m_branchViewFactory->view()->refresh(state.topLevel(), false);
+    if (m_branchViewFactory.view())
+        m_branchViewFactory.view()->refresh(state.topLevel(), false);
     if (m_remoteDialog)
         m_remoteDialog->refresh(state.topLevel(), false);
 
@@ -1413,7 +1712,7 @@ void GitPluginPrivate::updateActions(VcsBasePluginPrivate::ActionState as)
         repositoryAction->setEnabled(repositoryEnabled);
 
     m_submoduleUpdateAction->setVisible(repositoryEnabled
-            && !m_gitClient->submoduleList(state.topLevel()).isEmpty());
+            && !m_gitClient.submoduleList(state.topLevel()).isEmpty());
 
     updateContinueAndAbortCommands();
     updateRepositoryBrowserAction();
@@ -1425,7 +1724,7 @@ void GitPluginPrivate::updateContinueAndAbortCommands()
 {
     if (currentState().hasTopLevel()) {
         GitClient::CommandInProgress gitCommandInProgress =
-                m_gitClient->checkCommandInProgress(currentState().topLevel());
+                m_gitClient.checkCommandInProgress(currentState().topLevel());
 
         m_mergeToolAction->setVisible(gitCommandInProgress != GitClient::NoCommand);
         m_abortMergeAction->setVisible(gitCommandInProgress == GitClient::Merge);
@@ -1461,24 +1760,24 @@ void GitPluginPrivate::delayedPushToGerrit()
 
 void GitPluginPrivate::updateBranches(const QString &repository)
 {
-    if (m_branchViewFactory && m_branchViewFactory->view())
-        m_branchViewFactory->view()->refreshIfSame(repository);
+    if (m_branchViewFactory.view())
+        m_branchViewFactory.view()->refreshIfSame(repository);
 }
 
 void GitPluginPrivate::updateCurrentBranch()
 {
-    if (m_branchViewFactory && m_branchViewFactory->view())
-        m_branchViewFactory->view()->refreshCurrentBranch();
+    if (m_branchViewFactory.view())
+        m_branchViewFactory.view()->refreshCurrentBranch();
 }
 
 QObject *GitPlugin::remoteCommand(const QStringList &options, const QString &workingDirectory,
                                   const QStringList &)
 {
-    if (!GitPluginPrivate::client() || options.size() < 2)
+    if (options.size() < 2)
         return nullptr;
 
     if (options.first() == "-git-show")
-        GitPluginPrivate::client()->show(workingDirectory, options.at(1));
+        dd->m_gitClient.show(workingDirectory, options.at(1));
     return nullptr;
 }
 
@@ -1488,11 +1787,6 @@ void GitPluginPrivate::updateRepositoryBrowserAction()
     const bool hasRepositoryBrowserCmd
             = !m_settings.stringValue(GitSettings::repositoryBrowserCmd).isEmpty();
     m_repositoryBrowserAction->setEnabled(repositoryEnabled && hasRepositoryBrowserCmd);
-}
-
-Gerrit::Internal::GerritPlugin *GitPluginPrivate::gerritPlugin() const
-{
-    return m_gerritPlugin;
 }
 
 QString GitPluginPrivate::displayName() const
@@ -1519,7 +1813,7 @@ bool GitPluginPrivate::isVcsFileOrDirectory(const Utils::FilePath &fileName) con
 
 bool GitPluginPrivate::isConfigured() const
 {
-    return !m_gitClient->vcsBinary().isEmpty();
+    return !m_gitClient.vcsBinary().isEmpty();
 }
 
 bool GitPluginPrivate::supportsOperation(Operation operation) const
@@ -1548,31 +1842,31 @@ bool GitPluginPrivate::vcsOpen(const QString & /*fileName*/)
 bool GitPluginPrivate::vcsAdd(const QString & fileName)
 {
     const QFileInfo fi(fileName);
-    return m_gitClient->synchronousAdd(fi.absolutePath(), {fi.fileName()});
+    return m_gitClient.synchronousAdd(fi.absolutePath(), {fi.fileName()});
 }
 
 bool GitPluginPrivate::vcsDelete(const QString & fileName)
 {
     const QFileInfo fi(fileName);
-    return m_gitClient->synchronousDelete(fi.absolutePath(), true, {fi.fileName()});
+    return m_gitClient.synchronousDelete(fi.absolutePath(), true, {fi.fileName()});
 }
 
 bool GitPluginPrivate::vcsMove(const QString &from, const QString &to)
 {
     const QFileInfo fromInfo(from);
     const QFileInfo toInfo(to);
-    return m_gitClient->synchronousMove(fromInfo.absolutePath(), fromInfo.absoluteFilePath(), toInfo.absoluteFilePath());
+    return m_gitClient.synchronousMove(fromInfo.absolutePath(), fromInfo.absoluteFilePath(), toInfo.absoluteFilePath());
 }
 
 bool GitPluginPrivate::vcsCreateRepository(const QString &directory)
 {
-    return m_gitClient->synchronousInit(directory);
+    return m_gitClient.synchronousInit(directory);
 }
 
 QString GitPluginPrivate::vcsTopic(const QString &directory)
 {
     QString topic = Core::IVersionControl::vcsTopic(directory);
-    const QString commandInProgress = m_gitClient->commandInProgressDescription(directory);
+    const QString commandInProgress = m_gitClient.commandInProgressDescription(directory);
     if (!commandInProgress.isEmpty())
         topic += " (" + commandInProgress + ')';
     return topic;
@@ -1586,9 +1880,9 @@ Core::ShellCommand *GitPluginPrivate::createInitialCheckoutCommand(const QString
     QStringList args = {"clone", "--progress"};
     args << extraArgs << url << localName;
 
-    auto command = new VcsBase::VcsCommand(baseDirectory.toString(), m_gitClient->processEnvironment());
+    auto command = new VcsBase::VcsCommand(baseDirectory.toString(), m_gitClient.processEnvironment());
     command->addFlags(VcsBase::VcsCommand::SuppressStdErr);
-    command->addJob({m_gitClient->vcsBinary(), args}, -1);
+    command->addJob({m_gitClient.vcsBinary(), args}, -1);
     return command;
 }
 
@@ -1599,8 +1893,8 @@ GitPluginPrivate::RepoUrl GitPluginPrivate::getRepoUrl(const QString &location) 
 
 QStringList GitPluginPrivate::additionalToolsPath() const
 {
-    QStringList res = m_gitClient->settings().searchPathList();
-    const QString binaryPath = m_gitClient->gitBinDirectory().toString();
+    QStringList res = m_gitClient.settings().searchPathList();
+    const QString binaryPath = m_gitClient.gitBinDirectory().toString();
     if (!binaryPath.isEmpty() && !res.contains(binaryPath))
         res << binaryPath;
     return res;
@@ -1608,7 +1902,7 @@ QStringList GitPluginPrivate::additionalToolsPath() const
 
 bool GitPluginPrivate::managesDirectory(const QString &directory, QString *topLevel) const
 {
-    const QString topLevelFound = m_gitClient->findRepositoryForDirectory(directory);
+    const QString topLevelFound = m_gitClient.findRepositoryForDirectory(directory);
     if (topLevel)
         *topLevel = topLevelFound;
     return !topLevelFound.isEmpty();
@@ -1616,30 +1910,70 @@ bool GitPluginPrivate::managesDirectory(const QString &directory, QString *topLe
 
 bool GitPluginPrivate::managesFile(const QString &workingDirectory, const QString &fileName) const
 {
-    return m_gitClient->managesFile(workingDirectory, fileName);
+    return m_gitClient.managesFile(workingDirectory, fileName);
 }
 
 QStringList GitPluginPrivate::unmanagedFiles(const QString &workingDir,
                                               const QStringList &filePaths) const
 {
-    return m_gitClient->unmanagedFiles(workingDir, filePaths);
+    return m_gitClient.unmanagedFiles(workingDir, filePaths);
 }
 
 bool GitPluginPrivate::vcsAnnotate(const QString &file, int line)
 {
     const QFileInfo fi(file);
-    m_gitClient->annotate(fi.absolutePath(), fi.fileName(), QString(), line);
+    m_gitClient.annotate(fi.absolutePath(), fi.fileName(), QString(), line);
     return true;
 }
 
-void GitPluginPrivate::emitFilesChanged(const QStringList &l)
+void GitPlugin::emitFilesChanged(const QStringList &l)
 {
-    emit filesChanged(l);
+    emit dd->filesChanged(l);
 }
 
-void GitPluginPrivate::emitRepositoryChanged(const QString &r)
+void GitPlugin::emitRepositoryChanged(const QString &r)
 {
-    emit repositoryChanged(r);
+    emit dd->repositoryChanged(r);
+}
+
+void GitPlugin::startRebaseFromCommit(const QString &workingDirectory, const QString &commit)
+{
+    dd->startRebaseFromCommit(workingDirectory, commit);
+}
+
+void GitPlugin::manageRemotes()
+{
+    dd->manageRemotes();
+}
+
+void GitPlugin::initRepository()
+{
+    dd->initRepository();
+}
+
+void GitPlugin::startCommit()
+{
+    dd->startCommit();
+}
+
+void GitPlugin::updateCurrentBranch()
+{
+    dd->updateCurrentBranch();
+}
+
+void GitPlugin::updateBranches(const QString &repository)
+{
+    dd->updateBranches(repository);
+}
+
+void GitPlugin::gerritPush(const QString &topLevel)
+{
+    dd->m_gerritPlugin->push(topLevel);
+}
+
+bool GitPlugin::isCommitEditorOpen()
+{
+    return dd->isCommitEditorOpen();
 }
 
 #ifdef WITH_TESTS
@@ -1728,7 +2062,7 @@ void GitPlugin::testDiffFileResolving_data()
 
 void GitPlugin::testDiffFileResolving()
 {
-    VcsBaseEditorWidget::testDiffFileResolving(editorParameters[3].id);
+    VcsBaseEditorWidget::testDiffFileResolving(dd->commitTextEditorFactory);
 }
 
 void GitPlugin::testLogResolving()
@@ -1754,7 +2088,7 @@ void GitPlugin::testLogResolving()
                 "    Signed-off-by: Junio C Hamano <gitster@pobox.com>\n"
                 );
 
-    VcsBaseEditorWidget::testLogResolving(editorParameters[1].id, data,
+    VcsBaseEditorWidget::testLogResolving(dd->logEditorFactory, data,
                             "50a6b54c - Merge branch 'for-junio' of git://bogomips.org/git-svn",
                             "3587b513 - Update draft release notes to 1.8.2");
 }
@@ -1874,3 +2208,5 @@ void GitPlugin::testGitRemote()
 
 } // namespace Internal
 } // namespace Git
+
+#include "gitplugin.moc"

@@ -360,6 +360,8 @@ void ProjectTreeWidget::rowsInserted(const QModelIndex &parent, int start, int e
 
 Node *ProjectTreeWidget::nodeForFile(const FilePath &fileName)
 {
+    if (fileName.isEmpty())
+        return nullptr;
     Node *bestNode = nullptr;
     int bestNodeExpandCount = INT_MAX;
 
@@ -428,6 +430,20 @@ void ProjectTreeWidget::setAutoSynchronization(bool sync)
 
     if (m_autoSync)
         syncFromDocumentManager();
+}
+
+void ProjectTreeWidget::expandNodeRecursively(const QModelIndex &index)
+{
+    const int rc = index.model()->rowCount(index);
+    for (int i = 0; i < rc; ++i)
+        expandNodeRecursively(index.model()->index(i, index.column(), index));
+    if (rc > 0)
+        m_view->expand(index);
+}
+
+void ProjectTreeWidget::expandCurrentNodeRecursively()
+{
+    expandNodeRecursively(m_view->currentIndex());
 }
 
 void ProjectTreeWidget::collapseAll()

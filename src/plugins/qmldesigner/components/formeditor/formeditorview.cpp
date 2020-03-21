@@ -27,7 +27,6 @@
 #include "nodeinstanceview.h"
 #include "selectiontool.h"
 #include "movetool.h"
-#include "option3daction.h"
 #include "resizetool.h"
 #include "dragtool.h"
 #include "formeditorwidget.h"
@@ -87,12 +86,6 @@ void FormEditorView::modelAttached(Model *model)
         setupFormEditorItemTree(rootModelNode());
 
     m_formEditorWidget->updateActions();
-    m_formEditorWidget->option3DAction()->set3DEnabled(rootModelNode().hasAuxiliaryData("3d-view"));
-
-    // disable option3DAction if no View3D(s) exists in attached model
-    const QList<ModelNode> views3D = rootModelNode().subModelNodesOfType("QtQuick3D.View3D");
-    if (views3D.size() == 0)
-        m_formEditorWidget->option3DAction()->setEnabled(false);
 
     if (!rewriterView()->errors().isEmpty())
         m_formEditorWidget->showErrorMessageBox(rewriterView()->errors());
@@ -125,6 +118,13 @@ void FormEditorView::setupFormEditorItemTree(const QmlItemNode &qmlItemNode)
             }
     } else if (qmlItemNode.isFlowView() && qmlItemNode.isRootNode()) {
         m_scene->addFormEditorItem(qmlItemNode, FormEditorScene::Flow);
+
+        ModelNode node = qmlItemNode.modelNode();
+        if (!node.hasAuxiliaryData("width") && !node.hasAuxiliaryData("height")) {
+            node.setAuxiliaryData("width", 10000);
+            node.setAuxiliaryData("height", 10000);
+        }
+
         for (const QmlObjectNode &nextNode : qmlItemNode.allDirectSubNodes()) {
             if (QmlItemNode::isValidQmlItemNode(nextNode) && nextNode.toQmlItemNode().isFlowItem()) {
                 setupFormEditorItemTree(nextNode.toQmlItemNode());
@@ -206,7 +206,6 @@ void FormEditorView::createFormEditorWidget()
     });
 
     connect(m_formEditorWidget->showBoundingRectAction(), &QAction::toggled, scene(), &FormEditorScene::setShowBoundingRects);
-    connect(m_formEditorWidget->option3DAction(), &Option3DAction::enabledChanged, this, &FormEditorView::toggle3DViewEnabled);
     connect(m_formEditorWidget->resetAction(), &QAction::triggered, this, &FormEditorView::resetNodeInstanceView);
 }
 
@@ -229,9 +228,6 @@ void FormEditorView::nodeCreated(const ModelNode &node)
         setupFormEditorItemTree(QmlItemNode(node));
     else if (QmlVisualNode::isFlowTransition(node))
         setupFormEditorItemTree(QmlItemNode(node));
-
-    if (node.isSubclassOf("QtQuick3D.Node"))
-        m_formEditorWidget->option3DAction()->setEnabled(true);
 }
 
 void FormEditorView::modelAboutToBeDetached(Model *model)
@@ -263,13 +259,6 @@ void FormEditorView::nodeAboutToBeRemoved(const ModelNode &removedNode)
     const QmlItemNode qmlItemNode(removedNode);
 
     removeNodeFromScene(qmlItemNode);
-
-    const QList<ModelNode> nodes3D = rootModelNode().subModelNodesOfType("QtQuick3D.Node");
-
-    // if no more 3D Nodes exist after the node removal, disable option3DAction
-    bool hasView3D = nodes3D.size() > 1 || (nodes3D.size() == 1 && nodes3D[0] != removedNode);
-    if (!hasView3D)
-        m_formEditorWidget->option3DAction()->setEnabled(false);
 }
 
 void FormEditorView::rootNodeTypeChanged(const QString &/*type*/, int /*majorVersion*/, int /*minorVersion*/)
@@ -369,6 +358,7 @@ void FormEditorView::selectedNodesChanged(const QList<ModelNode> &selectedNodeLi
 
 void FormEditorView::bindingPropertiesChanged(const QList<BindingProperty> &propertyList, AbstractView::PropertyChangeFlags propertyChange)
 {
+    Q_UNUSED(propertyChange)
     for (const BindingProperty &property : propertyList) {
         QmlVisualNode node(property.parentModelNode());
         if (node.isFlowTransition()) {
@@ -383,7 +373,9 @@ void FormEditorView::bindingPropertiesChanged(const QList<BindingProperty> &prop
             if (target.modelNode().isValid() && target.isFlowTransition()) {
                 FormEditorItem *item = m_scene->itemForQmlItemNode(target.toQmlItemNode());
                 if (item) {
-                    m_scene->reparentItem(node.toQmlItemNode(), node.toQmlItemNode().modelParentItem());
+                    const QmlItemNode itemNode = node.toQmlItemNode();
+                    if (itemNode.hasNodeParent())
+                        m_scene->reparentItem(itemNode, itemNode.modelParentItem());
                     m_scene->synchronizeTransformation(item);
                     item->update();
                 }
@@ -501,6 +493,7 @@ void FormEditorView::changeCurrentToolTo(AbstractFormEditorTool *newTool)
     m_currentTool->clear();
     m_currentTool->setItems(scene()->itemsForQmlItemNodes(toQmlItemNodeList(
         selectedModelNodes())));
+
     m_currentTool->start();
 }
 
@@ -523,13 +516,14 @@ void FormEditorView::auxiliaryDataChanged(const ModelNode &node, const PropertyN
             if (isInvisible)
                 newNode.deselectNode();
         }
-    } else if (name == "3d-view") {
-        DesignerSettings::setValue(DesignerSettingsKey::VIEW_3D_ACTIVE, data);
-        m_formEditorWidget->option3DAction()->set3DEnabled(data.toBool());
     } else if (item.isFlowTransition() || item.isFlowItem() || item.isFlowActionArea()) {
         FormEditorItem *editorItem = m_scene->itemForQmlItemNode(item);
         if (editorItem)
             editorItem->update();
+    } else if (name == "annotation" || name == "customId") {
+        if (FormEditorItem *editorItem = scene()->itemForQmlItemNode(item)) {
+            editorItem->update();
+        }
     }
 }
 
@@ -654,22 +648,6 @@ void FormEditorView::setGotoErrorCallback(std::function<void (int, int)> gotoErr
 void FormEditorView::exportAsImage()
 {
     m_formEditorWidget->exportAsImage(m_scene->rootFormEditorItem()->boundingRect());
-}
-
-void FormEditorView::toggle3DViewEnabled(bool enabled)
-{
-    QTC_ASSERT(model(), return);
-    QTC_ASSERT(rootModelNode().isValid(), return);
-
-    if (enabled)
-        rootModelNode().setAuxiliaryData("3d-view", true);
-    else
-        rootModelNode().removeAuxiliaryData("3d-view");
-
-    resetNodeInstanceView();
-
-    // TODO: the line below is not in use. It should replace the resetNodeInstanceView(); to have a clean API
-//    nodeInstanceView()->enable3DView(enabled);
 }
 
 QmlItemNode findRecursiveQmlItemNode(const QmlObjectNode &firstQmlObjectNode)

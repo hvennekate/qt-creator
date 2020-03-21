@@ -26,6 +26,7 @@
 #pragma once
 
 #include "curveeditorstyle.h"
+#include "handleitem.h"
 #include "keyframe.h"
 #include "selectableitem.h"
 
@@ -34,8 +35,6 @@
 namespace DesignTools {
 
 class HandleItem;
-
-enum class HandleSlot { Undefined, Left, Right };
 
 class KeyframeItem : public SelectableItem
 {
@@ -46,7 +45,7 @@ signals:
 
     void keyframeMoved(KeyframeItem *item, const QPointF &direction);
 
-    void handleMoved(KeyframeItem *frame, HandleSlot handle, double angle, double deltaLength);
+    void handleMoved(KeyframeItem *frame, HandleItem::Slot slot, double angle, double deltaLength);
 
 public:
     KeyframeItem(QGraphicsItem *parent = nullptr);
@@ -63,13 +62,17 @@ public:
 
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 
+    void lockedCallback() override;
+
     Keyframe keyframe() const;
 
     bool hasLeftHandle() const;
 
     bool hasRightHandle() const;
 
-    HandleSlot handleSlot(HandleItem *item) const;
+    QTransform transform() const;
+
+    bool contains(HandleItem *handle, const QPointF &point) const;
 
     void setHandleVisibility(bool visible);
 
@@ -87,7 +90,7 @@ public:
 
     void moveKeyframe(const QPointF &direction);
 
-    void moveHandle(HandleSlot handle, double deltaAngle, double deltaLength);
+    void moveHandle(HandleItem::Slot slot, double deltaAngle, double deltaLength);
 
 protected:
     QVariant itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value) override;

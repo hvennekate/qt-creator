@@ -46,6 +46,7 @@
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
 
+#include <QDebug>
 #include <QTextDocument>
 #include <QThreadPool>
 
@@ -162,6 +163,11 @@ protected:
         m_stateNames += strLit->value.toString();
 
         return false;
+    }
+
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth while visitin AST in CollectStateNames");
     }
 };
 
@@ -453,6 +459,11 @@ protected:
         }
     }
 
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit Maximum recursion depth when visiting AST in CollectionTask");
+    }
+
 private:
     void addUse(const SourceLocation &location, SemanticHighlighter::UseType type)
     {
@@ -610,7 +621,7 @@ void SemanticHighlighter::reportMessagesInfo(const QVector<QTextLayout::FormatRa
     // but will use them only after a signal sent by that same thread, maybe we should transfer
     // them more explicitly
     m_extraFormats = formats;
-    m_extraFormats.unite(m_formats);
+    Utils::addToHash(&m_extraFormats, m_formats);
     m_diagnosticRanges = diagnosticRanges;
 }
 

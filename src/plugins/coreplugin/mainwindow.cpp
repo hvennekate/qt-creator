@@ -197,31 +197,6 @@ MainWindow::MainWindow()
             this, &MainWindow::openDroppedFiles);
 }
 
-// Edit View 3D needs to know when the main window's state or activation change
-void MainWindow::changeEvent(QEvent *event)
-{
-    if (event->type() == QEvent::WindowStateChange) {
-        emit m_coreImpl->windowStateChanged(m_previousWindowStates, windowState());
-        m_previousWindowStates = windowState();
-    } else if (event->type() == QEvent::ActivationChange) {
-        // check the last 3 children for a possible active window
-        auto rIter = children().rbegin();
-        bool hasPopup = false;
-        for (int i = 0; i < 3; ++i) {
-            if (rIter < children().rend()) {
-                auto child = qobject_cast<QWidget *>(*(rIter++));
-                if (child && child->isActiveWindow()) {
-                    hasPopup = true;
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-        emit m_coreImpl->windowActivationChanged(isActiveWindow(), hasPopup);
-    }
-}
-
 NavigationWidget *MainWindow::navigationWidget(Side side) const
 {
     return side == Side::Left ? m_leftNavigationWidget : m_rightNavigationWidget;
@@ -449,6 +424,12 @@ void MainWindow::registerDefaultContainers()
     medit->appendGroup(Constants::G_EDIT_FIND);
     medit->appendGroup(Constants::G_EDIT_OTHER);
 
+    ActionContainer *mview = ActionManager::createMenu(Constants::M_VIEW);
+    menubar->addMenu(mview, Constants::G_VIEW);
+    mview->menu()->setTitle(tr("&View"));
+    mview->appendGroup(Constants::G_VIEW_VIEWS);
+    mview->appendGroup(Constants::G_VIEW_PANES);
+
     // Tools Menu
     ActionContainer *ac = ActionManager::createMenu(Constants::M_TOOLS);
     menubar->addMenu(ac, Constants::G_TOOLS);
@@ -459,8 +440,6 @@ void MainWindow::registerDefaultContainers()
     menubar->addMenu(mwindow, Constants::G_WINDOW);
     mwindow->menu()->setTitle(tr("&Window"));
     mwindow->appendGroup(Constants::G_WINDOW_SIZE);
-    mwindow->appendGroup(Constants::G_WINDOW_VIEWS);
-    mwindow->appendGroup(Constants::G_WINDOW_PANES);
     mwindow->appendGroup(Constants::G_WINDOW_SPLIT);
     mwindow->appendGroup(Constants::G_WINDOW_NAVIGATE);
     mwindow->appendGroup(Constants::G_WINDOW_LIST);
@@ -490,6 +469,7 @@ void MainWindow::registerDefaultActions()
 {
     ActionContainer *mfile = ActionManager::actionContainer(Constants::M_FILE);
     ActionContainer *medit = ActionManager::actionContainer(Constants::M_EDIT);
+    ActionContainer *mview = ActionManager::actionContainer(Constants::M_VIEW);
     ActionContainer *mtools = ActionManager::actionContainer(Constants::M_TOOLS);
     ActionContainer *mwindow = ActionManager::actionContainer(Constants::M_WINDOW);
     ActionContainer *mhelp = ActionManager::actionContainer(Constants::M_HELP);
@@ -665,7 +645,10 @@ void MainWindow::registerDefaultActions()
                                            : Utils::Icons::ZOOMOUT_TOOLBAR.icon();
     tmpaction = new QAction(icon, tr("Zoom Out"), this);
     cmd = ActionManager::registerAction(tmpaction, Constants::ZOOM_OUT);
-    cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+-")));
+    if (useMacShortcuts)
+        cmd->setDefaultKeySequences({QKeySequence(tr("Ctrl+-")), QKeySequence(tr("Ctrl+Shift+-"))});
+    else
+        cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+-")));
     tmpaction->setEnabled(false);
 
     // Zoom Reset Action
@@ -739,7 +722,7 @@ void MainWindow::registerDefaultActions()
     ProxyAction *toggleLeftSideBarProxyAction =
             ProxyAction::proxyActionWithIcon(cmd->action(), Utils::Icons::TOGGLE_LEFT_SIDEBAR_TOOLBAR.icon());
     m_toggleLeftSideBarButton->setDefaultAction(toggleLeftSideBarProxyAction);
-    mwindow->addAction(cmd, Constants::G_WINDOW_VIEWS);
+    mview->addAction(cmd, Constants::G_VIEW_VIEWS);
     m_toggleLeftSideBarAction->setEnabled(false);
 
     // Show Right Sidebar Action
@@ -755,14 +738,14 @@ void MainWindow::registerDefaultActions()
     ProxyAction *toggleRightSideBarProxyAction =
             ProxyAction::proxyActionWithIcon(cmd->action(), Utils::Icons::TOGGLE_RIGHT_SIDEBAR_TOOLBAR.icon());
     m_toggleRightSideBarButton->setDefaultAction(toggleRightSideBarProxyAction);
-    mwindow->addAction(cmd, Constants::G_WINDOW_VIEWS);
+    mview->addAction(cmd, Constants::G_VIEW_VIEWS);
     m_toggleRightSideBarButton->setEnabled(false);
 
     registerModeSelectorStyleActions();
 
     // Window->Views
-    ActionContainer *mviews = ActionManager::createMenu(Constants::M_WINDOW_VIEWS);
-    mwindow->addMenu(mviews, Constants::G_WINDOW_VIEWS);
+    ActionContainer *mviews = ActionManager::createMenu(Constants::M_VIEW_VIEWS);
+    mview->addMenu(mviews, Constants::G_VIEW_VIEWS);
     mviews->menu()->setTitle(tr("&Views"));
 
     // "Help" separators
@@ -806,7 +789,7 @@ void MainWindow::registerDefaultActions()
 
 void MainWindow::registerModeSelectorStyleActions()
 {
-    ActionContainer *mwindow = ActionManager::actionContainer(Constants::M_WINDOW);
+    ActionContainer *mview = ActionManager::actionContainer(Constants::M_VIEW);
 
     // Cycle Mode Selector Styles
     m_cycleModeSelectorStyleAction = new QAction(tr("Cycle Mode Selector Styles"), this);
@@ -817,8 +800,8 @@ void MainWindow::registerModeSelectorStyleActions()
     });
 
     // Mode Selector Styles
-    ActionContainer *mmodeLayouts = ActionManager::createMenu(Constants::M_WINDOW_MODESTYLES);
-    mwindow->addMenu(mmodeLayouts, Constants::G_WINDOW_VIEWS);
+    ActionContainer *mmodeLayouts = ActionManager::createMenu(Constants::M_VIEW_MODESTYLES);
+    mview->addMenu(mmodeLayouts, Constants::G_VIEW_VIEWS);
     QMenu *styleMenu = mmodeLayouts->menu();
     styleMenu->setTitle(tr("Mode Selector Style"));
     auto *stylesGroup = new QActionGroup(styleMenu);
@@ -854,7 +837,9 @@ static IDocumentFactory *findDocumentFactory(const QList<IDocumentFactory*> &fil
     });
 }
 
-/*! Either opens \a fileNames with editors or loads a project.
+/*!
+ * \internal
+ * Either opens \a fileNames with editors or loads a project.
  *
  *  \a flags can be used to stop on first failure, indicate that a file name
  *  might include line numbers and/or switch mode to edit mode.
@@ -862,7 +847,7 @@ static IDocumentFactory *findDocumentFactory(const QList<IDocumentFactory*> &fil
  *  \a workingDirectory is used when files are opened by a remote client, since
  *  the file names are relative to the client working directory.
  *
- *  \returns the first opened document. Required to support the -block flag
+ *  Returns the first opened document. Required to support the \c -block flag
  *  for client mode.
  *
  *  \sa IPlugin::remoteArguments()

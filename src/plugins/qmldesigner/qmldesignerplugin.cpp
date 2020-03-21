@@ -37,6 +37,7 @@
 #include <connectionview.h>
 #include <sourcetool/sourcetool.h>
 #include <colortool/colortool.h>
+#include <annotationeditor/annotationtool.h>
 #include <texttool/texttool.h>
 #include <timelineeditor/timelineview.h>
 #include <pathtool/pathtool.h>
@@ -74,6 +75,7 @@
 #include <QProcessEnvironment>
 #include <QScreen>
 #include <QWindow>
+#include <QApplication>
 
 static Q_LOGGING_CATEGORY(qmldesignerLog, "qtc.qmldesigner", QtWarningMsg)
 
@@ -237,6 +239,7 @@ bool QmlDesignerPlugin::delayedInitialize()
 
     d->viewManager.registerFormEditorToolTakingOwnership(new QmlDesigner::SourceTool);
     d->viewManager.registerFormEditorToolTakingOwnership(new QmlDesigner::ColorTool);
+    d->viewManager.registerFormEditorToolTakingOwnership(new QmlDesigner::AnnotationTool);
     d->viewManager.registerFormEditorToolTakingOwnership(new QmlDesigner::TextTool);
     d->viewManager.registerFormEditorToolTakingOwnership(new QmlDesigner::PathTool);
 
@@ -249,16 +252,6 @@ void QmlDesignerPlugin::extensionsInitialized()
     // delay after Core plugin's extensionsInitialized, so the DesignMode is availabe
     connect(Core::ICore::instance(), &Core::ICore::coreAboutToOpen, this, [this] {
         integrateIntoQtCreator(&d->mainWidget);
-    });
-
-    connect(Core::ICore::instance(), &Core::ICore::windowStateChanged, this,
-            [this] (Qt::WindowStates previousStates, Qt::WindowStates currentStates) {
-        d->viewManager.nodeInstanceView()->mainWindowStateChanged(previousStates, currentStates);
-    });
-
-    connect(Core::ICore::instance(), &Core::ICore::windowActivationChanged, this,
-            [this] (bool isActive, bool hasPopup) {
-        d->viewManager.nodeInstanceView()->mainWindowActiveChanged(isActive, hasPopup);
     });
 }
 
@@ -294,14 +287,17 @@ void QmlDesignerPlugin::integrateIntoQtCreator(QWidget *modeWidget)
     Core::ICore::addContextObject(d->context);
     Core::Context qmlDesignerMainContext(Constants::C_QMLDESIGNER);
     Core::Context qmlDesignerFormEditorContext(Constants::C_QMLFORMEDITOR);
+    Core::Context qmlDesignerEditor3dContext(Constants::C_QMLEDITOR3D);
     Core::Context qmlDesignerNavigatorContext(Constants::C_QMLNAVIGATOR);
 
     d->context->context().add(qmlDesignerMainContext);
     d->context->context().add(qmlDesignerFormEditorContext);
+    d->context->context().add(qmlDesignerEditor3dContext);
     d->context->context().add(qmlDesignerNavigatorContext);
     d->context->context().add(ProjectExplorer::Constants::QMLJS_LANGUAGE_ID);
 
-    d->shortCutManager.registerActions(qmlDesignerMainContext, qmlDesignerFormEditorContext, qmlDesignerNavigatorContext);
+    d->shortCutManager.registerActions(qmlDesignerMainContext, qmlDesignerFormEditorContext,
+                                       qmlDesignerEditor3dContext, qmlDesignerNavigatorContext);
 
     const QStringList mimeTypes = { QmlJSTools::Constants::QML_MIMETYPE,
                                     QmlJSTools::Constants::QMLUI_MIMETYPE };

@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import LineGeometry 1.0
 
 Node {
@@ -43,7 +43,7 @@ Node {
             DefaultMaterial {
                 id: lineMat
                 lighting: DefaultMaterial.NoLighting
-                cullingMode: Material.DisableCulling
+                cullMode: Material.NoCulling
             }
         ]
     }

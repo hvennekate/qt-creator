@@ -6,30 +6,17 @@ language                = Cpp
 headerdirs              = . \
                           ../src \
                           ../../../src/libs/aggregation \
-                          ../../../src/libs/cplusplus \
                           ../../../src/libs/extensionsystem \
-                          ../../../src/libs/utils \
-                          ../../../src/libs/qmljs \
-                          ../../../src/libs/qtcreatorcdbext \
-                          ../../../src/plugins/coreplugin \
-                          ../../../src/plugins/debugger \
-                          ../../../src/plugins/vcsbase \
-                          ../../../src/plugins/projectexplorer \
-                          ../../../src/plugins/texteditor
+                          ../../../src/plugins/coreplugin
 
 sourcedirs              = . \
                           ../src \
                           ../../../src/libs/aggregation \
-                          ../../../src/libs/cplusplus \
                           ../../../src/libs/extensionsystem \
-                          ../../../src/libs/utils \
-                          ../../../src/libs/qmljs \
-                          ../../../src/libs/qtcreatorcdbext \
-                          ../../../src/plugins/coreplugin \
-                          ../../../src/plugins/debugger \
-                          ../../../src/plugins/vcsbase \
-                          ../../../src/plugins/projectexplorer\
-                          ../../../src/plugins/texteditor
+                          ../../../src/plugins/coreplugin
+
+
+excludedirs             = ../../../src/libs/aggregation/examples
 
 # -- Uncomment following option to generate complete documentation
 #    instead of public API documentation only.
@@ -39,7 +26,8 @@ headers.fileextensions  = "*.h"
 sources.fileextensions  = "*.cpp *.qdoc"
 
 imagedirs = ../images \
-            ../../config/images
+            ../../config/images \
+            ../../qtcreator/images
 exampledirs = ../examples
 
 depends +=    qtwidgets \
@@ -55,8 +43,8 @@ depends +=    qtwidgets \
               qtlinguist \
               qtsensors \
               qtuitools \
-              qtwebkit \
-              qtxml
+              qtxml \
+              qttestlib
 
 include(../../config/macros.qdocconf)
 include(../../config/qt-cpp-ignore.qdocconf)

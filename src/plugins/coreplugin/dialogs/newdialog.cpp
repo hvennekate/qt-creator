@@ -181,8 +181,6 @@ NewDialog::NewDialog(QWidget *parent) :
 
     m_currentDialog = this;
 
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-    setWindowFlags(windowFlags());
     setAttribute(Qt::WA_DeleteOnClose);
     ICore::registerWindow(this, Context("Core.NewDialog"));
     m_ui->setupUi(this);
@@ -200,7 +198,7 @@ NewDialog::NewDialog(QWidget *parent) :
 
     m_ui->templateCategoryView->setModel(m_filterProxyModel);
     m_ui->templateCategoryView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_ui->templateCategoryView->setItemDelegate(new FancyTopLevelDelegate);
+    m_ui->templateCategoryView->setItemDelegate(new FancyTopLevelDelegate(this));
 
     m_ui->templatesView->setModel(m_filterProxyModel);
     m_ui->templatesView->setIconSize(QSize(ICON_SIZE, ICON_SIZE));

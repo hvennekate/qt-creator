@@ -24,7 +24,7 @@
 ****************************************************************************/
 
 import QtQuick 2.0
-import QtQuick3D 1.0
+import QtQuick3D 1.15
 import GridGeometry 1.0
 
 Node {
@@ -32,11 +32,13 @@ Node {
 
     property alias lines: gridGeometry.lines
     property alias step: gridGeometry.step
+    property alias subdivAlpha: subGridMaterial.opacity
 
-    rotation.x: 90
+    eulerRotation.x: 90
 
     // Note: Only one instance of HelperGrid is supported, as the geometry names are fixed
-    Model {
+
+    Model { // Main grid lines
         geometry: GridGeometry {
             id: gridGeometry
             name: "3D Edit View Helper Grid"
@@ -45,13 +47,32 @@ Node {
         materials: [
             DefaultMaterial {
                 id: mainGridMaterial
-                emissiveColor: "#cccccc"
+                emissiveColor: "#aaaaaa"
                 lighting: DefaultMaterial.NoLighting
-                cullingMode: Material.DisableCulling
+                cullMode: Material.NoCulling
             }
         ]
     }
-    Model {
+
+    Model { // Subdivision lines
+        geometry: GridGeometry {
+            lines: gridGeometry.lines
+            step: gridGeometry.step
+            isSubdivision: true
+            name: "3D Edit View Helper Grid subdivisions"
+        }
+
+        materials: [
+            DefaultMaterial {
+                id: subGridMaterial
+                emissiveColor: mainGridMaterial.emissiveColor
+                lighting: DefaultMaterial.NoLighting
+                cullMode: Material.NoCulling
+            }
+        ]
+    }
+
+    Model { // Z Axis
         geometry: GridGeometry {
             lines: gridGeometry.lines
             step: gridGeometry.step
@@ -63,12 +84,12 @@ Node {
                 id: vCenterLineMaterial
                 emissiveColor: "#00a1d2"
                 lighting: DefaultMaterial.NoLighting
-                cullingMode: Material.DisableCulling
+                cullMode: Material.NoCulling
             }
         ]
     }
-    Model {
-        rotation.z: 90
+    Model { // X Axis
+        eulerRotation.z: 90
         geometry: GridGeometry {
             lines: gridGeometry.lines
             step: gridGeometry.step
@@ -80,7 +101,7 @@ Node {
                 id: hCenterLineMaterial
                 emissiveColor: "#cb211a"
                 lighting: DefaultMaterial.NoLighting
-                cullingMode: Material.DisableCulling
+                cullMode: Material.NoCulling
             }
         ]
     }

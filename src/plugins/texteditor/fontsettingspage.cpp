@@ -108,7 +108,7 @@ private:
 
 class FontSettingsPageWidget : public Core::IOptionsPageWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(TextEditor::FontSettingsPage)
+    Q_DECLARE_TR_FUNCTIONS(TextEditor::FontSettingsPageWidget)
 
 public:
     FontSettingsPageWidget(FontSettingsPage *q, const FormatDescriptions &fd, FontSettings *fontSettings)
@@ -360,6 +360,8 @@ void FontSettingsPageWidget::fontSelected(const QFont &font)
     m_ui.schemeEdit->setBaseFont(font);
     updatePointSizes();
 }
+
+namespace Internal {
 
 void FontSettingsPageWidget::updatePointSizes()
 {
@@ -621,6 +623,8 @@ void FontSettingsPageWidget::finish()
     m_value = m_lastValue;
 }
 
+} // namespace Internal
+
 // FontSettingsPage
 
 FontSettingsPage::FontSettingsPage(FontSettings *fontSettings, const FormatDescriptions &fd)
@@ -642,9 +646,8 @@ FontSettingsPage::FontSettingsPage(FontSettings *fontSettings, const FormatDescr
 
 void FontSettingsPage::setFontZoom(int zoom)
 {
-    auto w = static_cast<FontSettingsPageWidget *>(widget());
-    w->m_ui.zoomSpinBox->setValue(zoom);
-    w->saveSettings();
+    if (m_widget)
+        static_cast<FontSettingsPageWidget *>(m_widget.data())->m_ui.zoomSpinBox->setValue(zoom);
 }
 
 } // TextEditor

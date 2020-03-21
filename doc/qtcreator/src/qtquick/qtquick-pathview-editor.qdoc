@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -27,11 +27,7 @@
     \contentspage index.html
     \page qmldesigner-pathview-editor.html
     \previouspage quick-states.html
-    \if defined(qtdesignstudio)
     \nextpage studio-3d.html
-    \else
-    \nextpage qtquick-iso-icon-browser.html
-    \endif
 
     \title Editing PathView Properties
 
@@ -59,7 +55,7 @@
     To add intermediary points to a curve segment, select \uicontrol {Split Segment}
     in the context menu.
 
-    In the \uicontrol Properties pane, you can specify other properties for
+    In the \uicontrol Properties view, you can specify other properties for
     the path view. For example, what is the maximum distance from the path that
     initiates mouse dragging and what is the rate at which a flick will
     decelerate.

@@ -28,8 +28,6 @@
 #include "testtreeitem.h"
 #include "itestparser.h"
 
-namespace Core { class IOptionsPage; }
-
 namespace Autotest {
 
 class IFrameworkSettings;
@@ -40,23 +38,18 @@ public:
     explicit ITestFramework(bool activeByDefault) : m_active(activeByDefault) {}
     virtual ~ITestFramework()
     {
-        delete m_rootNode;
         delete m_testParser;
     }
 
     virtual const char *name() const = 0;
     virtual unsigned priority() const = 0;          // should this be modifyable?
-    virtual bool hasFrameworkSettings() const { return false; }
-    virtual IFrameworkSettings *createFrameworkSettings() const { return nullptr; }
-    virtual Core::IOptionsPage *createSettingsPage(QSharedPointer<IFrameworkSettings> settings) const
-    {
-        Q_UNUSED(settings)
-        return nullptr;
-    }
+
+    virtual IFrameworkSettings *frameworkSettings() { return nullptr; }
 
     TestTreeItem *rootNode()
     {   if (!m_rootNode)
             m_rootNode = createRootNode();
+        // These are stored in the TestTreeModel and destroyed on shutdown there.
         return m_rootNode;
     }
 
@@ -69,14 +62,27 @@ public:
 
     Core::Id settingsId() const;
 
+    Core::Id id() const { return Core::Id(Constants::FRAMEWORK_PREFIX).withSuffix(name()); }
+
     bool active() const { return m_active; }
     void setActive(bool active) { m_active = active; }
     bool grouping() const { return m_grouping; }
     void setGrouping(bool group) { m_grouping = group; }
     // framework specific tool tip to be displayed on the general settings page
     virtual QString groupingToolTip() const { return QString(); }
+
+    void resetRootNode()
+    {
+        if (!m_rootNode)
+            return;
+        if (m_rootNode->model())
+            static_cast<TestTreeModel *>(m_rootNode->model())->takeItem(m_rootNode);
+        delete m_rootNode;
+        m_rootNode = nullptr;
+    }
+
 protected:
-    virtual ITestParser *createTestParser() const = 0;
+    virtual ITestParser *createTestParser() = 0;
     virtual TestTreeItem *createRootNode() const = 0;
 
 private:
@@ -85,5 +91,7 @@ private:
     bool m_active = false;
     bool m_grouping = false;
 };
+
+using TestFrameworks = QList<ITestFramework *>;
 
 } // namespace Autotest

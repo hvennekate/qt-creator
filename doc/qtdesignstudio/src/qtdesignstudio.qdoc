@@ -62,6 +62,7 @@
                     \li \l{Managing Item Hierarchy}
                     \li \l{Specifying Item Properties}
                     \li \l{Using Custom Fonts}
+                    \li \l{Annotating Designs}
                 \endlist
         \li \b {\l{Adding Dynamics}}
             \list
@@ -107,8 +108,9 @@
         \row
             \li {4,1} \l{All Topics}
         \row
-            \li {4,1} \note To report bugs and suggestions to the Qt Bug
-                Tracker, select \uicontrol {Help > Report Bug}.
+            \li {4,1} \note To report bugs and suggestions to the
+                \l{https://bugreports.qt.io/}{Qt Project Bug Tracker},
+                select \uicontrol {Help > Report Bug}.
                 To copy and paste detailed information about your system to the
                 bug report, select \uicontrol Help >
                 \uicontrol {System Information}.

@@ -28,7 +28,7 @@ source("../../shared/qtcreator.py")
 def main():
     # prepare example project
     projectName = "adding"
-    sourceExample = os.path.join(Qt5Path.examplesPath(Targets.DESKTOP_5_6_1_DEFAULT),
+    sourceExample = os.path.join(Qt5Path.examplesPath(Targets.DESKTOP_5_14_1_DEFAULT),
                                  "qml", "referenceexamples", "adding")
     proFile = projectName + ".pro"
     if not neededFilePresent(os.path.join(sourceExample, proFile)):
@@ -96,15 +96,11 @@ def renameFile(projectDir, proFile, branch, oldname, newname):
         itemWithWildcard = addBranchWildcardToRoot(itemText)
         waitForObjectItem(treeview, itemWithWildcard, 10000)
         openItemContextMenu(treeview, itemWithWildcard, 5, 5, 0)
-    # hack for Squish5/Qt5.2 problems of handling menus on Mac - remove asap
-    if platform.system() == 'Darwin':
-        waitFor("macHackActivateContextMenuItem('Rename...')", 5000)
+    if oldname.lower().endswith(".qrc"):
+        menu = ":Qt Creator.Project.Menu.Folder_QMenu"
     else:
-        if oldname.lower().endswith(".qrc"):
-            menu = ":Qt Creator.Project.Menu.Folder_QMenu"
-        else:
-            menu = ":Qt Creator.Project.Menu.File_QMenu"
-        activateItem(waitForObjectItem(menu, "Rename..."))
+        menu = ":Qt Creator.Project.Menu.File_QMenu"
+    activateItem(waitForObjectItem(menu, "Rename..."))
     replaceEdit = waitForObject(":Qt Creator_Utils::NavigationTreeView::QExpandingLineEdit")
     test.compare(replaceEdit.selectedText, oldname.rsplit(".", 1)[0],
                  "Only the filename without the extension is selected?")

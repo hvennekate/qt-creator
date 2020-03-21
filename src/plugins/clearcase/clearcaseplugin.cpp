@@ -60,11 +60,14 @@
 #include <utils/hostosinfo.h>
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
+
 #include <vcsbase/basevcseditorfactory.h>
 #include <vcsbase/basevcssubmiteditorfactory.h>
 #include <vcsbase/vcsbaseeditor.h>
+#include <vcsbase/vcscommand.h>
 #include <vcsbase/vcsoutputwindow.h>
 #include <vcsbase/vcsbasesubmiteditor.h>
+#include <vcsbase/vcsbaseplugin.h>
 
 #include <QAction>
 #include <QDebug>
@@ -85,7 +88,6 @@
 #include <QRegExp>
 #include <QSharedPointer>
 #include <QTextCodec>
-#include <QtPlugin>
 #include <QUrl>
 #include <QUuid>
 #include <QVariant>
@@ -100,6 +102,7 @@ using namespace Core;
 using namespace ProjectExplorer;
 using namespace VcsBase;
 using namespace Utils;
+using namespace std::placeholders;
 
 namespace ClearCase {
 namespace Internal {
@@ -121,34 +124,262 @@ static const char CMD_ID_UPDATE_VIEW[]        = "ClearCase.UpdateView";
 static const char CMD_ID_CHECKIN_ALL[]        = "ClearCase.CheckInAll";
 static const char CMD_ID_STATUS[]             = "ClearCase.Status";
 
-static const VcsBaseEditorParameters editorParameters[] = {
+class ClearCaseResponse
 {
+public:
+    bool error = false;
+    QString stdOut;
+    QString stdErr;
+    QString message;
+};
+
+const VcsBaseEditorParameters logEditorParameters {
     LogOutput,
     "ClearCase File Log Editor",   // id
     QT_TRANSLATE_NOOP("VCS", "ClearCase File Log Editor"),   // display_name
-    "text/vnd.qtcreator.clearcase.log"},
-{    AnnotateOutput,
-    "ClearCase Annotation Editor",  // id
-    QT_TRANSLATE_NOOP("VCS", "ClearCase Annotation Editor"),   // display_name
-    "text/vnd.qtcreator.clearcase.annotation"},
-{   DiffOutput,
-    "ClearCase Diff Editor",  // id
-    QT_TRANSLATE_NOOP("VCS", "ClearCase Diff Editor"),   // display_name
-    "text/x-patch"}
+    "text/vnd.qtcreator.clearcase.log"
 };
 
-// Utility to find a parameter set by type
-static const VcsBaseEditorParameters *findType(int ie)
-{
-    return VcsBaseEditor::findType(editorParameters,
-                                   sizeof(editorParameters)/sizeof(*editorParameters),
-                                   static_cast<EditorContentType>(ie));
-}
+const VcsBaseEditorParameters annotateEditorParameters {
+    AnnotateOutput,
+    "ClearCase Annotation Editor",  // id
+    QT_TRANSLATE_NOOP("VCS", "ClearCase Annotation Editor"),   // display_name
+    "text/vnd.qtcreator.clearcase.annotation"
+};
+
+const VcsBaseEditorParameters diffEditorParameters {
+    DiffOutput,
+    "ClearCase Diff Editor",  // id
+    QT_TRANSLATE_NOOP("VCS", "ClearCase Diff Editor"),   // display_name
+    "text/x-patch"
+};
+
+const VcsBaseSubmitEditorParameters submitParameters {
+    Constants::CLEARCASE_SUBMIT_MIMETYPE,
+    Constants::CLEARCASECHECKINEDITOR_ID,
+    Constants::CLEARCASECHECKINEDITOR_DISPLAY_NAME,
+    VcsBaseSubmitEditorParameters::DiffFiles
+};
 
 static QString debugCodec(const QTextCodec *c)
 {
     return c ? QString::fromLatin1(c->name()) : QString::fromLatin1("Null codec");
 }
+
+class ClearCasePluginPrivate final : public VcsBase::VcsBasePluginPrivate
+{
+    Q_OBJECT
+    enum { SilentRun = VcsBase::VcsCommand::NoOutput | VcsBase::VcsCommand::FullySynchronously };
+
+public:
+    ClearCasePluginPrivate();
+    ~ClearCasePluginPrivate() final;
+
+    // IVersionControl
+    QString displayName() const final;
+    Core::Id id() const final;
+
+    bool isVcsFileOrDirectory(const Utils::FilePath &fileName) const final;
+
+    bool managesDirectory(const QString &directory, QString *topLevel) const final;
+    bool managesFile(const QString &workingDirectory, const QString &fileName) const final;
+
+    bool isConfigured() const final;
+
+    bool supportsOperation(Operation operation) const final;
+    OpenSupportMode openSupportMode(const QString &fileName) const final;
+    bool vcsOpen(const QString &fileName) final;
+    SettingsFlags settingsFlags() const final;
+    bool vcsAdd(const QString &fileName) final;
+    bool vcsDelete(const QString &filename) final;
+    bool vcsMove(const QString &from, const QString &to) final;
+    bool vcsCreateRepository(const QString &directory) final;
+
+    bool vcsAnnotate(const QString &file, int line) final;
+
+    QString vcsOpenText() const final;
+    QString vcsMakeWritableText() const final;
+    QString vcsTopic(const QString &directory) final;
+
+    ///
+    ClearCaseSubmitEditor *openClearCaseSubmitEditor(const QString &fileName, bool isUcm);
+
+    const ClearCaseSettings &settings() const;
+    void setSettings(const ClearCaseSettings &s);
+
+    // IVersionControl
+    bool vcsOpen(const QString &workingDir, const QString &fileName);
+    bool vcsAdd(const QString &workingDir, const QString &fileName);
+    bool vcsDelete(const QString &workingDir, const QString &fileName);
+    bool vcsCheckIn(const QString &workingDir, const QStringList &files, const QString &activity,
+                    bool isIdentical, bool isPreserve, bool replaceActivity);
+    bool vcsUndoCheckOut(const QString &workingDir, const QString &fileName, bool keep);
+    bool vcsUndoHijack(const QString &workingDir, const QString &fileName, bool keep);
+    bool vcsMove(const QString &workingDir, const QString &from, const QString &to);
+    bool vcsSetActivity(const QString &workingDir, const QString &title, const QString &activity);
+
+    static ClearCasePluginPrivate *instance();
+
+    QString ccGetCurrentActivity() const;
+    QList<QStringPair> activities(int *current = nullptr);
+    QString ccGetPredecessor(const QString &version) const;
+    QStringList ccGetActiveVobs() const;
+    ViewData ccGetView(const QString &workingDir) const;
+    QString ccGetComment(const QString &workingDir, const QString &fileName) const;
+    bool ccFileOp(const QString &workingDir, const QString &title, const QStringList &args,
+                  const QString &fileName, const QString &file2 = QString());
+    FileStatus vcsStatus(const QString &file) const;
+    void checkAndReIndexUnknownFile(const QString &file);
+    QString currentView() const { return m_viewData.name; }
+    QString viewRoot() const { return m_viewData.root; }
+    void refreshActivities();
+    inline bool isUcm() const { return m_viewData.isUcm; }
+    inline bool isDynamic() const { return m_viewData.isDynamic; }
+    void setStatus(const QString &file, FileStatus::Status status, bool update = true);
+
+    bool ccCheckUcm(const QString &viewname, const QString &workingDir) const;
+#ifdef WITH_TESTS
+    inline void setFakeCleartool(const bool b = true) { m_fakeClearTool = b; }
+#endif
+
+    void vcsAnnotateHelper(const QString &workingDir, const QString &file,
+                           const QString &revision = QString(), int lineNumber = -1) const;
+    bool newActivity();
+    void updateStreamAndView();
+    void describe(const QString &source, const QString &changeNr);
+
+protected:
+    void updateActions(VcsBase::VcsBasePluginPrivate::ActionState) override;
+    bool submitEditorAboutToClose() override;
+    QString ccGet(const QString &workingDir, const QString &file, const QString &prefix = QString());
+    QList<QStringPair> ccGetActivities() const;
+
+private:
+    void syncSlot();
+    Q_INVOKABLE void updateStatusActions();
+
+    QString commitDisplayName() const final;
+    void checkOutCurrentFile();
+    void addCurrentFile();
+    void undoCheckOutCurrent();
+    void undoHijackCurrent();
+    void diffActivity();
+    void diffCurrentFile();
+    void startCheckInAll();
+    void startCheckInActivity();
+    void startCheckInCurrentFile();
+    void historyCurrentFile();
+    void annotateCurrentFile();
+    void viewStatus();
+    void commitFromEditor() override;
+    void diffCheckInFiles(const QStringList &);
+    void updateIndex();
+    void updateView();
+    void projectChanged(ProjectExplorer::Project *project);
+    void tasksFinished(Core::Id type);
+    void closing();
+
+    inline bool isCheckInEditorOpen() const;
+    QStringList getVobList() const;
+    QString ccManagesDirectory(const QString &directory) const;
+    QString ccViewRoot(const QString &directory) const;
+    QString findTopLevel(const QString &directory) const;
+    Core::IEditor *showOutputInEditor(const QString& title, const QString &output,
+                                      Id id, const QString &source,
+                                      QTextCodec *codec) const;
+    QString runCleartoolSync(const QString &workingDir, const QStringList &arguments) const;
+    ClearCaseResponse runCleartool(const QString &workingDir, const QStringList &arguments,
+                                   int timeOutS, unsigned flags,
+                                   QTextCodec *outputCodec = nullptr) const;
+    static void sync(QFutureInterface<void> &future, QStringList files);
+
+    void history(const QString &workingDir,
+                 const QStringList &file = QStringList(),
+                 bool enableAnnotationContextMenu = false);
+    QString ccGetFileVersion(const QString &workingDir, const QString &file) const;
+    void ccUpdate(const QString &workingDir, const QStringList &relativePaths = QStringList());
+    void ccDiffWithPred(const QString &workingDir, const QStringList &files);
+    void startCheckIn(const QString &workingDir, const QStringList &files = QStringList());
+    void cleanCheckInMessageFile();
+    QString ccGetFileActivity(const QString &workingDir, const QString &file);
+    QStringList ccGetActivityVersions(const QString &workingDir, const QString &activity);
+    void diffGraphical(const QString &file1, const QString &file2 = QString());
+    QString diffExternal(QString file1, QString file2 = QString(), bool keep = false);
+    QString getFile(const QString &nativeFile, const QString &prefix);
+    static void rmdir(const QString &path);
+    QString runExtDiff(const QString &workingDir, const QStringList &arguments, int timeOutS,
+                       QTextCodec *outputCodec = nullptr);
+    static QString getDriveLetterOfPath(const QString &directory);
+
+    FileStatus::Status getFileStatus(const QString &fileName) const;
+    void updateStatusForFile(const QString &absFile);
+    void updateEditDerivedObjectWarning(const QString &fileName, const FileStatus::Status status);
+
+    ClearCaseSettings m_settings;
+
+    QString m_checkInMessageFileName;
+    QString m_checkInView;
+    QString m_topLevel;
+    QString m_stream;
+    ViewData m_viewData;
+    QString m_intStream;
+    QString m_activity;
+    QString m_diffPrefix;
+
+    Core::CommandLocator *m_commandLocator = nullptr;
+    Utils::ParameterAction *m_checkOutAction = nullptr;
+    Utils::ParameterAction *m_checkInCurrentAction = nullptr;
+    Utils::ParameterAction *m_undoCheckOutAction = nullptr;
+    Utils::ParameterAction *m_undoHijackAction = nullptr;
+    Utils::ParameterAction *m_diffCurrentAction = nullptr;
+    Utils::ParameterAction *m_historyCurrentAction = nullptr;
+    Utils::ParameterAction *m_annotateCurrentAction = nullptr;
+    Utils::ParameterAction *m_addFileAction = nullptr;
+    QAction *m_diffActivityAction = nullptr;
+    QAction *m_updateIndexAction = nullptr;
+    Utils::ParameterAction *m_updateViewAction = nullptr;
+    Utils::ParameterAction *m_checkInActivityAction = nullptr;
+    QAction *m_checkInAllAction = nullptr;
+    QAction *m_statusAction = nullptr;
+
+    QAction *m_menuAction = nullptr;
+    bool m_submitActionTriggered = false;
+    QMutex m_activityMutex;
+    QList<QStringPair> m_activities;
+    QSharedPointer<StatusMap> m_statusMap;
+
+    ClearCaseSettingsPage m_settingsPage;
+
+    VcsSubmitEditorFactory m_submitEditorFactory {
+        submitParameters,
+        [] { return new ClearCaseSubmitEditor; },
+        this
+    };
+
+    VcsEditorFactory logEditorFactory {
+        &logEditorParameters,
+        [] { return new ClearCaseEditorWidget; },
+        std::bind(&ClearCasePluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory annotateEditorFactory {
+        &annotateEditorParameters,
+        [] { return new ClearCaseEditorWidget; },
+        std::bind(&ClearCasePluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory diffEditorFactory {
+        &diffEditorParameters,
+        [] { return new ClearCaseEditorWidget; },
+        std::bind(&ClearCasePluginPrivate::describe, this, _1, _2)
+    };
+
+    friend class ClearCasePlugin;
+#ifdef WITH_TESTS
+    bool m_fakeClearTool = false;
+    QString m_tempFile;
+#endif
+};
 
 // ------------- ClearCasePlugin
 static ClearCasePluginPrivate *dd = nullptr;
@@ -157,15 +388,8 @@ ClearCasePluginPrivate::~ClearCasePluginPrivate()
 {
     cleanCheckInMessageFile();
     // wait for sync thread to finish reading activities
-    m_activityMutex->lock();
-    m_activityMutex->unlock();
-    delete m_activityMutex;
-}
-
-ClearCasePlugin::~ClearCasePlugin()
-{
-    delete dd;
-    dd = nullptr;
+    m_activityMutex.lock();
+    m_activityMutex.unlock();
 }
 
 void ClearCasePluginPrivate::cleanCheckInMessageFile()
@@ -389,13 +613,6 @@ QString ClearCasePluginPrivate::findTopLevel(const QString &directory) const
     return ccManagesDirectory(directory);
 }
 
-static const VcsBaseSubmitEditorParameters submitParameters = {
-    Constants::CLEARCASE_SUBMIT_MIMETYPE,
-    Constants::CLEARCASECHECKINEDITOR_ID,
-    Constants::CLEARCASECHECKINEDITOR_DISPLAY_NAME,
-    VcsBaseSubmitEditorParameters::DiffFiles
-};
-
 bool ClearCasePlugin::initialize(const QStringList & /*arguments */, QString *errorMessage)
 {
     Q_UNUSED(errorMessage)
@@ -410,7 +627,6 @@ void ClearCasePlugin::extensionsInitialized()
 
 ClearCasePluginPrivate::ClearCasePluginPrivate()
     : VcsBase::VcsBasePluginPrivate(Context(CLEARCASE_CONTEXT)),
-      m_activityMutex(new QMutex),
       m_statusMap(new StatusMap)
 {
     dd = this;
@@ -436,20 +652,6 @@ ClearCasePluginPrivate::ClearCasePluginPrivate()
     // update view name when changing active project
     connect(SessionManager::instance(), &SessionManager::startupProjectChanged,
             this, &ClearCasePluginPrivate::projectChanged);
-
-    new ClearCaseSettingsPage(this);
-
-    new VcsSubmitEditorFactory(&submitParameters,
-        []() { return new ClearCaseSubmitEditor(&submitParameters); }, this);
-
-    // any editor responds to describe (when clicking a version)
-    const auto describeFunc = [this](const QString &source, const QString &changeNr) {
-        describe(source, changeNr);
-    };
-    const int editorCount = sizeof(editorParameters)/sizeof(VcsBaseEditorParameters);
-    const auto widgetCreator = []() { return new ClearCaseEditorWidget; };
-    for (int i = 0; i < editorCount; i++)
-        new VcsEditorFactory(editorParameters + i, widgetCreator, describeFunc, this);
 
     const QString description = QLatin1String("ClearCase");
     const QString prefix = QLatin1String("cc");
@@ -1029,7 +1231,7 @@ void ClearCasePluginPrivate::ccDiffWithPred(const QString &workingDir, const QSt
         diffname = QDir::toNativeSeparators(files.first());
     }
     const QString title = QString::fromLatin1("cc diff %1").arg(diffname);
-    IEditor *editor = showOutputInEditor(title, result, DiffOutput, source, codec);
+    IEditor *editor = showOutputInEditor(title, result, diffEditorParameters.id, source, codec);
     setWorkingDirectory(editor, workingDir);
     VcsBaseEditor::tagEditor(editor, tag);
     auto diffEditorWidget = qobject_cast<ClearCaseEditorWidget *>(editor->widget());
@@ -1125,7 +1327,7 @@ void ClearCasePluginPrivate::diffActivity()
     }
     m_diffPrefix.clear();
     const QString title = QString::fromLatin1("%1.patch").arg(activity);
-    IEditor *editor = showOutputInEditor(title, result, DiffOutput, activity, nullptr);
+    IEditor *editor = showOutputInEditor(title, result, diffEditorParameters.id, activity, nullptr);
     setWorkingDirectory(editor, topLevel);
 }
 
@@ -1288,7 +1490,7 @@ void ClearCasePluginPrivate::history(const QString &workingDir,
     } else {
         const QString title = QString::fromLatin1("cc history %1").arg(id);
         const QString source = VcsBaseEditor::getSource(workingDir, files);
-        IEditor *newEditor = showOutputInEditor(title, response.stdOut, LogOutput, source, codec);
+        IEditor *newEditor = showOutputInEditor(title, response.stdOut, logEditorParameters.id, source, codec);
         VcsBaseEditor::tagEditor(newEditor, tag);
         if (enableAnnotationContextMenu)
             VcsBaseEditor::getVcsBaseEditor(newEditor)->setFileLogAnnotateEnabled(true);
@@ -1393,7 +1595,7 @@ void ClearCasePluginPrivate::vcsAnnotateHelper(const QString &workingDir, const 
         EditorManager::activateEditor(editor);
     } else {
         const QString title = QString::fromLatin1("cc annotate %1").arg(id);
-        IEditor *newEditor = showOutputInEditor(title, res, AnnotateOutput, source, codec);
+        IEditor *newEditor = showOutputInEditor(title, res, annotateEditorParameters.id, source, codec);
         VcsBaseEditor::tagEditor(newEditor, tag);
         VcsBaseEditor::gotoLineOfEditor(newEditor, lineNumber);
     }
@@ -1428,7 +1630,7 @@ void ClearCasePluginPrivate::describe(const QString &source, const QString &chan
         EditorManager::activateEditor(editor);
     } else {
         const QString title = QString::fromLatin1("cc describe %1").arg(id);
-        IEditor *newEditor = showOutputInEditor(title, description, DiffOutput, source, codec);
+        IEditor *newEditor = showOutputInEditor(title, description, diffEditorParameters.id, source, codec);
         VcsBaseEditor::tagEditor(newEditor, tag);
     }
 }
@@ -1476,15 +1678,12 @@ ClearCasePluginPrivate::runCleartool(const QString &workingDir,
 }
 
 IEditor *ClearCasePluginPrivate::showOutputInEditor(const QString& title, const QString &output,
-                                                   int editorType, const QString &source,
+                                                   Core::Id id, const QString &source,
                                                    QTextCodec *codec) const
 {
-    const VcsBaseEditorParameters *params = findType(editorType);
-    QTC_ASSERT(params, return nullptr);
-    const Id id = params->id;
     if (Constants::debug)
         qDebug() << "ClearCasePlugin::showOutputInEditor" << title << id.name()
-                 <<  "Size= " << output.size() <<  " Type=" << editorType << debugCodec(codec);
+                 <<  "Size= " << output.size() << debugCodec(codec);
     QString s = title;
     IEditor *editor = EditorManager::openEditorWithContents(id, &s, output.toUtf8());
     auto e = qobject_cast<ClearCaseEditorWidget*>(editor->widget());
@@ -1878,18 +2077,18 @@ QList<QStringPair> ClearCasePluginPrivate::ccGetActivities() const
 
 void ClearCasePluginPrivate::refreshActivities()
 {
-    QMutexLocker locker(m_activityMutex);
+    QMutexLocker locker(&m_activityMutex);
     m_activity = ccGetCurrentActivity();
     m_activities = ccGetActivities();
 }
 
-QList<QStringPair> ClearCasePluginPrivate::activities(int *current) const
+QList<QStringPair> ClearCasePluginPrivate::activities(int *current)
 {
     QList<QStringPair> activitiesList;
     QString curActivity;
     const VcsBasePluginState state = currentState();
     if (state.topLevel() == state.currentProjectTopLevel()) {
-        QMutexLocker locker(m_activityMutex);
+        QMutexLocker locker(&m_activityMutex);
         activitiesList = m_activities;
         curActivity = m_activity;
     } else {
@@ -2177,7 +2376,7 @@ void ClearCasePluginPrivate::closing()
 void ClearCasePluginPrivate::sync(QFutureInterface<void> &future, QStringList files)
 {
     ClearCasePluginPrivate *plugin = ClearCasePluginPrivate::instance();
-    ClearCaseSync ccSync(plugin, plugin->m_statusMap);
+    ClearCaseSync ccSync(plugin->m_statusMap);
     connect(&ccSync, &ClearCaseSync::updateStreamAndView, plugin, &ClearCasePluginPrivate::updateStreamAndView);
     ccSync.run(future, files);
 }
@@ -2310,6 +2509,59 @@ bool ClearCasePluginPrivate::vcsCreateRepository(const QString &)
     return false;
 }
 
+// ClearCasePlugin
+
+ClearCasePlugin::~ClearCasePlugin()
+{
+    delete dd;
+    dd = nullptr;
+}
+
+bool ClearCasePlugin::newActivity()
+{
+    return dd->newActivity();
+}
+
+const QList<QStringPair> ClearCasePlugin::activities(int *current)
+{
+    return dd->activities(current);
+}
+
+QStringList ClearCasePlugin::ccGetActiveVobs()
+{
+    return dd->ccGetActiveVobs();
+}
+
+void ClearCasePlugin::refreshActivities()
+{
+    dd->refreshActivities();
+}
+
+const ViewData ClearCasePlugin::viewData()
+{
+    return dd->m_viewData;
+}
+
+void ClearCasePlugin::setStatus(const QString &file, FileStatus::Status status, bool update)
+{
+    dd->setStatus(file, status, update);
+}
+
+const ClearCaseSettings &ClearCasePlugin::settings()
+{
+    return dd->m_settings;
+}
+
+void ClearCasePlugin::setSettings(const ClearCaseSettings &s)
+{
+    dd->setSettings(s);
+}
+
+QSharedPointer<StatusMap> ClearCasePlugin::statusMap()
+{
+    return dd->m_statusMap;
+}
+
 #ifdef WITH_TESTS
 
 void ClearCasePlugin::testDiffFileResolving_data()
@@ -2326,7 +2578,7 @@ void ClearCasePlugin::testDiffFileResolving_data()
 
 void ClearCasePlugin::testDiffFileResolving()
 {
-    VcsBaseEditorWidget::testDiffFileResolving(editorParameters[2].id);
+    VcsBaseEditorWidget::testDiffFileResolving(dd->diffEditorFactory);
 }
 
 void ClearCasePlugin::testLogResolving()
@@ -2335,7 +2587,7 @@ void ClearCasePlugin::testLogResolving()
                 "13-Sep.17:41   user1      create version \"src/plugins/clearcase/clearcaseeditor.h@@/main/branch1/branch2/9\" (baseline1, baseline2, ...)\n"
                 "22-Aug.14:13   user2      create version \"src/plugins/clearcase/clearcaseeditor.h@@/main/branch1/branch2/8\" (baseline3, baseline4, ...)\n"
                 );
-    VcsBaseEditorWidget::testLogResolving(editorParameters[0].id, data,
+    VcsBaseEditorWidget::testLogResolving(dd->logEditorFactory, data,
                             "src/plugins/clearcase/clearcaseeditor.h@@/main/branch1/branch2/9",
                             "src/plugins/clearcase/clearcaseeditor.h@@/main/branch1/branch2/8");
 }
@@ -2389,14 +2641,14 @@ void ClearCasePlugin::testFileStatusParsing()
     QFETCH(QString, cleartoolLsLine);
     QFETCH(int, status);
 
-    ClearCaseSync ccSync(dd, dd->m_statusMap);
+    ClearCaseSync ccSync(dd->m_statusMap);
     ccSync.verifyParseStatus(filename, cleartoolLsLine, static_cast<FileStatus::Status>(status));
 }
 
 void ClearCasePlugin::testFileNotManaged()
 {
     dd->m_statusMap = QSharedPointer<StatusMap>(new StatusMap);
-    ClearCaseSync ccSync(dd, dd->m_statusMap);
+    ClearCaseSync ccSync(dd->m_statusMap);
     ccSync.verifyFileNotManaged();
 }
 
@@ -2404,21 +2656,21 @@ void ClearCasePlugin::testFileCheckedOutDynamicView()
 {
     dd->m_statusMap = QSharedPointer<StatusMap>(new StatusMap);
 
-    ClearCaseSync ccSync(dd, dd->m_statusMap);
+    ClearCaseSync ccSync(dd->m_statusMap);
     ccSync.verifyFileCheckedOutDynamicView();
 }
 
 void ClearCasePlugin::testFileCheckedInDynamicView()
 {
     dd->m_statusMap = QSharedPointer<StatusMap>(new StatusMap);
-    ClearCaseSync ccSync(dd, dd->m_statusMap);
+    ClearCaseSync ccSync(dd->m_statusMap);
     ccSync.verifyFileCheckedInDynamicView();
 }
 
 void ClearCasePlugin::testFileNotManagedDynamicView()
 {
     dd->m_statusMap = QSharedPointer<StatusMap>(new StatusMap);
-    ClearCaseSync ccSync(dd, dd->m_statusMap);
+    ClearCaseSync ccSync(dd->m_statusMap);
     ccSync.verifyFileNotManagedDynamicView();
 }
 
@@ -2565,3 +2817,5 @@ void ClearCasePlugin::testVcsStatusDynamicNotManaged()
 
 } // namespace Internal
 } // namespace ClearCase
+
+#include "clearcaseplugin.moc"

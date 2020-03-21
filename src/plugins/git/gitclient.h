@@ -50,6 +50,7 @@ namespace Core { class ICore; }
 namespace VcsBase {
     class VcsCommand;
     class SubmitFileModel;
+    class VcsBaseDiffEditorController;
     class VcsBaseEditorWidget;
 }
 
@@ -79,6 +80,7 @@ enum StashFlag {
 };
 
 enum PushFailure {
+    Unknown,
     NonFastForward,
     NoRemoteBranch
 };
@@ -137,6 +139,7 @@ public:
     };
 
     explicit GitClient(GitSettings *settings);
+    static GitClient *instance();
 
     Utils::FilePath vcsBinary() const override;
     unsigned gitVersion(QString *errorMessage = nullptr) const;
@@ -165,7 +168,7 @@ public:
     void status(const QString &workingDirectory);
     void log(const QString &workingDirectory, const QString &fileName = QString(),
              bool enableAnnotationContextMenu = false, const QStringList &args = QStringList());
-    void reflog(const QString &workingDirectory);
+    void reflog(const QString &workingDirectory, const QString &branch = {});
     VcsBase::VcsBaseEditorWidget *annotate(
             const QString &workingDir, const QString &file, const QString &revision = QString(),
             int lineNumber = -1, const QStringList &extraOptions = QStringList()) override;
@@ -350,6 +353,9 @@ public:
 
     VcsBase::VcsCommand *asyncUpstreamStatus(const QString &workingDirectory,
                                              const QString &branch, const QString &upstream);
+
+    static void addChangeActions(QMenu *menu, const QString &workingDir, const QString &change);
+
 private:
     void finishSubmoduleUpdate();
     void chunkActionsRequested(QMenu *menu, int fileIndex, int chunkIndex,
@@ -361,8 +367,8 @@ private:
     enum CodecType { CodecSource, CodecLogOutput, CodecNone };
     QTextCodec *codecFor(CodecType codecType, const QString &source = QString()) const;
 
-    void requestReload(const QString &documentId, const QString &source, const QString &title,
-                       std::function<DiffEditor::DiffEditorController *(Core::IDocument *)> factory) const;
+    void requestReload(const QString &documentId, const QString &source, const QString &title, const QString &workingDirectory,
+           std::function<VcsBase::VcsBaseDiffEditorController *(Core::IDocument *)> factory) const;
 
     // determine version as '(major << 16) + (minor << 8) + patch' or 0.
     unsigned synchronousGitVersion(QString *errorMessage = nullptr) const;

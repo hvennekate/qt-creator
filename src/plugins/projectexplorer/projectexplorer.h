@@ -59,6 +59,7 @@ class FileNode;
 
 namespace Internal {
 class AppOutputSettings;
+class MiniProjectTargetSelector;
 class ProjectExplorerSettings;
 }
 
@@ -166,6 +167,7 @@ public:
     static QStringList projectFileGlobs();
 
     static QThreadPool *sharedThreadPool();
+    static Internal::MiniProjectTargetSelector *targetSelector();
 
     static void showSessionManager();
     static void openNewProjectDialog();
@@ -180,6 +182,8 @@ public:
     static void clearRecentProjects();
     static void removeFromRecentProjects(const QString &fileName, const QString &displayName);
 
+    static void updateRunActions();
+
 signals:
     void finishedInitialization();
 
@@ -191,7 +195,7 @@ signals:
 
     void settingsChanged();
 
-    void updateRunActions();
+    void runActionsUpdated();
 
 private:
     static bool coreAboutToClose();

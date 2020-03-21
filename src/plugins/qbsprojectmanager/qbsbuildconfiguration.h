@@ -40,16 +40,26 @@ namespace QbsProjectManager {
 namespace Internal {
 
 class QbsBuildStep;
-class QbsProject;
 
-class QbsBuildConfiguration : public ProjectExplorer::BuildConfiguration
+class QbsBuildStepData
+{
+public:
+    QString command;
+    bool dryRun = false;
+    bool keepGoing = false;
+    bool forceProbeExecution = false;
+    bool showCommandLines = false;
+    bool noInstall = false;
+    bool noBuild = false;
+    bool cleanInstallRoot = false;
+    bool isInstallStep = false;
+    int jobCount = 0;
+    Utils::FilePath installRoot;
+};
+
+class QbsBuildConfiguration final : public ProjectExplorer::BuildConfiguration
 {
     Q_OBJECT
-
-    // used in DebuggerRunConfigurationAspect
-    Q_PROPERTY(bool linkQmlDebuggingLibrary
-               READ isQmlDebuggingEnabled
-               NOTIFY qbsConfigurationChanged)
 
     friend class ProjectExplorer::BuildConfigurationFactory;
     QbsBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
@@ -73,9 +83,8 @@ public:
     QStringList products() const;
 
     QString configurationName() const;
-    QString equivalentCommandLine(const ProjectExplorer::BuildStep *buildStep) const;
+    QString equivalentCommandLine(const QbsBuildStepData &stepData) const;
 
-    bool isQmlDebuggingEnabled() const;
     ProjectExplorer::TriState qmlDebuggingSetting() const;
     ProjectExplorer::TriState qtQuickCompilerSetting() const;
     ProjectExplorer::TriState separateDebugInfoSetting() const;

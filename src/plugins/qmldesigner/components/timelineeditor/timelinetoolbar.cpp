@@ -38,7 +38,6 @@
 #include <variantproperty.h>
 #include <qmlstate.h>
 #include <qmltimeline.h>
-#include <qmltimelinekeyframegroup.h>
 
 #include <coreplugin/actionmanager/actionmanager.h>
 #include <coreplugin/actionmanager/command.h>
@@ -104,12 +103,31 @@ QAction *createAction(const Core::Id &id,
 TimelineToolBar::TimelineToolBar(QWidget *parent)
     : QToolBar(parent)
     , m_grp()
+    , m_dialog(new AnimationCurveDialog(Core::ICore::dialogParent()))
     , m_curveModel(new AnimationCurveEditorModel(0., 500.))
 {
+    m_dialog->setModel(m_curveModel);
     connect(m_curveModel,
             &AnimationCurveEditorModel::currentFrameChanged,
             this,
             &TimelineToolBar::currentFrameChanged);
+
+    auto setStartFrameValue = [this](int val) {
+        if (m_firstFrame) {
+            m_firstFrame->setText(QString::number(val, 'f', 0));
+            emit startFrameChanged(val);
+        }
+    };
+    connect(m_curveModel, &AnimationCurveEditorModel::startFrameChanged, setStartFrameValue);
+
+    auto setEndFrameValue = [this](int val) {
+        if (m_lastFrame) {
+            m_lastFrame->setText(QString::number(val, 'f', 0));
+            emit endFrameChanged(val);
+        }
+    };
+    connect(m_curveModel, &AnimationCurveEditorModel::endFrameChanged, setEndFrameValue);
+
     connect(m_curveModel,
             &AnimationCurveEditorModel::curveChanged,
             this,
@@ -126,8 +144,7 @@ void TimelineToolBar::reset()
     if (recording())
         m_recording->setChecked(false);
 
-    if (m_animatioCurveDialog)
-        m_curveModel->reset({});
+    m_curveModel->reset({});
 }
 
 bool TimelineToolBar::recording() const
@@ -172,8 +189,7 @@ void TimelineToolBar::setCurrentTimeline(const QmlTimeline &timeline)
         setStartFrame(timeline.startKeyframe());
         setEndFrame(timeline.endKeyframe());
         m_timelineLabel->setText(timeline.modelNode().id());
-        if (m_animatioCurveDialog)
-            m_curveModel->setTimeline(timeline);
+        m_curveModel->setTimeline(timeline);
     } else {
         m_timelineLabel->setText("");
     }
@@ -181,8 +197,7 @@ void TimelineToolBar::setCurrentTimeline(const QmlTimeline &timeline)
 
 void TimelineToolBar::setStartFrame(qreal frame)
 {
-    if (m_animatioCurveDialog)
-        m_curveModel->setMinimumTime(frame);
+    m_curveModel->setMinimumTime(frame, true);
 
     auto text = QString::number(frame, 'f', 0);
     m_firstFrame->setText(text);
@@ -191,8 +206,7 @@ void TimelineToolBar::setStartFrame(qreal frame)
 
 void TimelineToolBar::setCurrentFrame(qreal frame)
 {
-    if (m_animatioCurveDialog)
-        m_curveModel->setCurrentFrame(std::round(frame));
+    m_curveModel->setCurrentFrame(std::round(frame));
 
     auto text = QString::number(frame, 'f', 0);
     m_currentFrame->setText(text);
@@ -200,8 +214,7 @@ void TimelineToolBar::setCurrentFrame(qreal frame)
 
 void TimelineToolBar::setEndFrame(qreal frame)
 {
-    if (m_animatioCurveDialog)
-        m_curveModel->setMaximumTime(frame);
+    m_curveModel->setMaximumTime(frame, true);
 
     auto text = QString::number(frame, 'f', 0);
     m_lastFrame->setText(text);
@@ -235,10 +248,9 @@ void TimelineToolBar::openAnimationCurveEditor()
             timeline = tlv->timelineForState(tlv->currentState());
     }
 
-    ensureAnimationCurveDialog();
-    m_animatioCurveDialog->refresh();
+    m_dialog->refresh();
     m_curveModel->setTimeline(timeline);
-    m_animatioCurveDialog->show();
+    m_dialog->show();
 }
 
 void TimelineToolBar::updateCurve(DesignTools::PropertyTreeItem *item)
@@ -503,15 +515,6 @@ void TimelineToolBar::setupCurrentFrameValidator()
     auto validator = static_cast<const QIntValidator *>(m_currentFrame->validator());
     const_cast<QIntValidator *>(validator)->setRange(m_firstFrame->text().toInt(),
                                                      m_lastFrame->text().toInt());
-}
-
-void TimelineToolBar::ensureAnimationCurveDialog()
-{
-    if (!m_animatioCurveDialog) {
-        m_animatioCurveDialog = new AnimationCurveDialog(Core::ICore::dialogParent());
-        m_animatioCurveDialog->setAttribute(Qt::WA_DeleteOnClose);
-        m_animatioCurveDialog->setModel(m_curveModel);
-    }
 }
 
 void TimelineToolBar::resizeEvent(QResizeEvent *event)

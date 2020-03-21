@@ -465,14 +465,6 @@ CppModelManager *CppModelManager::instance()
     return m_instance;
 }
 
-void CppModelManager::createCppModelManager(Internal::CppToolsPlugin *parent)
-{
-    QTC_ASSERT(!m_instance, return;);
-    m_instance = new CppModelManager();
-    m_instance->initCppTools();
-    m_instance->setParent(parent);
-}
-
 void CppModelManager::initCppTools()
 {
     // Objects
@@ -512,6 +504,8 @@ CppModelManager::CppModelManager()
     : CppModelManagerBase(nullptr)
     , d(new CppModelManagerPrivate)
 {
+    m_instance = this;
+
     // Used for weak dependency in VcsBaseSubmitEditor
     setObjectName("CppModelManager");
     ExtensionSystem::PluginManager::addObject(this);
@@ -562,6 +556,8 @@ CppModelManager::CppModelManager()
     initializeBuiltinModelManagerSupport();
 
     d->m_internalIndexingSupport = new BuiltinIndexingSupport;
+
+    initCppTools();
 }
 
 CppModelManager::~CppModelManager()
@@ -975,8 +971,6 @@ void CppModelManager::recalculateProjectPartMappings()
 void CppModelManager::watchForCanceledProjectIndexer(const QVector<QFuture<void>> &futures,
                                                      ProjectExplorer::Project *project)
 {
-    d->m_projectToIndexerCanceled.insert(project, false);
-
     for (const QFuture<void> &future : futures) {
         if (future.isCanceled() || future.isFinished())
             continue;
@@ -987,7 +981,8 @@ void CppModelManager::watchForCanceledProjectIndexer(const QVector<QFuture<void>
                 d->m_projectToIndexerCanceled.insert(project, true);
             watcher->deleteLater();
         });
-        connect(watcher, &QFutureWatcher<void>::finished, this, [watcher]() {
+        connect(watcher, &QFutureWatcher<void>::finished, this, [this, project, watcher]() {
+            d->m_projectToIndexerCanceled.remove(project);
             watcher->deleteLater();
         });
         watcher->setFuture(future);
@@ -1118,6 +1113,9 @@ QFuture<void> CppModelManager::updateProjectInfo(QFutureInterface<void> &futureI
     // Trigger reindexing
     const QFuture<void> indexingFuture = updateSourceFiles(futureInterface, filesToReindex,
                                                            ForcedProgressNotification);
+    if (!filesToReindex.isEmpty()) {
+        d->m_projectToIndexerCanceled.insert(project, false);
+    }
     watchForCanceledProjectIndexer({futureInterface.future(), indexingFuture}, project);
     return indexingFuture;
 }

@@ -36,6 +36,7 @@
 #include "qmljsquickfixassist.h"
 #include "qmloutlinemodel.h"
 #include "quicktoolbar.h"
+#include "qmljseditingsettingspage.h"
 
 #include <qmljs/qmljsbind.h>
 #include <qmljs/qmljsevaluate.h>
@@ -86,6 +87,7 @@
 #include <QTextCodec>
 #include <QTimer>
 #include <QTreeView>
+#include <QDebug>
 
 enum {
     UPDATE_USES_DEFAULT_INTERVAL = 150,
@@ -157,6 +159,24 @@ void QmlJSEditorWidget::finalizeInitialization()
     createToolBar();
 }
 
+bool QmlJSEditorWidget::restoreState(const QByteArray &state)
+{
+    QStringList qmlTypes { QmlJSTools::Constants::QML_MIMETYPE,
+                QmlJSTools::Constants::QBS_MIMETYPE,
+                QmlJSTools::Constants::QMLTYPES_MIMETYPE,
+                QmlJSTools::Constants::QMLUI_MIMETYPE };
+
+    if (QmlJsEditingSettings::get().foldAuxData() && qmlTypes.contains(textDocument()->mimeType())) {
+        int version = 0;
+        QDataStream stream(state);
+        stream >> version;
+        if (version < 1)
+            foldAuxiliaryData();
+    }
+
+    return TextEditorWidget::restoreState(state);
+}
+
 QModelIndex QmlJSEditorWidget::outlineModelIndex()
 {
     if (!m_outlineModelIndex.isValid()) {
@@ -216,6 +236,27 @@ void QmlJSEditorWidget::updateCodeWarnings(Document::Ptr doc)
     }
 }
 
+void QmlJSEditorWidget::foldAuxiliaryData()
+{
+    QTextDocument *doc = document();
+    auto documentLayout = qobject_cast<TextDocumentLayout*>(doc->documentLayout());
+    QTC_ASSERT(documentLayout, return);
+    QTextBlock block = doc->lastBlock();
+
+    while (block.isValid() && block.isVisible()) {
+        if (TextDocumentLayout::canFold(block) && block.next().isVisible()) {
+            const QString trimmedText = block.text().trimmed();
+            if (trimmedText.startsWith("/*##^##")) {
+                TextDocumentLayout::doFoldOrUnfold(block, false);
+                documentLayout->requestUpdate();
+                documentLayout->emitDocumentSizeChanged();
+                break;
+            }
+        }
+        block = block.previous();
+    }
+}
+
 void QmlJSEditorWidget::modificationChanged(bool changed)
 {
     if (!changed && m_modelManager)
@@ -230,7 +271,7 @@ bool QmlJSEditorWidget::isOutlineCursorChangesBlocked()
 void QmlJSEditorWidget::jumpToOutlineElement(int /*index*/)
 {
     QModelIndex index = m_outlineCombo->view()->currentIndex();
-    AST::SourceLocation location = m_qmlJsEditorDocument->outlineModel()->sourceLocation(index);
+    SourceLocation location = m_qmlJsEditorDocument->outlineModel()->sourceLocation(index);
 
     if (!location.isValid())
         return;
@@ -332,7 +373,7 @@ void QmlJSEditorWidget::updateUses()
         return;
 
     QList<QTextEdit::ExtraSelection> selections;
-    foreach (const AST::SourceLocation &loc,
+    foreach (const SourceLocation &loc,
              m_qmlJsEditorDocument->semanticInfo().idLocations.value(wordUnderCursor())) {
         if (! loc.isValid())
             continue;
@@ -431,6 +472,11 @@ protected:
                 }
             }
         }
+    }
+
+    void throwRecursionDepthError() override
+    {
+        qWarning("Warning: Hit maximum recursion depth visiting AST in SelectedElement");
     }
 };
 
@@ -941,7 +987,7 @@ QModelIndex QmlJSEditorWidget::indexForPosition(unsigned cursorPosition, const Q
     const int rowCount = model->rowCount(rootIndex);
     for (int i = 0; i < rowCount; ++i) {
         QModelIndex childIndex = model->index(i, 0, rootIndex);
-        AST::SourceLocation location = model->sourceLocation(childIndex);
+        SourceLocation location = model->sourceLocation(childIndex);
 
         if ((cursorPosition >= location.offset)
               && (cursorPosition <= location.offset + location.length)) {

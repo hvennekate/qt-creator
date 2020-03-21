@@ -103,7 +103,17 @@ public:
     ClangFormat::ClangFormat clangFormatBeautifier;
     Uncrustify::Uncrustify uncrustifyBeautifier;
 
-    QList<BeautifierAbstractTool *> m_tools;
+    BeautifierAbstractTool *m_tools[3] {
+        &artisticStyleBeautifier,
+        &uncrustifyBeautifier,
+        &clangFormatBeautifier
+    };
+
+    GeneralOptionsPage optionsPage {{
+        artisticStyleBeautifier.id(),
+        uncrustifyBeautifier.id(),
+        clangFormatBeautifier.id()
+    }};
 };
 
 static BeautifierPluginPrivate *dd = nullptr;
@@ -126,15 +136,7 @@ void BeautifierPlugin::extensionsInitialized()
 }
 
 BeautifierPluginPrivate::BeautifierPluginPrivate()
-    : m_tools({&artisticStyleBeautifier, &uncrustifyBeautifier, &clangFormatBeautifier})
 {
-    QStringList toolIds;
-    toolIds.reserve(m_tools.count());
-    for (BeautifierAbstractTool *tool : m_tools)
-        toolIds << tool->id();
-
-    new GeneralOptionsPage(toolIds, this);
-
     updateActions();
 
     const Core::EditorManager *editorManager = Core::EditorManager::instance();
@@ -173,9 +175,9 @@ void BeautifierPluginPrivate::autoFormatOnSave(Core::IDocument *document)
 
     // Find tool to use by id and format file!
     const QString id = generalSettings.autoFormatTool();
-    auto tool = std::find_if(m_tools.constBegin(), m_tools.constEnd(),
+    auto tool = std::find_if(std::begin(m_tools), std::end(m_tools),
                              [&id](const BeautifierAbstractTool *t){return t->id() == id;});
-    if (tool != m_tools.constEnd()) {
+    if (tool != std::end(m_tools)) {
         if (!(*tool)->isApplicable(document))
             return;
         const TextEditor::Command command = (*tool)->command();
@@ -184,7 +186,7 @@ void BeautifierPluginPrivate::autoFormatOnSave(Core::IDocument *document)
         const QList<Core::IEditor *> editors = Core::DocumentModel::editorsForDocument(document);
         if (editors.isEmpty())
             return;
-        if (auto widget = qobject_cast<TextEditorWidget *>(editors.first()->widget()))
+        if (auto widget = TextEditorWidget::fromEditor(editors.first()))
             TextEditor::formatEditor(widget, command);
     }
 }

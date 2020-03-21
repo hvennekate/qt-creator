@@ -37,15 +37,10 @@ class VcsBaseEditorParameters;
 
 class VCSBASE_EXPORT VcsEditorFactory : public TextEditor::TextEditorFactory
 {
-    Q_OBJECT
-
 public:
     VcsEditorFactory(const VcsBaseEditorParameters *parameters,
                      const EditorWidgetCreator editorWidgetCreator,
-                     std::function<void(const QString &, const QString &)> describeFunc,
-                     QObject *parent = nullptr);
-
-    static VcsBaseEditor *createEditorById(const char *id);
+                     std::function<void(const QString &, const QString &)> describeFunc);
 };
 
 } // namespace VcsBase

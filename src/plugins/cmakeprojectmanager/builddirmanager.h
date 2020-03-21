@@ -51,7 +51,7 @@ class CMakeBuildConfiguration;
 class CMakeBuildSystem;
 class CMakeProjectNode;
 
-class BuildDirManager : public QObject
+class BuildDirManager final : public QObject
 {
     Q_OBJECT
 
@@ -89,7 +89,7 @@ public:
     bool isFilesystemScanRequested() const;
     void parse();
 
-    QVector<Utils::FilePath> takeProjectFilesToWatch();
+    QSet<Utils::FilePath> projectFilesToWatch() const;
     std::unique_ptr<CMakeProjectNode> generateProjectTree(const QList<const ProjectExplorer::FileNode *> &allFiles,
                              QString &errorMessage) const;
     ProjectExplorer::RawProjectParts createRawProjectParts(QString &errorMessage) const;
@@ -105,14 +105,14 @@ signals:
     void requestDelayedReparse() const;
     void parsingStarted() const;
     void dataAvailable() const;
-    void errorOccured(const QString &err) const;
+    void errorOccurred(const QString &err) const;
 
 private:
     void updateReparseParameters(const int parameters);
     int takeReparseParameters();
 
     void emitDataAvailable();
-    void emitErrorOccured(const QString &message) const;
+    void emitErrorOccurred(const QString &message) const;
     void emitReparseRequest() const;
     bool checkConfiguration();
 

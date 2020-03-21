@@ -105,7 +105,6 @@ HEADERS += projectexplorer.h \
     projectexplorersettingspage.h \
     baseprojectwizarddialog.h \
     miniprojecttargetselector.h \
-    buildenvironmentwidget.h \
     ldparser.h \
     lldparser.h \
     linuxiccparser.h \
@@ -166,7 +165,8 @@ HEADERS += projectexplorer.h \
     parseissuesdialog.h \
     projectconfigurationaspects.h \
     treescanner.h \
-    rawprojectpart.h
+    rawprojectpart.h \
+    simpleprojectwizard.h
 
 SOURCES += projectexplorer.cpp \
     abi.cpp \
@@ -258,7 +258,6 @@ SOURCES += projectexplorer.cpp \
     projectexplorersettingspage.cpp \
     baseprojectwizarddialog.cpp \
     miniprojecttargetselector.cpp \
-    buildenvironmentwidget.cpp \
     ldparser.cpp \
     lldparser.cpp \
     linuxiccparser.cpp \
@@ -313,7 +312,8 @@ SOURCES += projectexplorer.cpp \
     parseissuesdialog.cpp \
     projectconfigurationaspects.cpp \
     treescanner.cpp \
-    rawprojectpart.cpp
+    rawprojectpart.cpp \
+    simpleprojectwizard.cpp
 
 FORMS += \
     editorsettingspropertiespage.ui \

@@ -340,6 +340,20 @@ void LanguageClientManager::reOpenDocumentWithClient(TextEditor::TextDocument *d
     client->activateDocument(document);
 }
 
+void LanguageClientManager::logBaseMessage(const LspLogMessage::MessageSender sender,
+                                           const QString &clientName,
+                                           const BaseMessage &message)
+{
+    instance()->m_logger.log(sender, clientName, message);
+}
+
+void LanguageClientManager::showLogger()
+{
+    QWidget *loggerWidget = instance()->m_logger.createWidget();
+    loggerWidget->setAttribute(Qt::WA_DeleteOnClose);
+    loggerWidget->show();
+}
+
 QVector<Client *> LanguageClientManager::reachableClients()
 {
     return Utils::filtered(m_clients, &Client::reachable);
@@ -366,6 +380,8 @@ void LanguageClientManager::clientFinished(Client *client)
         client->log(tr("Unexpectedly finished. Restarting in %1 seconds.").arg(restartTimeoutS),
                     Core::MessageManager::Flash);
         QTimer::singleShot(restartTimeoutS * 1000, client, [client]() { startClient(client); });
+        for (TextEditor::TextDocument *document : m_clientForDocument.keys(client))
+            client->deactivateDocument(document);
     } else {
         if (unexpectedFinish && !m_shuttingDown)
             client->log(tr("Unexpectedly finished."), Core::MessageManager::Flash);
@@ -397,7 +413,8 @@ void LanguageClientManager::editorOpened(Core::IEditor *editor)
                     if (!widget)
                         return;
                     if (Client *client = clientForDocument(widget->textDocument()))
-                        client->cursorPositionChanged(widget);
+                        if (client->reachable())
+                            client->cursorPositionChanged(widget);
                 });
             });
             updateEditorToolBar(editor);

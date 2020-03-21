@@ -28,7 +28,7 @@
     \page quick-converting-ui-projects.html
     \if defined(qtdesignstudio)
     \previouspage studio-importing-designs.html
-    \nextpage studio-prototyping.html
+    \nextpage quick-uis.html
     \else
     \previouspage creator-qml-modules-with-plugins.html
     \nextpage creator-using-qt-designer.html
@@ -100,7 +100,7 @@
             \skipto QQuickView view;
             \printuntil view.show()
             Where \c {qrc:/qml/imports} is the import path and
-            \c {qrc:qml/ProgressBar.ui.qml} is the path to and the
+            \c {qrc:/qml/ProgressBar.ui.qml} is the path to and the
             name of the main QML file in the Qt Quick UI project.
         \li Select \uicontrol Build > \uicontrol Run to build and run your
             project.
@@ -113,6 +113,12 @@
     \e {main.cpp} file should look as follows:
 
     \quotefile progressbar/main.cpp
+
+    \section1 Adding Custom Fonts
+
+    To \l{Using Custom Fonts}{use custom fonts} from the Qt Quick UI project,
+    call the QFontDatabase::addApplicationFont() function from the \e {main.cpp}
+    file.
 
     \section1 Adding Qt Quick Timeline Module to Qt Installations
 

@@ -79,7 +79,7 @@ public:
 
     QVariant data(Core::Id id) const override;
 private:
-    Q_INVOKABLE void showInGraphicalShell();
+    void showInGraphicalShell();
 
     bool init() override;
     ProjectExplorer::BuildStepConfigWidget *createConfigWidget() override;
@@ -108,6 +108,7 @@ private:
     QString m_command;
     QString m_argumentsPasswordConcealed;
     bool m_skipBuilding = false;
+    QString m_inputFile;
 };
 
 namespace Internal {

@@ -28,13 +28,14 @@
 #include "androidconstants.h"
 #include "androidmanager.h"
 
-#include <projectexplorer/buildsteplist.h>
-#include <projectexplorer/target.h>
+#include <projectexplorer/abstractprocessstep.h>
 #include <projectexplorer/buildconfiguration.h>
+#include <projectexplorer/buildsteplist.h>
 #include <projectexplorer/gnumakeparser.h>
 #include <projectexplorer/kitinformation.h>
 #include <projectexplorer/processparameters.h>
 #include <projectexplorer/projectexplorerconstants.h>
+#include <projectexplorer/target.h>
 #include <projectexplorer/toolchain.h>
 
 #include <utils/hostosinfo.h>
@@ -44,9 +45,38 @@
 
 using namespace ProjectExplorer;
 using namespace Utils;
-using namespace Android::Internal;
 
 namespace Android {
+namespace Internal {
+
+class AndroidPackageInstallationStep final : public AbstractProcessStep
+{
+    Q_DECLARE_TR_FUNCTIONS(Android::AndroidPackageInstallationStep)
+
+public:
+    AndroidPackageInstallationStep(BuildStepList *bsl, Core::Id id);
+
+    BuildStepConfigWidget *createConfigWidget() final;
+
+private:
+    bool init() final;
+    void doRun() final;
+
+    QStringList m_androidDirsToClean;
+};
+
+class AndroidPackageInstallationStepWidget final : public BuildStepConfigWidget
+{
+    Q_DECLARE_TR_FUNCTIONS(Android::AndroidPackageInstallationStepWidget)
+
+public:
+    AndroidPackageInstallationStepWidget(BuildStep *step)
+        : BuildStepConfigWidget(step)
+    {
+        setDisplayName(tr("Make install"));
+        setSummaryText("<b>" + tr("Make install") + "</b>");
+    }
+};
 
 AndroidPackageInstallationStep::AndroidPackageInstallationStep(BuildStepList *bsl, Core::Id id)
     : AbstractProcessStep(bsl, id)
@@ -60,25 +90,23 @@ AndroidPackageInstallationStep::AndroidPackageInstallationStep(BuildStepList *bs
 
 bool AndroidPackageInstallationStep::init()
 {
-    BuildConfiguration *bc = buildConfiguration();
-    QString dirPath = bc->buildDirectory().pathAppended(Constants::ANDROID_BUILDDIRECTORY).toString();
+    QString dirPath = buildDirectory().pathAppended(Constants::ANDROID_BUILDDIRECTORY).toString();
     if (HostOsInfo::isWindowsHost())
-        if (bc->environment().searchInPath("sh.exe").isEmpty())
+        if (buildEnvironment().searchInPath("sh.exe").isEmpty())
             dirPath = QDir::toNativeSeparators(dirPath);
 
-    ToolChain *tc = ToolChainKitAspect::toolChain(target()->kit(),
-                                                       ProjectExplorer::Constants::CXX_LANGUAGE_ID);
+    ToolChain *tc = ToolChainKitAspect::cxxToolChain(target()->kit());
     QTC_ASSERT(tc, return false);
 
-    CommandLine cmd{tc->makeCommand(bc->environment())};
+    CommandLine cmd{tc->makeCommand(buildEnvironment())};
     const QString innerQuoted = QtcProcess::quoteArg(dirPath);
     const QString outerQuoted = QtcProcess::quoteArg("INSTALL_ROOT=" + innerQuoted);
     cmd.addArgs(outerQuoted + " install", CommandLine::Raw);
 
     ProcessParameters *pp = processParameters();
-    pp->setMacroExpander(bc->macroExpander());
-    pp->setWorkingDirectory(bc->buildDirectory());
-    Environment env = bc->environment();
+    pp->setMacroExpander(macroExpander());
+    pp->setWorkingDirectory(buildDirectory());
+    Environment env = buildEnvironment();
     Environment::setupEnglishOutput(&env);
     pp->setEnvironment(env);
     pp->setCommandLine(cmd);
@@ -117,20 +145,6 @@ void AndroidPackageInstallationStep::doRun()
 BuildStepConfigWidget *AndroidPackageInstallationStep::createConfigWidget()
 {
     return new AndroidPackageInstallationStepWidget(this);
-}
-
-
-//
-// AndroidPackageInstallationStepWidget
-//
-
-namespace Internal {
-
-AndroidPackageInstallationStepWidget::AndroidPackageInstallationStepWidget(AndroidPackageInstallationStep *step)
-    : BuildStepConfigWidget(step)
-{
-    setDisplayName(tr("Make install"));
-    setSummaryText("<b>" + tr("Make install") + "</b>");
 }
 
 //

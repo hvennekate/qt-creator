@@ -291,15 +291,15 @@ void SerialOutputPane::createNewOutputWindow(SerialControl *rc)
 
     connect(rc, &SerialControl::finished,
             [this, rc]() {
-        rc->outputFormatter()->flush();
+        const int tabIndex = indexOf(rc);
+        if (tabIndex != -1)
+            m_serialControlTabs[tabIndex].window->flush();
         if (isCurrent(rc))
             enableButtons(rc, false);
     });
 
     connect(rc, &SerialControl::appendMessageRequested,
             this, &SerialOutputPane::appendMessage);
-
-    Utils::OutputFormatter *formatter = rc->outputFormatter();
 
     // Create new
     static int counter = 0;
@@ -315,7 +315,6 @@ void SerialOutputPane::createNewOutputWindow(SerialControl *rc)
             this, fontSettingsChanged);
     fontSettingsChanged();
     ow->setWindowTitle(tr("Serial Terminal Window"));
-    ow->setFormatter(formatter);
     // TODO: wordwrap, maxLineCount, zoom/wheelZoom (add to settings)
 
     auto controlTab = SerialControlTab(rc, ow);
@@ -367,7 +366,7 @@ void SerialOutputPane::createToolButtons()
 
     // Reset button
     m_resetButton = new QToolButton;
-    m_resetButton->setIcon(Utils::Icons::RELOAD.icon());
+    m_resetButton->setIcon(Utils::Icons::RELOAD_TOOLBAR.icon());
     m_resetButton->setToolTip(tr("Reset Board"));
     m_resetButton->setEnabled(false);
 

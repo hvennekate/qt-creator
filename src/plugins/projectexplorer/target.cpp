@@ -37,6 +37,7 @@
 #include "kit.h"
 #include "kitinformation.h"
 #include "kitmanager.h"
+#include "miniprojecttargetselector.h"
 #include "project.h"
 #include "projectexplorer.h"
 #include "projectexplorericons.h"
@@ -45,8 +46,6 @@
 #include "session.h"
 
 #include <coreplugin/coreconstants.h>
-
-#include <extensionsystem/pluginmanager.h>
 
 #include <utils/algorithm.h>
 #include <utils/macroexpander.h>
@@ -150,17 +149,16 @@ Target::Target(Project *project, Kit *k, _constructor_tag) :
     connect(km, &KitManager::kitUpdated, this, &Target::handleKitUpdates);
     connect(km, &KitManager::kitRemoved, this, &Target::handleKitRemoval);
 
-    Utils::MacroExpander *expander = macroExpander();
-    expander->setDisplayName(tr("Target Settings"));
-    expander->setAccumulating(true);
+    d->m_macroExpander.setDisplayName(tr("Target Settings"));
+    d->m_macroExpander.setAccumulating(true);
 
-    expander->registerSubProvider([this] { return kit()->macroExpander(); });
+    d->m_macroExpander.registerSubProvider([this] { return kit()->macroExpander(); });
 
-    expander->registerVariable("sourceDir", tr("Source directory"),
+    d->m_macroExpander.registerVariable("sourceDir", tr("Source directory"),
             [project] { return project->projectDirectory().toUserOutput(); });
 
     // Legacy support.
-    expander->registerVariable(Constants::VAR_CURRENTPROJECT_NAME,
+    d->m_macroExpander.registerVariable(Constants::VAR_CURRENTPROJECT_NAME,
             QCoreApplication::translate("ProjectExplorer", "Name of current project"),
             [project] { return project->displayName(); },
             false);
@@ -261,6 +259,16 @@ QString Target::toolTip() const
     return d->m_kit->toHtml();
 }
 
+QString Target::displayNameKey()
+{
+    return QString("ProjectExplorer.ProjectConfiguration.DisplayName");
+}
+
+QString Target::deviceTypeKey()
+{
+    return QString("DeviceType");
+}
+
 void Target::addBuildConfiguration(BuildConfiguration *bc)
 {
     QTC_ASSERT(bc && !d->m_buildConfigurations.contains(bc), return);
@@ -280,7 +288,7 @@ void Target::addBuildConfiguration(BuildConfiguration *bc)
     // add it
     d->m_buildConfigurations.push_back(bc);
 
-    project()->addedProjectConfiguration(bc);
+    ProjectExplorerPlugin::targetSelector()->addedBuildConfiguration(bc);
     emit addedBuildConfiguration(bc);
     d->m_buildConfigurationModel.addProjectConfiguration(bc);
 
@@ -307,14 +315,14 @@ bool Target::removeBuildConfiguration(BuildConfiguration *bc)
     }
 
     emit removedBuildConfiguration(bc);
-    project()->removedProjectConfiguration(bc);
+    ProjectExplorerPlugin::targetSelector()->removedBuildConfiguration(bc);
     d->m_buildConfigurationModel.removeProjectConfiguration(bc);
 
     delete bc;
     return true;
 }
 
-QList<BuildConfiguration *> Target::buildConfigurations() const
+const QList<BuildConfiguration *> Target::buildConfigurations() const
 {
     return d->m_buildConfigurations;
 }
@@ -331,6 +339,7 @@ void Target::setActiveBuildConfiguration(BuildConfiguration *bc)
          bc != d->m_activeBuildConfiguration)) {
         d->m_activeBuildConfiguration = bc;
         emit activeBuildConfigurationChanged(d->m_activeBuildConfiguration);
+        ProjectExplorerPlugin::updateActions();
     }
 }
 
@@ -348,7 +357,7 @@ void Target::addDeployConfiguration(DeployConfiguration *dc)
     // add it
     d->m_deployConfigurations.push_back(dc);
 
-    project()->addedProjectConfiguration(dc);
+    ProjectExplorerPlugin::targetSelector()->addedDeployConfiguration(dc);
     d->m_deployConfigurationModel.addProjectConfiguration(dc);
     emit addedDeployConfiguration(dc);
 
@@ -376,7 +385,7 @@ bool Target::removeDeployConfiguration(DeployConfiguration *dc)
                                                          SetActive::Cascade);
     }
 
-    project()->removedProjectConfiguration(dc);
+    ProjectExplorerPlugin::targetSelector()->removedDeployConfiguration(dc);
     d->m_deployConfigurationModel.removeProjectConfiguration(dc);
     emit removedDeployConfiguration(dc);
 
@@ -384,7 +393,7 @@ bool Target::removeDeployConfiguration(DeployConfiguration *dc)
     return true;
 }
 
-QList<DeployConfiguration *> Target::deployConfigurations() const
+const QList<DeployConfiguration *> Target::deployConfigurations() const
 {
     return d->m_deployConfigurations;
 }
@@ -405,7 +414,7 @@ void Target::setActiveDeployConfiguration(DeployConfiguration *dc)
     updateDeviceState();
 }
 
-QList<RunConfiguration *> Target::runConfigurations() const
+const QList<RunConfiguration *> Target::runConfigurations() const
 {
     return d->m_runConfigurations;
 }
@@ -427,7 +436,7 @@ void Target::addRunConfiguration(RunConfiguration *rc)
 
     d->m_runConfigurations.push_back(rc);
 
-    project()->addedProjectConfiguration(rc);
+    ProjectExplorerPlugin::targetSelector()->addedRunConfiguration(rc);
     d->m_runConfigurationModel.addProjectConfiguration(rc);
     emit addedRunConfiguration(rc);
 
@@ -449,7 +458,7 @@ void Target::removeRunConfiguration(RunConfiguration *rc)
     }
 
     emit removedRunConfiguration(rc);
-    project()->removedProjectConfiguration(rc);
+    ProjectExplorerPlugin::targetSelector()->removedRunConfiguration(rc);
     d->m_runConfigurationModel.removeProjectConfiguration(rc);
 
     delete rc;
@@ -467,6 +476,7 @@ void Target::setActiveRunConfiguration(RunConfiguration *rc)
          rc != d->m_activeRunConfiguration)) {
         d->m_activeRunConfiguration = rc;
         emit activeRunConfigurationChanged(d->m_activeRunConfiguration);
+        ProjectExplorerPlugin::updateActions();
     }
     updateDeviceState();
 }
@@ -499,15 +509,15 @@ QVariantMap Target::toMap() const
         return QVariantMap();
 
     QVariantMap map;
+    map.insert(displayNameKey(), displayName());
+    map.insert(deviceTypeKey(), DeviceTypeKitAspect::deviceTypeId(kit()).toSetting());
 
     {
         // FIXME: For compatibility within the 4.11 cycle, remove this block later.
         // This is only read by older versions of Creator, but even there not actively used.
         const char CONFIGURATION_ID_KEY[] = "ProjectExplorer.ProjectConfiguration.Id";
-        const char DISPLAY_NAME_KEY[] = "ProjectExplorer.ProjectConfiguration.DisplayName";
         const char DEFAULT_DISPLAY_NAME_KEY[] = "ProjectExplorer.ProjectConfiguration.DefaultDisplayName";
         map.insert(QLatin1String(CONFIGURATION_ID_KEY), id().toSetting());
-        map.insert(QLatin1String(DISPLAY_NAME_KEY), displayName());
         map.insert(QLatin1String(DEFAULT_DISPLAY_NAME_KEY), displayName());
     }
 

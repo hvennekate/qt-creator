@@ -30,13 +30,19 @@
 
 QT_FORWARD_DECLARE_CLASS(QWidget)
 
+namespace Core {
+class Id;
+}
+
 namespace Utils {
+class FilePath;
 class PathChooser;
 class InfoLabel;
 }
 
 namespace ProjectExplorer {
 class Kit;
+class ToolChain;
 }
 
 namespace McuSupport {
@@ -55,6 +61,7 @@ public:
 
     McuPackage(const QString &label, const QString &defaultPath, const QString &detectionPath,
                const QString &settingsKey);
+    virtual ~McuPackage() = default;
 
     QString path() const;
     QString label() const;
@@ -95,19 +102,38 @@ private:
     Status m_status = InvalidPath;
 };
 
+class McuToolChainPackage : public McuPackage
+{
+public:
+    enum Type {
+        TypeArmGcc,
+        TypeIAR,
+        TypeKEIL
+    };
+
+    McuToolChainPackage(const QString &label, const QString &defaultPath,
+                        const QString &detectionPath, const QString &settingsKey, Type type);
+
+    Type type() const;
+    ProjectExplorer::ToolChain *toolChain(Core::Id language) const;
+    QString cmakeToolChainFileName() const;
+    QVariant debuggerId() const;
+
+private:
+    const Type m_type;
+};
+
 class McuTarget : public QObject
 {
     Q_OBJECT
 
 public:
-    McuTarget(const QString &vendor, const QString &model, const QVector<McuPackage *> &packages);
+    McuTarget(const QString &vendor, const QString &platform, const QVector<McuPackage *> &packages,
+              McuToolChainPackage *toolChainPackage);
 
     QString vendor() const;
-    QString model() const;
     QVector<McuPackage *> packages() const;
-    void setToolChainFile(const QString &toolChainFile);
-    QString toolChainFile() const;
-    void setQulPlatform(const QString &qulPlatform);
+    McuToolChainPackage *toolChainPackage() const;
     QString qulPlatform() const;
     void setColorDepth(int colorDepth);
     int colorDepth() const;
@@ -115,10 +141,9 @@ public:
 
 private:
     const QString m_vendor;
-    const QString m_model;
+    const QString m_qulPlatform;
     const QVector<McuPackage*> m_packages;
-    QString m_toolChainFile;
-    QString m_qulPlatform;
+    McuToolChainPackage *m_toolChainPackage;
     int m_colorDepth = -1;
 };
 
@@ -132,13 +157,18 @@ public:
 
     QVector<McuPackage*> packages;
     QVector<McuTarget*> mcuTargets;
-    McuPackage *armGccPackage = nullptr;
     McuPackage *qtForMCUsSdkPackage = nullptr;
+
+    void setQulDir(const Utils::FilePath &dir);
 
     QString kitName(const McuTarget* mcuTarget) const;
 
     QList<ProjectExplorer::Kit *> existingKits(const McuTarget *mcuTargt);
     ProjectExplorer::Kit *newKit(const McuTarget *mcuTarget);
+    void populatePackagesAndTargets();
+
+private:
+    void deletePackagesAndTargets();
 
 signals:
     void changed();

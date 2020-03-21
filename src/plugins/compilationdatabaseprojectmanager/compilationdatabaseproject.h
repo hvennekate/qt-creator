@@ -37,10 +37,6 @@
 
 #include <QFutureWatcher>
 
-QT_BEGIN_NAMESPACE
-class QTimer;
-QT_END_NAMESPACE
-
 namespace CppTools { class CppProjectUpdater; }
 namespace ProjectExplorer { class Kit; }
 namespace Utils { class FileSystemWatcher; }
@@ -55,14 +51,10 @@ class CompilationDatabaseProject : public ProjectExplorer::Project
 
 public:
     explicit CompilationDatabaseProject(const Utils::FilePath &filename);
-
-    bool needsConfiguration() const override { return false; }
-
     Utils::FilePath rootPathFromSettings() const;
-    ProjectExplorer::Kit *kit() const { return m_kit.get(); }
 
 private:
-    std::unique_ptr<ProjectExplorer::Kit> m_kit;
+    void configureAsExampleProject() override;
 };
 
 class CompilationDatabaseBuildSystem : public ProjectExplorer::BuildSystem
@@ -81,15 +73,12 @@ public:
     std::unique_ptr<CppTools::CppProjectUpdater> m_cppCodeModelUpdater;
     MimeBinaryCache m_mimeBinaryCache;
     QByteArray m_projectFileHash;
-    QTimer * const m_parseDelay;
     CompilationDbParser *m_parser = nullptr;
     Utils::FileSystemWatcher * const m_deployFileWatcher;
 };
 
 class CompilationDatabaseEditorFactory : public TextEditor::TextEditorFactory
 {
-    Q_OBJECT
-
 public:
     CompilationDatabaseEditorFactory();
 };

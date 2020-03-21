@@ -36,6 +36,7 @@
 
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
 #include <QRegularExpression>
 #include <QSettings>
@@ -240,7 +241,7 @@ QStringList GerritServer::curlArguments() const
 
 int GerritServer::testConnection()
 {
-    static GitClient *const client = GitPluginPrivate::client();
+    static GitClient *const client = GitClient::instance();
     const QStringList arguments = curlArguments() << (url(RestUrl) + accountUrlC);
     const SynchronousProcessResponse resp = client->vcsFullySynchronousExec(
                 QString(), {curlBinary, arguments},
@@ -332,7 +333,7 @@ bool GerritServer::resolveRoot()
 
 void GerritServer::resolveVersion(const GerritParameters &p, bool forceReload)
 {
-    static GitClient *const client = GitPluginPrivate::client();
+    static GitClient *const client = GitClient::instance();
     QSettings *settings = Core::ICore::settings();
     const QString fullVersionKey = "Gerrit/" + host + '/' + versionKey;
     version = settings->value(fullVersionKey).toString();

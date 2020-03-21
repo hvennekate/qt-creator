@@ -65,7 +65,7 @@ struct CoreInfo
                                                const QString &coreFile);
 };
 
-class GdbEngine : public CppDebuggerEngine
+class GdbEngine final : public CppDebuggerEngine
 {
     Q_OBJECT
 
@@ -366,7 +366,6 @@ private: ////////// General Interface //////////
     // HACK:
     QString m_currentThread;
     QString m_lastWinException;
-    QString m_lastMissingDebugInfo;
     bool m_expectTerminalTrap = false;
     bool usesExecInterrupt() const;
     bool usesTargetAsync() const;

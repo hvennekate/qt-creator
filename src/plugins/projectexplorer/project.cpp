@@ -31,6 +31,7 @@
 #include "deployconfiguration.h"
 #include "editorconfiguration.h"
 #include "kit.h"
+#include "kitinformation.h"
 #include "makestep.h"
 #include "projectexplorer.h"
 #include "projectmacroexpander.h"
@@ -39,6 +40,7 @@
 #include "runcontrol.h"
 #include "session.h"
 #include "target.h"
+#include "taskhub.h"
 #include "userfileaccessor.h"
 
 #include <coreplugin/idocument.h>
@@ -57,6 +59,7 @@
 #include <utils/macroexpander.h>
 #include <utils/pointeralgorithm.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 
 #include <QFileDialog>
 
@@ -201,9 +204,6 @@ public:
 
     QString m_displayName;
 
-    Kit::Predicate m_requiredKitPredicate;
-    Kit::Predicate m_preferredKitPredicate;
-
     Utils::MacroExpander m_macroExpander;
     Utils::FilePath m_rootProjectDirectory;
     mutable QVector<const Node *> m_sortedNodeList;
@@ -229,10 +229,6 @@ Project::Project(const QString &mimeType,
 
     // Only set up containernode after d is set so that it will find the project directory!
     d->m_containerNode = std::make_unique<ContainerNode>(this);
-
-    setRequiredKitPredicate([this](const Kit *k) {
-        return !containsType(projectIssues(k), Task::TaskType::Error);
-    });
 }
 
 Project::~Project()
@@ -327,7 +323,7 @@ bool Project::removeTarget(Target *target)
     return true;
 }
 
-QList<Target *> Project::targets() const
+const QList<Target *> Project::targets() const
 {
     return Utils::toRawPointer<QList>(d->m_targets);
 }
@@ -347,6 +343,7 @@ void Project::setActiveTarget(Target *target)
         (target && Utils::contains(d->m_targets, target))) {
         d->m_activeTarget = target;
         emit activeTargetChanged(d->m_activeTarget);
+        ProjectExplorerPlugin::updateActions();
     }
 }
 
@@ -360,16 +357,16 @@ void Project::setNeedsInitialExpansion(bool needsExpansion)
     d->m_needsInitialExpansion = needsExpansion;
 }
 
-void Project::setExtraProjectFiles(const QVector<Utils::FilePath> &projectDocumentPaths)
+void Project::setExtraProjectFiles(const QSet<Utils::FilePath> &projectDocumentPaths)
 {
-    QSet<Utils::FilePath> uniqueNewFiles = Utils::toSet(projectDocumentPaths);
+    QSet<Utils::FilePath> uniqueNewFiles = projectDocumentPaths;
     uniqueNewFiles.remove(projectFilePath()); // Make sure to never add the main project file!
 
     QSet<Utils::FilePath> existingWatches = Utils::transform<QSet>(d->m_extraProjectDocuments,
                                                                    &Core::IDocument::filePath);
 
-    QSet<Utils::FilePath> toAdd = uniqueNewFiles.subtract(existingWatches);
-    QSet<Utils::FilePath> toRemove = existingWatches.subtract(uniqueNewFiles);
+    const QSet<Utils::FilePath> toAdd = uniqueNewFiles - existingWatches;
+    const QSet<Utils::FilePath> toRemove = existingWatches - uniqueNewFiles;
 
     Utils::erase(d->m_extraProjectDocuments, [&toRemove](const std::unique_ptr<Core::IDocument> &d) {
         return toRemove.contains(d->filePath());
@@ -407,7 +404,7 @@ bool Project::copySteps(Target *sourceTarget, Target *newTarget)
     QStringList runconfigurationError;
 
     const Project * const project = newTarget->project();
-    foreach (BuildConfiguration *sourceBc, sourceTarget->buildConfigurations()) {
+    for (BuildConfiguration *sourceBc : sourceTarget->buildConfigurations()) {
         ProjectMacroExpander expander(project->projectFilePath(), project->displayName(),
                                       newTarget->kit(), sourceBc->displayName(),
                                       sourceBc->buildType());
@@ -429,7 +426,7 @@ bool Project::copySteps(Target *sourceTarget, Target *newTarget)
             SessionManager::setActiveBuildConfiguration(newTarget, bcs.first(), SetActive::NoCascade);
     }
 
-    foreach (DeployConfiguration *sourceDc, sourceTarget->deployConfigurations()) {
+    for (DeployConfiguration *sourceDc : sourceTarget->deployConfigurations()) {
         DeployConfiguration *newDc = DeployConfigurationFactory::clone(newTarget, sourceDc);
         if (!newDc) {
             deployconfigurationError << sourceDc->displayName();
@@ -446,7 +443,7 @@ bool Project::copySteps(Target *sourceTarget, Target *newTarget)
             SessionManager::setActiveDeployConfiguration(newTarget, dcs.first(), SetActive::NoCascade);
     }
 
-    foreach (RunConfiguration *sourceRc, sourceTarget->runConfigurations()) {
+    for (RunConfiguration *sourceRc : sourceTarget->runConfigurations()) {
         RunConfiguration *newRc = RunConfigurationFactory::clone(newTarget, sourceRc);
         if (!newRc) {
             runconfigurationError << sourceRc->displayName();
@@ -763,8 +760,22 @@ void Project::createTargetFromMap(const QVariantMap &map, int index)
 
     Kit *k = KitManager::kit(id);
     if (!k) {
-        qWarning("Warning: No kit '%s' found. Continuing.", qPrintable(id.toString()));
-        return;
+        Core::Id deviceTypeId = Core::Id::fromSetting(targetMap.value(Target::deviceTypeKey()));
+        if (!deviceTypeId.isValid())
+            deviceTypeId = Constants::DESKTOP_DEVICE_TYPE;
+        const QString formerKitName = targetMap.value(Target::displayNameKey()).toString();
+        k = KitManager::registerKit([deviceTypeId, &formerKitName](Kit *kit) {
+                const QString tempKitName = Utils::makeUniquelyNumbered(
+                            tr("Replacement for \"%1\"").arg(formerKitName),
+                        Utils::transform(KitManager::kits(), &Kit::unexpandedDisplayName));
+                kit->setUnexpandedDisplayName(tempKitName);
+                DeviceTypeKitAspect::setDeviceTypeId(kit, deviceTypeId);
+                kit->setup();
+        }, id);
+        TaskHub::addTask(BuildSystemTask(Task::Warning, tr("Project \"%1\" was configured for "
+            "kit \"%2\" with id %3, which does not exist anymore. The new kit \"%4\" was "
+            "created in its place, in an attempt not to lose custom project settings.")
+                .arg(displayName(), formerKitName, id.toString(), k->displayName())));
     }
 
     auto t = std::make_unique<Target>(this, k, Target::_constructor_tag{});
@@ -974,29 +985,9 @@ ProjectImporter *Project::projectImporter() const
     return nullptr;
 }
 
-Kit::Predicate Project::requiredKitPredicate() const
-{
-    return d->m_requiredKitPredicate;
-}
-
-void Project::setRequiredKitPredicate(const Kit::Predicate &predicate)
-{
-    d->m_requiredKitPredicate = predicate;
-}
-
 void Project::setCanBuildProducts()
 {
     d->m_canBuildProducts = true;
-}
-
-Kit::Predicate Project::preferredKitPredicate() const
-{
-    return d->m_preferredKitPredicate;
-}
-
-void Project::setPreferredKitPredicate(const Kit::Predicate &predicate)
-{
-    d->m_preferredKitPredicate = predicate;
 }
 
 void Project::setExtraData(const QString &key, const QVariant &data)
@@ -1112,8 +1103,8 @@ void ProjectExplorerPlugin::testProject_parsingSuccess()
 {
     TestProject project;
 
-    QSignalSpy startSpy(project.target, &Target::parsingStarted);
-    QSignalSpy stopSpy(project.target, &Target::parsingFinished);
+    QSignalSpy startSpy(project.target->buildSystem(), &BuildSystem::parsingStarted);
+    QSignalSpy stopSpy(project.target->buildSystem(), &BuildSystem::parsingFinished);
 
     {
         BuildSystem::ParseGuard guard = project.target->buildSystem()->guardParsingRun();
@@ -1138,8 +1129,8 @@ void ProjectExplorerPlugin::testProject_parsingFail()
 {
     TestProject project;
 
-    QSignalSpy startSpy(project.target, &Target::parsingStarted);
-    QSignalSpy stopSpy(project.target, &Target::parsingFinished);
+    QSignalSpy startSpy(project.target->buildSystem(), &BuildSystem::parsingStarted);
+    QSignalSpy stopSpy(project.target->buildSystem(), &BuildSystem::parsingFinished);
 
     {
         BuildSystem::ParseGuard guard = project.target->buildSystem()->guardParsingRun();

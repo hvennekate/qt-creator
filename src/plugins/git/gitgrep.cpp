@@ -26,7 +26,6 @@
 #include "gitgrep.h"
 #include "gitclient.h"
 #include "gitconstants.h"
-#include "gitplugin.h"
 
 #include <coreplugin/editormanager/editormanager.h>
 #include <coreplugin/progressmanager/progressmanager.h>
@@ -158,7 +157,6 @@ public:
 
     void exec()
     {
-        GitClient *client = GitPluginPrivate::client();
         QStringList arguments = {
             "-c", "color.grep.match=bold red",
             "-c", "color.grep=always",
@@ -188,7 +186,7 @@ public:
                     return QString(":!" + filter);
                 });
         arguments << "--" << filterArgs << exclusionArgs;
-        QScopedPointer<VcsCommand> command(client->createCommand(m_directory));
+        QScopedPointer<VcsCommand> command(GitClient::instance()->createCommand(m_directory));
         command->addFlags(VcsCommand::SilentOutput | VcsCommand::SuppressFailMessage);
         command->setProgressiveOutput(true);
         QFutureWatcher<FileSearchResultList> watcher;
@@ -196,7 +194,7 @@ public:
         connect(&watcher, &QFutureWatcher<FileSearchResultList>::canceled,
                 command.data(), &VcsCommand::cancel);
         connect(command.data(), &VcsCommand::stdOutText, this, &GitGrepRunner::read);
-        SynchronousProcessResponse resp = command->runCommand({client->vcsBinary(), arguments}, 0);
+        SynchronousProcessResponse resp = command->runCommand({GitClient::instance()->vcsBinary(), arguments}, 0);
         switch (resp.result) {
         case SynchronousProcessResponse::TerminatedAbnormally:
         case SynchronousProcessResponse::StartFailed:
@@ -235,8 +233,8 @@ static bool isGitDirectory(const QString &path)
     return gitVc == VcsManager::findVersionControlForDirectory(path, nullptr);
 }
 
-GitGrep::GitGrep(QObject *parent)
-    : SearchEngine(parent)
+GitGrep::GitGrep(GitClient *client)
+    : m_client(client)
 {
     m_widget = new QWidget;
     auto layout = new QHBoxLayout(m_widget);
@@ -248,7 +246,7 @@ GitGrep::GitGrep(QObject *parent)
     const QRegularExpression refExpression("[\\S]*");
     m_treeLineEdit->setValidator(new QRegularExpressionValidator(refExpression, this));
     layout->addWidget(m_treeLineEdit);
-    if (GitPluginPrivate::client()->gitVersion() >= 0x021300) {
+    if (client->gitVersion() >= 0x021300) {
         m_recurseSubmodules = new QCheckBox(tr("Recurse submodules"));
         layout->addWidget(m_recurseSubmodules);
     }
@@ -320,7 +318,7 @@ IEditor *GitGrep::openEditor(const SearchResultItem &item,
     QByteArray content;
     const QString topLevel = parameters.additionalParameters.toString();
     const QString relativePath = QDir(topLevel).relativeFilePath(path);
-    if (!GitPluginPrivate::client()->synchronousShow(topLevel, params.ref + ":./" + relativePath,
+    if (!m_client->synchronousShow(topLevel, params.ref + ":./" + relativePath,
                                               &content, nullptr)) {
         return nullptr;
     }

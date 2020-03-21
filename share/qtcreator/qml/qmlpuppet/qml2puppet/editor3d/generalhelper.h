@@ -30,6 +30,7 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qhash.h>
+#include <QtCore/qpointer.h>
 #include <QtGui/qvector3d.h>
 #include <QtGui/qmatrix4x4.h>
 
@@ -37,7 +38,7 @@ QT_BEGIN_NAMESPACE
 class QQuick3DCamera;
 class QQuick3DNode;
 class QQuick3DViewport;
-class QQuickWindow;
+class QQuickItem;
 QT_END_NAMESPACE
 
 namespace QmlDesigner {
@@ -70,27 +71,26 @@ public:
     Q_INVOKABLE void delayedPropertySet(QObject *obj, int delay, const QString &property,
                                         const QVariant& value);
     Q_INVOKABLE QQuick3DNode *resolvePick(QQuick3DNode *pickNode);
-    Q_INVOKABLE void storeToolState(const QString &tool, const QVariant &state, int delayEmit = 0);
-    Q_INVOKABLE void initToolStates(const QVariantMap &toolStates);
-    Q_INVOKABLE void storeWindowState(QQuickWindow *w);
-    Q_INVOKABLE void restoreWindowState(QQuickWindow *w, const QVariantMap &toolStates);
+    Q_INVOKABLE void storeToolState(const QString &sceneId, const QString &tool,
+                                    const QVariant &state, int delayEmit = 0);
+    void initToolStates(const QString &sceneId, const QVariantMap &toolStates);
+    Q_INVOKABLE void enableItemUpdate(QQuickItem *item, bool enable);
+    Q_INVOKABLE QVariantMap getToolStates(const QString &sceneId);
+    QString globalStateId() const;
 
     bool isMacOS() const;
 
 signals:
     void overlayUpdateNeeded();
-    void toolStateChanged(const QString &tool, const QVariant &toolState);
-
-private slots:
-    void doRestoreWindowState(QQuickWindow *w, const QVariantMap &windowState);
+    void toolStateChanged(const QString &sceneId, const QString &tool, const QVariant &toolState);
 
 private:
     void handlePendingToolStateUpdate();
 
     QTimer m_overlayUpdateTimer;
     QTimer m_toolStateUpdateTimer;
-    QVariantMap m_toolStates;
-    QVariantMap m_toolStatesPending;
+    QHash<QString, QVariantMap> m_toolStates;
+    QHash<QString, QVariantMap> m_toolStatesPending;
 };
 
 }

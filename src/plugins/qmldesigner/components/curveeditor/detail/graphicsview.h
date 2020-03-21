@@ -38,6 +38,7 @@ namespace DesignTools {
 class CurveItem;
 class CurveEditorModel;
 class Playhead;
+class PropertyTreeItem;
 
 class GraphicsView : public QGraphicsView
 {
@@ -93,6 +94,8 @@ public:
 
     QRectF defaultRasterRect() const;
 
+    void setLocked(PropertyTreeItem *item);
+
     void setStyle(const CurveEditorStyle &style);
 
     void setZoomX(double zoom, const QPoint &pivot = QPoint());
@@ -104,6 +107,8 @@ public:
     void scrollContent(double x, double y);
 
     void reset(const std::vector<CurveItem *> &items);
+
+    void updateSelection(const std::vector<CurveItem *> &items);
 
     void setInterpolation(Keyframe::Interpolation interpol);
 
@@ -145,7 +150,13 @@ private:
 
     void drawValueScale(QPainter *painter, const QRectF &rect);
 
+    void drawRangeBar(QPainter *painter, const QRectF &rect);
+
     double timeLabelInterval(QPainter *painter, double maxTime);
+
+    QRectF rangeMinHandle(const QRectF &rect);
+
+    QRectF rangeMaxHandle(const QRectF &rect);
 
 private:
     double m_zoomX;

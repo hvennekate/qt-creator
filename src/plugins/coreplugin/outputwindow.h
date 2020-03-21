@@ -56,15 +56,13 @@ public:
     OutputWindow(Context context, const QString &settingsKey, QWidget *parent = nullptr);
     ~OutputWindow() override;
 
-    Utils::OutputFormatter *formatter() const;
-    void setFormatter(Utils::OutputFormatter *formatter);
+    void setFormatters(const QList<Utils::OutputFormatter *> &formatters);
 
     void appendMessage(const QString &out, Utils::OutputFormat format);
-    /// appends a \p text using \p format without using formater
-    void appendText(const QString &text, const QTextCharFormat &format = QTextCharFormat());
 
     void grayOutOldContent();
     void clear();
+    void flush();
 
     void scrollToBottom();
 
@@ -106,10 +104,9 @@ private:
     QTimer m_scrollTimer;
     QElapsedTimer m_lastMessage;
     void enableUndoRedo();
-    QString doNewlineEnforcement(const QString &out);
     void filterNewContent();
 
-    Internal::OutputWindowPrivate *d;
+    Internal::OutputWindowPrivate *d = nullptr;
 };
 
 } // namespace Core

@@ -7,6 +7,7 @@ QtcPlugin {
     Depends { name: "Utils" }
 
     Depends { name: "Core" }
+    Depends { name: "CppTools" }
     Depends { name: "Debugger" }
     Depends { name: "ProjectExplorer" }
     Depends { name: "TextEditor" }
@@ -16,7 +17,6 @@ QtcPlugin {
         files: [
             "baremetal.qrc",
             "baremetalconstants.h",
-            "baremetalcustomrunconfiguration.cpp", "baremetalcustomrunconfiguration.h",
             "baremetaldebugsupport.cpp", "baremetaldebugsupport.h",
             "baremetaldevice.cpp", "baremetaldevice.h",
             "baremetaldeviceconfigurationwidget.cpp", "baremetaldeviceconfigurationwidget.h",
@@ -46,6 +46,29 @@ QtcPlugin {
             "stlinkutilgdbserverprovider.cpp", "stlinkutilgdbserverprovider.h",
             "jlinkgdbserverprovider.cpp", "jlinkgdbserverprovider.h",
             "eblinkgdbserverprovider.cpp", "eblinkgdbserverprovider.h",
+        ]
+    }
+
+    Group {
+        name: "UVSC Servers"
+        prefix: "debugservers/uvsc/"
+        files: [
+            "simulatoruvscserverprovider.cpp", "simulatoruvscserverprovider.h",
+            "stlinkuvscserverprovider.cpp", "stlinkuvscserverprovider.h",
+            "uvproject.cpp", "uvproject.h",
+            "uvprojectwriter.cpp", "uvprojectwriter.h",
+            "uvscserverprovider.cpp", "uvscserverprovider.h",
+            "uvtargetdevicemodel.cpp", "uvtargetdevicemodel.h",
+            "uvtargetdeviceselection.cpp", "uvtargetdeviceselection.h",
+            "uvtargetdeviceviewer.cpp", "uvtargetdeviceviewer.h",
+            "uvtargetdrivermodel.cpp", "uvtargetdrivermodel.h",
+            "uvtargetdriverselection.cpp", "uvtargetdriverselection.h",
+            "uvtargetdriverviewer.cpp", "uvtargetdriverviewer.h",
+            "xmlnodevisitor.h",
+            "xmlproject.cpp", "xmlproject.h",
+            "xmlprojectwriter.cpp", "xmlprojectwriter.h",
+            "xmlproperty.cpp", "xmlproperty.h",
+            "xmlpropertygroup.cpp", "xmlpropertygroup.h",
         ]
     }
 }

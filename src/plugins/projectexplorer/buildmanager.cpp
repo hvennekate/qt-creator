@@ -47,6 +47,7 @@
 #include <coreplugin/progressmanager/progressmanager.h>
 #include <extensionsystem/pluginmanager.h>
 #include <utils/runextensions.h>
+#include <utils/stringutils.h>
 
 #include <QApplication>
 #include <QElapsedTimer>
@@ -265,9 +266,6 @@ BuildManager::BuildManager(QObject *parent, QAction *cancelBuildAction)
     connect(d->m_taskWindow, &Internal::TaskWindow::tasksChanged,
             this, &BuildManager::updateTaskCount);
 
-    connect(d->m_taskWindow, &Internal::TaskWindow::tasksCleared,
-            this,&BuildManager::tasksCleared);
-
     connect(&d->m_progressWatcher, &QFutureWatcherBase::canceled,
             this, &BuildManager::cancel);
     connect(&d->m_progressWatcher, &QFutureWatcherBase::finished,
@@ -457,16 +455,12 @@ void BuildManager::updateTaskCount()
 {
     const int errors = getErrorTaskCount();
     ProgressManager::setApplicationLabel(errors > 0 ? QString::number(errors) : QString());
-    emit m_instance->tasksChanged();
 }
 
 void BuildManager::finish()
 {
-    const QTime format = QTime(0, 0, 0, 0).addMSecs(d->m_elapsed.elapsed() + 500);
-    QString time = format.toString("h:mm:ss");
-    if (time.startsWith("0:"))
-        time.remove(0, 2); // Don't display zero hours
-    m_instance->addToOutputWindow(tr("Elapsed time: %1.") .arg(time), BuildStep::OutputFormat::NormalMessage);
+    const QString elapsedTime = Utils::formatElapsedTime(d->m_elapsed.elapsed());
+    m_instance->addToOutputWindow(elapsedTime, BuildStep::OutputFormat::NormalMessage);
 
     QApplication::alert(ICore::mainWindow(), 3000);
 }
@@ -791,6 +785,7 @@ bool BuildManager::buildLists(const QList<BuildStepList *> bsls, const QStringLi
     bool success = buildQueueAppend(steps, names, preambelMessage);
     if (!success) {
         d->m_outputWindow->popup(IOutputPane::NoModeSwitch);
+        d->m_isDeploying = false;
         return false;
     }
 

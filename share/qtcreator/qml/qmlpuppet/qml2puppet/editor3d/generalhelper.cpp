@@ -28,9 +28,9 @@
 
 #include "selectionboxgeometry.h"
 
+#include <QtQuick3D/qquick3dobject.h>
 #include <QtQuick3D/private/qquick3dorthographiccamera_p.h>
 #include <QtQuick3D/private/qquick3dperspectivecamera_p.h>
-#include <QtQuick3D/private/qquick3dobject_p_p.h>
 #include <QtQuick3D/private/qquick3dcamera_p.h>
 #include <QtQuick3D/private/qquick3dnode_p.h>
 #include <QtQuick3D/private/qquick3dmodel_p.h>
@@ -41,11 +41,13 @@
 #include <QtQuick3DRuntimeRender/private/qssgrendermodel_p.h>
 #include <QtQuick3DUtils/private/qssgbounds3_p.h>
 #include <QtQuick/qquickwindow.h>
+#include <QtQuick/qquickitem.h>
 #include <QtCore/qmath.h>
-#include <QtGui/qscreen.h>
 
 namespace QmlDesigner {
 namespace Internal {
+
+const QString _globalStateId = QStringLiteral("@GTS"); // global tool state
 
 GeneralHelper::GeneralHelper()
     : QObject()
@@ -82,17 +84,17 @@ void GeneralHelper::orbitCamera(QQuick3DCamera *camera, const QVector3D &startRo
     if (dragVector.length() < 0.001f)
         return;
 
-    camera->setRotation(startRotation);
-    QVector3D newRotation(dragVector.y(), dragVector.x(), 0.f);
+    camera->setEulerRotation(startRotation);
+    QVector3D newRotation(-dragVector.y(), -dragVector.x(), 0.f);
     newRotation *= 0.5f; // Emprically determined multiplier for nice drag
     newRotation += startRotation;
 
-    camera->setRotation(newRotation);
+    camera->setEulerRotation(newRotation);
 
     const QVector3D oldLookVector = camera->position() - lookAtPoint;
     QMatrix4x4 m = camera->sceneTransform();
     const float *dataPtr(m.data());
-    QVector3D newLookVector(-dataPtr[8], -dataPtr[9], -dataPtr[10]);
+    QVector3D newLookVector(dataPtr[8], dataPtr[9], dataPtr[10]);
     newLookVector.normalize();
     newLookVector *= oldLookVector.length();
 
@@ -184,7 +186,6 @@ QVector4D GeneralHelper::focusObjectToCamera(QQuick3DCamera *camera, float defau
 
                     // Adjust lookAt to look directly at the center of the object bounds
                     lookAt = renderModel->globalTransform.map(center);
-                    lookAt.setZ(-lookAt.z()); // Render node transforms have inverted z
                 }
             }
         }
@@ -193,7 +194,7 @@ QVector4D GeneralHelper::focusObjectToCamera(QQuick3DCamera *camera, float defau
     // Reset camera position to default zoom
     QMatrix4x4 m = camera->sceneTransform();
     const float *dataPtr(m.data());
-    QVector3D newLookVector(-dataPtr[8], -dataPtr[9], -dataPtr[10]);
+    QVector3D newLookVector(dataPtr[8], dataPtr[9], dataPtr[10]);
     newLookVector.normalize();
     newLookVector *= defaultLookAtDistance;
 
@@ -227,10 +228,13 @@ QQuick3DNode *GeneralHelper::resolvePick(QQuick3DNode *pickNode)
     return pickNode;
 }
 
-void GeneralHelper::storeToolState(const QString &tool, const QVariant &state, int delay)
+void GeneralHelper::storeToolState(const QString &sceneId, const QString &tool, const QVariant &state,
+                                   int delay)
 {
     if (delay > 0) {
-        m_toolStatesPending.insert(tool, state);
+        QVariantMap sceneToolState;
+        sceneToolState.insert(tool, state);
+        m_toolStatesPending.insert(sceneId, sceneToolState);
         m_toolStateUpdateTimer.start(delay);
     } else {
         if (m_toolStateUpdateTimer.isActive())
@@ -241,80 +245,36 @@ void GeneralHelper::storeToolState(const QString &tool, const QVariant &state, i
             theState = state.value<QVariantList>();
         else
             theState = state;
-        if (m_toolStates[tool] != theState) {
-            m_toolStates.insert(tool, theState);
-            emit toolStateChanged(tool, theState);
+        QVariantMap &sceneToolState = m_toolStates[sceneId];
+        if (sceneToolState[tool] != theState) {
+            sceneToolState.insert(tool, theState);
+            emit toolStateChanged(sceneId, tool, theState);
         }
     }
 }
 
-void GeneralHelper::initToolStates(const QVariantMap &toolStates)
+void GeneralHelper::initToolStates(const QString &sceneId, const QVariantMap &toolStates)
 {
-    m_toolStates = toolStates;
+    m_toolStates[sceneId] = toolStates;
 }
 
-void GeneralHelper::storeWindowState(QQuickWindow *w)
+void GeneralHelper::enableItemUpdate(QQuickItem *item, bool enable)
 {
-    QVariantMap windowState;
-    const QRect geometry = w->geometry();
-    const bool maximized = w->windowState() == Qt::WindowMaximized;
-    windowState.insert("maximized", maximized);
-    windowState.insert("geometry", geometry);
-
-    storeToolState("windowState", windowState, 500);
+    if (item)
+        item->setFlag(QQuickItem::ItemHasContents, enable);
 }
 
-void GeneralHelper::restoreWindowState(QQuickWindow *w, const QVariantMap &toolStates)
+QVariantMap GeneralHelper::getToolStates(const QString &sceneId)
 {
-    const QString stateKey = QStringLiteral("windowState");
-    if (toolStates.contains(stateKey)) {
-        QVariantMap windowState = toolStates[stateKey].value<QVariantMap>();
-
-        doRestoreWindowState(w, windowState);
-
-        // If the mouse cursor at puppet launch time is in a different screen than the one where the
-        // view geometry was saved on, the initial position and size can be incorrect, but if
-        // we reset the geometry again asynchronously, it should end up with correct geometry.
-        QTimer::singleShot(0, [this, w, windowState]() {
-            doRestoreWindowState(w, windowState);
-
-            QTimer::singleShot(0, [w]() {
-                // Make sure that the window is at least partially visible on the screen
-                QRect geo = w->geometry();
-                QRect sRect = w->screen()->geometry();
-                if (geo.left() > sRect.right() - 150)
-                    geo.moveRight(sRect.right());
-                if (geo.right() < sRect.left() + 150)
-                    geo.moveLeft(sRect.left());
-                if (geo.top() > sRect.bottom() - 150)
-                    geo.moveBottom(sRect.bottom());
-                if (geo.bottom() < sRect.top() + 150)
-                    geo.moveTop(sRect.top());
-                if (geo.width() > sRect.width())
-                    geo.setWidth(sRect.width());
-                if (geo.height() > sRect.height())
-                    geo.setHeight(sRect.height());
-                w->setGeometry(geo);
-            });
-        });
-    }
+    handlePendingToolStateUpdate();
+    if (m_toolStates.contains(sceneId))
+        return m_toolStates[sceneId];
+    return {};
 }
 
-void GeneralHelper::doRestoreWindowState(QQuickWindow *w, const QVariantMap &windowState)
+QString GeneralHelper::globalStateId() const
 {
-    const QString geoKey = QStringLiteral("geometry");
-    if (windowState.contains(geoKey)) {
-        bool maximized = false;
-        const QString maxKey = QStringLiteral("maximized");
-        if (windowState.contains(maxKey))
-            maximized = windowState[maxKey].toBool();
-
-        QRect rect = windowState[geoKey].value<QRect>();
-
-        w->setGeometry(rect);
-        if (maximized)
-            w->showMaximized();
-    }
+    return _globalStateId;
 }
 
 bool GeneralHelper::isMacOS() const
@@ -329,10 +289,15 @@ bool GeneralHelper::isMacOS() const
 void GeneralHelper::handlePendingToolStateUpdate()
 {
     m_toolStateUpdateTimer.stop();
-    auto it = m_toolStatesPending.constBegin();
-    while (it != m_toolStatesPending.constEnd()) {
-        storeToolState(it.key(), it.value());
-        ++it;
+    auto sceneIt = m_toolStatesPending.constBegin();
+    while (sceneIt != m_toolStatesPending.constEnd()) {
+        const QVariantMap &sceneToolState = sceneIt.value();
+        auto toolIt = sceneToolState.constBegin();
+        while (toolIt != sceneToolState.constEnd()) {
+            storeToolState(sceneIt.key(), toolIt.key(), toolIt.value());
+            ++toolIt;
+        }
+        ++sceneIt;
     }
     m_toolStatesPending.clear();
 }

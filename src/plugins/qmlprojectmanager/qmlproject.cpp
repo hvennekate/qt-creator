@@ -57,10 +57,15 @@
 #include <QDebug>
 #include <QRegularExpression>
 #include <QTextCodec>
+#include <QLoggingCategory>
 
 using namespace Core;
 using namespace ProjectExplorer;
 using namespace QmlProjectManager::Internal;
+
+namespace {
+Q_LOGGING_CATEGORY(infoLogger, "QmlProjectManager.QmlBuildSystem", QtInfoMsg)
+}
 
 namespace QmlProjectManager {
 
@@ -205,6 +210,13 @@ QString QmlBuildSystem::mainFile() const
     return QString();
 }
 
+bool QmlBuildSystem::qtForMCUs() const
+{
+    if (m_projectItem)
+        return m_projectItem.data()->qtForMCUs();
+    return false;
+}
+
 void QmlBuildSystem::setMainFile(const QString &mainFilePath)
 {
     if (m_projectItem)
@@ -269,6 +281,10 @@ QStringList QmlBuildSystem::makeAbsolute(const Utils::FilePath &path, const QStr
 
 void QmlBuildSystem::refreshFiles(const QSet<QString> &/*added*/, const QSet<QString> &removed)
 {
+    if (m_blockFilesUpdate) {
+        qCDebug(infoLogger) << "Auto files refresh blocked.";
+        return;
+    }
     refresh(Files);
     if (!removed.isEmpty()) {
         if (auto modelManager = QmlJS::ModelManagerInterface::instance())
@@ -393,6 +409,8 @@ QVariant QmlBuildSystem::additionalData(Id id) const
         return customFileSelectors();
     if (id == Constants::customForceFreeTypeData)
         return forceFreeType();
+    if (id == Constants::customQtForMCUs)
+        return qtForMCUs();
     return {};
 }
 

@@ -602,7 +602,7 @@ ClangTool::ClangTool()
 
     update();
 
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             this, &ClangTool::update);
     connect(CppModelManager::instance(), &CppModelManager::projectPartsUpdated,
             this, &ClangTool::update);
@@ -867,7 +867,7 @@ static bool canAnalyzeProject(Project *project)
                                              || project->projectLanguages().contains(cxx);
         return projectSupportsLanguage
                && CppModelManager::instance()->projectInfo(project).isValid()
-               && ToolChainKitAspect::toolChain(target->kit(), cxx);
+               && ToolChainKitAspect::cxxToolChain(target->kit());
     }
     return false;
 }

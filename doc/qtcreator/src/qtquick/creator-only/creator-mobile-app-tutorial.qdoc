@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -75,7 +75,7 @@
 
     To use \e {Bluebubble.svg} in your project,
     copy it to the project directory (same subdirectory as the QML file).
-    The image appears in \uicontrol Resources. You can also use any other
+    The image appears in \uicontrol Assets. You can also use any other
     image or a QML type, instead.
 
     To create the UI in the Design mode:
@@ -106,10 +106,10 @@
 
             \endlist
 
-        \li In \uicontrol Library > \uicontrol Resources, select Bluebubble.svg
+        \li In \uicontrol Library > \uicontrol Assets, select Bluebubble.svg
             and drag and drop it to \e mainWindow in the navigator.
 
-        \li In the \uicontrol Properties pane, \uicontrol Id field, enter
+        \li In the \uicontrol Properties view, \uicontrol Id field, enter
             \e bubble to be able to reference the image from other places.
 
         \li Select the \inlineimage export_unchecked.png
@@ -257,15 +257,15 @@
     After adding the dependencies, select \uicontrol Build > \uicontrol {Run qmake} to apply
     the changes to the Makefile of the project.
 
-    \section1 Adding Resources
+    \section1 Adding Assets
 
-    You need to add the Bluebubble.svg image file to the application resources
+    You need to add the Bluebubble.svg image file to the application assets
     for deployment to mobile devices:
 
     \list 1
 
         \li In the \uicontrol Projects view, double-click the qml.qrc file to open it
-            in the resource editor.
+            in the assets editor.
 
         \li Select \uicontrol Add to add Bluebubble.svg.
 

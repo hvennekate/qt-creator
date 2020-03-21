@@ -51,12 +51,10 @@ namespace ProjectExplorer {
 
 class BuildInfo;
 class BuildSystem;
-class BuildConfiguration;
 class ContainerNode;
 class EditorConfiguration;
 class FolderNode;
 class Node;
-class ProjectConfiguration;
 class ProjectImporter;
 class ProjectNode;
 class ProjectPrivate;
@@ -106,7 +104,7 @@ public:
     Target *addTargetForKit(Kit *kit);
     bool removeTarget(Target *target);
 
-    QList<Target *> targets() const;
+    const QList<Target *> targets() const;
     // Note: activeTarget can be 0 (if no targets are defined).
     Target *activeTarget() const;
     Target *target(Core::Id id) const;
@@ -144,9 +142,6 @@ public:
 
     virtual ProjectImporter *projectImporter() const;
 
-    Kit::Predicate requiredKitPredicate() const;
-    Kit::Predicate preferredKitPredicate() const;
-
     // The build system is able to report all executables that can be built, independent
     // of configuration.
     bool knowsAllBuildExecutables() const;
@@ -167,7 +162,7 @@ public:
 
     // Set project files that will be watched and trigger the same callback
     // as the main project file.
-    void setExtraProjectFiles(const QVector<Utils::FilePath> &projectDocumentPaths);
+    void setExtraProjectFiles(const QSet<Utils::FilePath> &projectDocumentPaths);
 
     void setDisplayName(const QString &name);
     void setProjectLanguage(Core::Id id, bool enabled);
@@ -185,9 +180,6 @@ signals:
 
     // Note: activeTarget can be 0 (if no targets are defined).
     void activeTargetChanged(ProjectExplorer::Target *target);
-
-    void removedProjectConfiguration(ProjectExplorer::ProjectConfiguration *pc);
-    void addedProjectConfiguration(ProjectExplorer::ProjectConfiguration *pc);
 
     void aboutToRemoveTarget(ProjectExplorer::Target *target);
     void removedTarget(ProjectExplorer::Target *target);
@@ -207,12 +199,6 @@ protected:
     virtual RestoreResult fromMap(const QVariantMap &map, QString *errorMessage);
     void createTargetFromMap(const QVariantMap &map, int index);
     virtual bool setupTarget(Target *t);
-
-    // Used to pre-check kits in the TargetSetupPage. RequiredKitPredicate
-    // is used to select kits available in the TargetSetupPage
-    void setPreferredKitPredicate(const Kit::Predicate &predicate);
-    // The predicate used to select kits available in TargetSetupPage.
-    void setRequiredKitPredicate(const Kit::Predicate &predicate);
 
     void setCanBuildProducts();
 

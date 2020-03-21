@@ -148,7 +148,6 @@
 #include <QVariant>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QtPlugin>
 
 #ifdef WITH_TESTS
 
@@ -586,43 +585,6 @@ static Kit *findUniversalCdbKit()
 
 ///////////////////////////////////////////////////////////////////////
 //
-// Debuginfo Taskhandler
-//
-///////////////////////////////////////////////////////////////////////
-
-class DebugInfoTaskHandler : public ITaskHandler
-{
-public:
-    bool canHandle(const Task &task) const final
-    {
-        return m_debugInfoTasks.contains(task.taskId);
-    }
-
-    void handle(const Task &task) final
-    {
-        QString cmd = m_debugInfoTasks.value(task.taskId);
-        QProcess::startDetached(cmd);
-    }
-
-    void addTask(unsigned id, const QString &cmd)
-    {
-        m_debugInfoTasks[id] = cmd;
-    }
-
-    QAction *createAction(QObject *parent) const final
-    {
-        QAction *action = new QAction(DebuggerPlugin::tr("Install &Debug Information"), parent);
-        action->setToolTip(DebuggerPlugin::tr("Tries to install missing debug information."));
-        return action;
-    }
-
-private:
-    QHash<unsigned, QString> m_debugInfoTasks;
-};
-
-
-///////////////////////////////////////////////////////////////////////
-//
 // DebuggerPluginPrivate
 //
 ///////////////////////////////////////////////////////////////////////
@@ -678,7 +640,7 @@ public:
             }
             QInputDialog dialog; // Create wide input dialog.
             dialog.setWindowFlags(dialog.windowFlags()
-              & ~(Qt::WindowContextHelpButtonHint|Qt::MSWindowsFixedSizeDialogHint));
+              & ~(Qt::MSWindowsFixedSizeDialogHint));
             dialog.resize(600, dialog.height());
             dialog.setWindowTitle(tr("Add Message Tracepoint"));
             dialog.setLabelText (tr("Message:"));
@@ -766,7 +728,6 @@ public:
     QList<IOptionsPage *> m_optionPages;
     IContext m_debugModeContext;
 
-    DebugInfoTaskHandler m_debugInfoTaskHandler;
     Perspective m_perspective{Constants::PRESET_PERSPECTIVE_ID, tr("Debugger")};
 
     DebuggerKitAspect debuggerKitAspect;
@@ -1225,7 +1186,7 @@ DebuggerPluginPrivate::DebuggerPluginPrivate(const QStringList &arguments)
             this, &DebuggerPluginPrivate::writeSettings);
 
     // ProjectExplorer
-    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::updateRunActions,
+    connect(ProjectExplorerPlugin::instance(), &ProjectExplorerPlugin::runActionsUpdated,
             this, &DebuggerPluginPrivate::updatePresetState);
 
     // EditorManager
@@ -1835,7 +1796,7 @@ void DebuggerPluginPrivate::runScheduled()
 
 void DebuggerPluginPrivate::editorOpened(IEditor *editor)
 {
-    if (auto widget = qobject_cast<TextEditorWidget *>(editor->widget())) {
+    if (auto widget = TextEditorWidget::fromEditor(editor)) {
         connect(widget, &TextEditorWidget::markRequested,
                 this, &DebuggerPluginPrivate::requestMark);
 
@@ -2049,11 +2010,6 @@ void DebuggerPluginPrivate::remoteCommand(const QStringList &options)
     runScheduled();
 }
 
-void addDebugInfoTask(unsigned id, const QString &cmd)
-{
-    dd->m_debugInfoTaskHandler.addTask(id, cmd);
-}
-
 void DebuggerPluginPrivate::extensionsInitialized()
 {
     // If the CppEditor or QmlJS editor plugin is there, we want to add something to
@@ -2159,6 +2115,9 @@ DebuggerPlugin::DebuggerPlugin()
 {
     setObjectName("DebuggerPlugin");
     m_instance = this;
+
+    qRegisterMetaType<PerspectiveState>("Utils::PerspectiveState");
+    qRegisterMetaTypeStreamOperators<PerspectiveState>("Utils::PerspectiveState");
 }
 
 DebuggerPlugin::~DebuggerPlugin()

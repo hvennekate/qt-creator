@@ -149,7 +149,7 @@ void ServerCapabilities::setColorProvider(Utils::variant<bool, JsonObject> color
         insert(renameProviderKey, Utils::get<JsonObject>(colorProvider));
 }
 
-bool ServerCapabilities::isValid(QStringList *error) const
+bool ServerCapabilities::isValid(ErrorHierarchy *error) const
 {
     return checkOptional<TextDocumentSyncOptions, int>(error, textDocumentSyncKey)
             && checkOptional<bool>(error, hoverProviderKey)
@@ -162,7 +162,7 @@ bool ServerCapabilities::isValid(QStringList *error) const
             && checkOptional<bool>(error, documentHighlightProviderKey)
             && checkOptional<bool>(error, documentSymbolProviderKey)
             && checkOptional<bool>(error, workspaceSymbolProviderKey)
-            && checkOptional<bool>(error, codeActionProviderKey)
+            && checkOptional<bool, CodeActionOptions>(error, codeActionProviderKey)
             && checkOptional<CodeLensOptions>(error, codeLensProviderKey)
             && checkOptional<bool>(error, documentFormattingProviderKey)
             && checkOptional<bool>(error, documentRangeFormattingProviderKey)
@@ -194,7 +194,7 @@ void ServerCapabilities::WorkspaceServerCapabilities::WorkspaceFoldersCapabiliti
         insert(changeNotificationsKey, *val);
 }
 
-bool ServerCapabilities::WorkspaceServerCapabilities::WorkspaceFoldersCapabilities::isValid(QStringList *error) const
+bool ServerCapabilities::WorkspaceServerCapabilities::WorkspaceFoldersCapabilities::isValid(ErrorHierarchy *error) const
 {
     return checkOptional<bool>(error, supportedKey)
             && checkOptional<QString, bool>(error, changeNotificationsKey);
@@ -211,7 +211,7 @@ bool TextDocumentRegistrationOptions::filterApplies(const Utils::FilePath &fileN
     });
 }
 
-bool TextDocumentSyncOptions::isValid(QStringList *error) const
+bool TextDocumentSyncOptions::isValid(ErrorHierarchy *error) const
 {
     return checkOptional<bool>(error, openCloseKey)
             && checkOptional<int>(error, changeKey)
@@ -252,7 +252,7 @@ void ServerCapabilities::SemanticHighlightingServerCapabilities::setScopes(
     insert(scopesKey, jsonScopes);
 }
 
-bool ServerCapabilities::SemanticHighlightingServerCapabilities::isValid(QStringList *) const
+bool ServerCapabilities::SemanticHighlightingServerCapabilities::isValid(ErrorHierarchy *) const
 {
     return contains(scopesKey) && value(scopesKey).isArray()
            && Utils::allOf(value(scopesKey).toArray(), [](const QJsonValue &array) {

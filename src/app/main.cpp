@@ -190,8 +190,7 @@ static inline int askMsgSendFailed()
 }
 
 // taken from utils/fileutils.cpp. We cannot use utils here since that depends app_version.h.
-static bool copyRecursively(const QString &srcFilePath,
-                            const QString &tgtFilePath)
+static bool copyRecursively(const QString &srcFilePath, const QString &tgtFilePath)
 {
     QFileInfo srcFileInfo(srcFilePath);
     if (srcFileInfo.isDir()) {
@@ -200,12 +199,11 @@ static bool copyRecursively(const QString &srcFilePath,
         if (!targetDir.mkdir(Utils::FilePath::fromString(tgtFilePath).fileName()))
             return false;
         QDir sourceDir(srcFilePath);
-        QStringList fileNames = sourceDir.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
-        foreach (const QString &fileName, fileNames) {
-            const QString newSrcFilePath
-                    = srcFilePath + QLatin1Char('/') + fileName;
-            const QString newTgtFilePath
-                    = tgtFilePath + QLatin1Char('/') + fileName;
+        const QStringList fileNames = sourceDir.entryList
+                (QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+        for (const QString &fileName : fileNames) {
+            const QString newSrcFilePath = srcFilePath + '/' + fileName;
+            const QString newTgtFilePath = tgtFilePath + '/' + fileName;
             if (!copyRecursively(newSrcFilePath, newTgtFilePath))
                 return false;
         }
@@ -239,7 +237,10 @@ static inline QStringList getPluginPaths()
     // patch versions
     const QString minorVersion = QString::number(IDE_VERSION_MAJOR) + '.'
                                  + QString::number(IDE_VERSION_MINOR) + '.';
-    for (int patchVersion = IDE_VERSION_RELEASE; patchVersion >= 0; --patchVersion)
+    const int minPatchVersion
+        = qMin(IDE_VERSION_RELEASE,
+               QVersionNumber::fromString(Core::Constants::IDE_VERSION_COMPAT).microVersion());
+    for (int patchVersion = IDE_VERSION_RELEASE; patchVersion >= minPatchVersion; --patchVersion)
         rc.push_back(pluginPath + minorVersion + QString::number(patchVersion));
     return rc;
 }
@@ -300,8 +301,8 @@ static inline QSettings *userSettings()
     if (srcDir == destDir) // Nothing to copy and no settings yet
         return settings;
 
-    QStringList entries = srcDir.entryList();
-    foreach (const QString &file, entries) {
+    const QStringList entries = srcDir.entryList();
+    for (const QString &file : entries) {
         const QString lowerFile = file.toLower();
         if (lowerFile.startsWith(QLatin1String("profiles.xml"))
                 || lowerFile.startsWith(QLatin1String("toolchains.xml"))
@@ -349,7 +350,8 @@ void loadFonts()
 {
     const QDir dir(resourcePath() + "/fonts/");
 
-    foreach (const QFileInfo &fileInfo, dir.entryInfoList(QStringList("*.ttf"), QDir::Files))
+    const QFileInfoList fonts = dir.entryInfoList(QStringList("*.ttf"), QDir::Files);
+    for (const QFileInfo &fileInfo : fonts)
         QFontDatabase::addApplicationFont(fileInfo.absoluteFilePath());
 }
 
@@ -547,6 +549,7 @@ int main(int argc, char **argv)
 #endif
 
     app.setAttribute(Qt::AA_UseHighDpiPixmaps);
+    app.setAttribute(Qt::AA_DisableWindowContextHelpButton);
 
     PluginManager pluginManager;
     PluginManager::setPluginIID(QLatin1String("org.qt-project.Qt.QtCreatorPlugin"));
@@ -555,13 +558,12 @@ int main(int argc, char **argv)
 
     QTranslator translator;
     QTranslator qtTranslator;
-    QStringList uiLanguages;
-    uiLanguages = QLocale::system().uiLanguages();
+    QStringList uiLanguages = QLocale::system().uiLanguages();
     QString overrideLanguage = settings->value(QLatin1String("General/OverrideLanguage")).toString();
     if (!overrideLanguage.isEmpty())
         uiLanguages.prepend(overrideLanguage);
     const QString &creatorTrPath = resourcePath() + "/translations";
-    foreach (QString locale, uiLanguages) {
+    for (QString locale : qAsConst(uiLanguages)) {
         locale = QLocale(locale).name();
         if (translator.load("qtcreator_" + locale, creatorTrPath)) {
             const QString &qtTrPath = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
@@ -614,7 +616,7 @@ int main(int argc, char **argv)
 
     const PluginSpecSet plugins = PluginManager::plugins();
     PluginSpec *coreplugin = nullptr;
-    foreach (PluginSpec *spec, plugins) {
+    for (PluginSpec *spec : plugins) {
         if (spec->name() == QLatin1String(corePluginNameC)) {
             coreplugin = spec;
             break;

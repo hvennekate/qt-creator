@@ -58,6 +58,7 @@ public:
         AvrArchitecture,
         XtensaArchitecture,
         Mcs51Architecture,
+        Mcs251Architecture,
         AsmJsArchitecture,
         Stm8Architecture,
         Msp430Architecture,
@@ -134,6 +135,7 @@ public:
     bool operator != (const Abi &other) const;
     bool operator == (const Abi &other) const;
     bool isCompatibleWith(const Abi &other) const;
+    bool isFullyCompatibleWith(const Abi &other) const;
 
     bool isValid() const;
     bool isNull() const;

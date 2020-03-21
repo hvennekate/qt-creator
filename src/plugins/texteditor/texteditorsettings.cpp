@@ -361,30 +361,18 @@ TextEditorSettings::TextEditorSettings()
     connect(this, &TextEditorSettings::fontSettingsChanged,
             this, updateGeneralMessagesFontSettings);
     updateGeneralMessagesFontSettings();
-    connect(&d->m_behaviorSettingsPage, &BehaviorSettingsPage::typingSettingsChanged,
-            this, &TextEditorSettings::typingSettingsChanged);
-    connect(&d->m_behaviorSettingsPage, &BehaviorSettingsPage::storageSettingsChanged,
-            this, &TextEditorSettings::storageSettingsChanged);
     auto updateGeneralMessagesBehaviorSettings = []() {
         bool wheelZoom = d->m_behaviorSettingsPage.behaviorSettings().m_scrollWheelZooming;
         Core::MessageManager::setWheelZoomEnabled(wheelZoom);
     };
-    connect(&d->m_behaviorSettingsPage, &BehaviorSettingsPage::behaviorSettingsChanged,
-            this, &TextEditorSettings::behaviorSettingsChanged);
-    connect(&d->m_behaviorSettingsPage, &BehaviorSettingsPage::behaviorSettingsChanged,
+    connect(this, &TextEditorSettings::behaviorSettingsChanged,
             this, updateGeneralMessagesBehaviorSettings);
     updateGeneralMessagesBehaviorSettings();
-    connect(&d->m_behaviorSettingsPage, &BehaviorSettingsPage::extraEncodingSettingsChanged,
-            this, &TextEditorSettings::extraEncodingSettingsChanged);
-    connect(&d->m_displaySettingsPage, &DisplaySettingsPage::marginSettingsChanged,
-            this, &TextEditorSettings::marginSettingsChanged);
-    connect(&d->m_displaySettingsPage, &DisplaySettingsPage::displaySettingsChanged,
-            this, &TextEditorSettings::displaySettingsChanged);
 
     auto updateCamelCaseNavigation = [] {
         Utils::FancyLineEdit::setCamelCaseNavigationEnabled(behaviorSettings().m_camelCaseNavigation);
     };
-    connect(&d->m_behaviorSettingsPage, &BehaviorSettingsPage::behaviorSettingsChanged,
+    connect(this, &TextEditorSettings::behaviorSettingsChanged,
             this, updateCamelCaseNavigation);
     updateCamelCaseNavigation();
 }
@@ -526,21 +514,26 @@ Core::Id TextEditorSettings::languageId(const QString &mimeType)
     return d->m_mimeTypeToLanguage.value(mimeType);
 }
 
+static void setFontZoom(int zoom)
+{
+    d->m_fontSettingsPage.setFontZoom(zoom);
+    d->m_fontSettings.setFontZoom(zoom);
+    d->m_fontSettings.toSettings(Core::ICore::settings());
+    emit m_instance->fontSettingsChanged(d->m_fontSettings);
+}
+
 int TextEditorSettings::increaseFontZoom(int step)
 {
     const int previousZoom = d->m_fontSettings.fontZoom();
     const int newZoom = qMax(10, previousZoom + step);
-    if (newZoom != previousZoom) {
-        d->m_fontSettings.setFontZoom(newZoom);
-        d->m_fontSettingsPage.setFontZoom(newZoom);
-    }
+    if (newZoom != previousZoom)
+        setFontZoom(newZoom);
     return newZoom;
 }
 
 void TextEditorSettings::resetFontZoom()
 {
-    d->m_fontSettings.setFontZoom(100);
-    d->m_fontSettingsPage.setFontZoom(100);
+    setFontZoom(100);
 }
 
 } // TextEditor

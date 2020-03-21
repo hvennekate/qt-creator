@@ -25,11 +25,7 @@
 
 /*!
     \contentspage {Qt Design Studio Manual}
-    \if defined(qtdesignstudio)
-    \previouspage studio-adding-dynamics.html
-    \else
-    \previouspage qtquick-properties.html
-    \endif
+    \previouspage qtquick-adding-dynamics.html
     \page studio-timeline.html
     \nextpage qmldesigner-connections.html
 
@@ -60,8 +56,9 @@
 
     The \uicontrol Timeline view is not visible in \QC by default. To enable
     it, select \uicontrol Tools > \uicontrol Options > \uicontrol {Qt Quick} >
-    \uicontrol {Qt Quick Designer} > \uicontrol {Enable Timeline editor}. You
-    need to restart \QC for the \uicontrol Timeline view to appear.
+    \uicontrol {Qt Quick Designer} > \uicontrol {Enable Timeline editor}.
+    Select \uicontrol {Restart Now} to restart \QC with the \uicontrol Timeline
+    view visible.
 
     To be able to create timelines, you also need the \l {Qt Quick Timeline}
     module, which is delivered with Qt 5.14, and later. For more

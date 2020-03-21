@@ -483,6 +483,42 @@ static QString replaceIllegalPropertyNameChars(const QString &str)
     return ret;
 }
 
+static bool idIsQmlKeyWord(const QString& id)
+{
+    static const QSet<QString> keywords = {
+        "as",
+        "break",
+        "case",
+        "catch",
+        "continue",
+        "debugger",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "import",
+        "in",
+        "instanceof",
+        "new",
+        "return",
+        "switch",
+        "this",
+        "throw",
+        "try",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with"
+    };
+
+    return keywords.contains(id);
+}
+
 QString RewriterView::auxiliaryDataAsQML() const
 {
     bool hasAuxData = false;
@@ -523,6 +559,9 @@ QString RewriterView::auxiliaryDataAsQML() const
                 if (key.endsWith("@Internal"))
                     continue;
 
+                if (idIsQmlKeyWord(key))
+                    continue;
+
                 const QVariant value = data.value(key.toUtf8());
                 QString strValue = value.toString();
 
@@ -530,6 +569,14 @@ QString RewriterView::auxiliaryDataAsQML() const
 
                 if (metaType == QMetaType::QString
                         || metaType == QMetaType::QColor) {
+
+                    strValue.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+                    strValue.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+                    strValue.replace(QStringLiteral("\t"), QStringLiteral("\\t"));
+                    strValue.replace(QStringLiteral("\r"), QStringLiteral("\\r"));
+                    strValue.replace(QStringLiteral("\n"), QStringLiteral("\\n"));
+                    strValue.replace(QStringLiteral("*/"), QStringLiteral("*\\/"));
+
                     strValue = "\"" + strValue + "\"";
                 }
 

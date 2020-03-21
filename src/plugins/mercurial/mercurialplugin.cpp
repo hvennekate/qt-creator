@@ -56,7 +56,6 @@
 #include <vcsbase/vcsoutputwindow.h>
 #include <vcsbase/vcscommand.h>
 
-#include <QtPlugin>
 #include <QAction>
 #include <QMenu>
 #include <QDebug>
@@ -71,6 +70,7 @@
 
 using namespace VcsBase;
 using namespace Utils;
+using namespace std::placeholders;
 
 namespace Mercurial {
 namespace Internal {
@@ -95,25 +95,28 @@ private:
     MercurialClient *m_client;
 };
 
-static const VcsBaseEditorParameters editorParameters[] = {
-{
+const VcsBaseEditorParameters logEditorParameters {
     LogOutput,
     Constants::FILELOG_ID,
     Constants::FILELOG_DISPLAY_NAME,
-    Constants::LOGAPP},
-
-{   AnnotateOutput,
-    Constants::ANNOTATELOG_ID,
-    Constants::ANNOTATELOG_DISPLAY_NAME,
-    Constants::ANNOTATEAPP},
-
-{   DiffOutput,
-    Constants::DIFFLOG_ID,
-    Constants::DIFFLOG_DISPLAY_NAME,
-    Constants::DIFFAPP}
+    Constants::LOGAPP
 };
 
-static const VcsBaseSubmitEditorParameters submitEditorParameters = {
+const VcsBaseEditorParameters annotateEditorParameters {
+    AnnotateOutput,
+    Constants::ANNOTATELOG_ID,
+    Constants::ANNOTATELOG_DISPLAY_NAME,
+    Constants::ANNOTATEAPP
+};
+
+const VcsBaseEditorParameters diffEditorParameters {
+    DiffOutput,
+    Constants::DIFFLOG_ID,
+    Constants::DIFFLOG_DISPLAY_NAME,
+    Constants::DIFFAPP
+};
+
+const VcsBaseSubmitEditorParameters submitEditorParameters {
     Constants::COMMITMIMETYPE,
     Constants::COMMIT_ID,
     Constants::COMMIT_DISPLAY_NAME,
@@ -190,6 +193,8 @@ private:
     void createDirectoryActions(const Core::Context &context);
     void createRepositoryActions(const Core::Context &context);
 
+    void describe(const QString &source, const QString &id) { m_client.view(source, id); }
+
     // Variables
     MercurialSettings m_settings;
     MercurialClient m_client{&m_settings};
@@ -216,6 +221,31 @@ private:
     QString m_submitRepository;
 
     bool m_submitActionTriggered = false;
+
+public:
+    VcsSubmitEditorFactory submitEditorFactory {
+        submitEditorParameters,
+        [] { return new CommitEditor; },
+        this
+    };
+
+    VcsEditorFactory logEditorFactory {
+        &logEditorParameters,
+        [this] { return new MercurialEditorWidget(&m_client); },
+        std::bind(&MercurialPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory annotateEditorFactory {
+        &annotateEditorParameters,
+        [this] { return new MercurialEditorWidget(&m_client); },
+        std::bind(&MercurialPluginPrivate::describe, this, _1, _2)
+    };
+
+    VcsEditorFactory diffEditorFactory {
+        &diffEditorParameters,
+        [this] { return new MercurialEditorWidget(&m_client); },
+        std::bind(&MercurialPluginPrivate::describe, this, _1, _2)
+    };
 };
 
 static MercurialPluginPrivate *dd = nullptr;
@@ -248,16 +278,6 @@ MercurialPluginPrivate::MercurialPluginPrivate()
 
     connect(&m_client, &VcsBaseClient::changed, this, &MercurialPluginPrivate::changed);
     connect(&m_client, &MercurialClient::needUpdate, this, &MercurialPluginPrivate::update);
-
-    const auto describeFunc = [this](const QString &source, const QString &id) {
-        m_client.view(source, id);
-    };
-    const auto widgetCreator = [this] { return new MercurialEditorWidget(&m_client); };
-    for (auto &editor : editorParameters)
-        new VcsEditorFactory(&editor, widgetCreator, describeFunc, this);
-
-    new VcsSubmitEditorFactory(&submitEditorParameters,
-        []() { return new CommitEditor(&submitEditorParameters); }, this);
 
     const QString prefix = QLatin1String("hg");
     m_commandLocator = new Core::CommandLocator("Mercurial", prefix, prefix, this);
@@ -749,7 +769,7 @@ bool MercurialPluginPrivate::managesFile(const QString &workingDirectory, const 
 
 bool MercurialPluginPrivate::isConfigured() const
 {
-    const Utils::FilePath binary = m_client.vcsBinary();
+    const Utils::FilePath binary = m_settings.binaryPath();
     if (binary.isEmpty())
         return false;
     QFileInfo fi = binary.toFileInfo();
@@ -822,7 +842,7 @@ Core::ShellCommand *MercurialPluginPrivate::createInitialCheckoutCommand(const Q
     args << QLatin1String("clone") << extraArgs << url << localName;
     auto command = new VcsBase::VcsCommand(baseDirectory.toString(),
                                            m_client.processEnvironment());
-    command->addJob({m_client.vcsBinary(), args}, -1);
+    command->addJob({m_settings.binaryPath(), args}, -1);
     return command;
 }
 
@@ -882,7 +902,7 @@ void MercurialPlugin::testDiffFileResolving_data()
 
 void MercurialPlugin::testDiffFileResolving()
 {
-    VcsBaseEditorWidget::testDiffFileResolving(editorParameters[2].id);
+    VcsBaseEditorWidget::testDiffFileResolving(dd->diffEditorFactory);
 }
 
 void MercurialPlugin::testLogResolving()
@@ -902,7 +922,7 @@ void MercurialPlugin::testLogResolving()
                 "date:        Sat Jan 19 04:08:16 2013 +0100\n"
                 "summary:     test-rebase: add another test for rebase with multiple roots\n"
                 );
-    VcsBaseEditorWidget::testLogResolving(editorParameters[0].id, data, "18473:692cbda1eb50", "18472:37100f30590f");
+    VcsBaseEditorWidget::testLogResolving(dd->logEditorFactory, data, "18473:692cbda1eb50", "18472:37100f30590f");
 }
 #endif
 

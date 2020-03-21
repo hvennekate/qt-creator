@@ -36,9 +36,11 @@
 
 #include <utils/environment.h>
 
+#include <QFutureWatcher>
 #include <QHash>
 #include <QJsonObject>
-#include <QTimer>
+
+#include <functional>
 
 namespace CppTools { class CppProjectUpdater; }
 
@@ -68,7 +70,7 @@ private:
     mutable ProjectExplorer::ProjectImporter *m_importer = nullptr;
 };
 
-class QbsBuildSystem : public ProjectExplorer::BuildSystem
+class QbsBuildSystem final : public ProjectExplorer::BuildSystem
 {
     Q_OBJECT
 
@@ -125,22 +127,19 @@ private:
     friend class QbsProject;
 
     void handleQbsParsingDone(bool success);
-
-    void rebuildProjectTree();
-
     void changeActiveTarget(ProjectExplorer::Target *t);
-
     void prepareForParsing();
     void updateDocuments();
     void updateCppCodeModel();
     void updateQmlJsCodeModel();
+    void updateExtraCompilers();
     void updateApplicationTargets();
     void updateDeploymentInfo();
     void updateBuildTargetData();
     bool checkCancelStatus();
     void updateAfterParse();
     void delayedUpdateAfterParse();
-    void updateProjectNodes();
+    void updateProjectNodes(const std::function<void()> &continuation);
     Utils::FilePath installRoot();
 
     static bool ensureWriteableQbsFile(const QString &file);
@@ -149,9 +148,10 @@ private:
     QSet<Core::IDocument *> m_qbsDocuments;
     QJsonObject m_projectData; // TODO: Perhaps store this in the root project node instead?
 
-    QTimer m_parsingDelay;
     QbsProjectParser *m_qbsProjectParser = nullptr;
     QFutureInterface<bool> *m_qbsUpdateFutureInterface = nullptr;
+    using TreeCreationWatcher = QFutureWatcher<QbsProjectNode *>;
+    TreeCreationWatcher *m_treeCreationWatcher = nullptr;
     Utils::Environment m_lastParseEnv;
     bool m_parsingScheduled = false;
 

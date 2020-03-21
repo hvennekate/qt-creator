@@ -26,16 +26,15 @@
 #pragma once
 
 #include "qmakeprojectmanager_global.h"
-#include "qmakeprojectmanager.h"
 #include "qmakenodes.h"
 #include "qmakeparsernodes.h"
 
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/project.h>
+#include <projectexplorer/toolchain.h>
 
 #include <QStringList>
 #include <QFutureInterface>
-#include <QTimer>
 #include <QFuture>
 
 QT_BEGIN_NAMESPACE
@@ -48,10 +47,11 @@ namespace ProjectExplorer { class DeploymentData; }
 namespace QtSupport { class ProFileReader; }
 
 namespace QmakeProjectManager {
+class QmakeBuildConfiguration;
 
 namespace Internal { class CentralizedFolderWatcher; }
 
-class  QMAKEPROJECTMANAGER_EXPORT QmakeProject : public ProjectExplorer::Project
+class  QMAKEPROJECTMANAGER_EXPORT QmakeProject final : public ProjectExplorer::Project
 {
     Q_OBJECT
 
@@ -139,6 +139,7 @@ public:
     QString qmakeSysroot();
     /// \internal
     void destroyProFileReader(QtSupport::ProFileReader *reader);
+    void deregisterFromCacheManager();
 
     /// \internal
     void scheduleAsyncUpdateFile(QmakeProFile *file,
@@ -151,6 +152,7 @@ public:
     bool wasEvaluateCanceled();
 
     void updateCodeModels();
+    void updateDocuments();
 
     void watchFolders(const QStringList &l, QmakePriFile *file);
     void unwatchFolders(const QStringList &l, QmakePriFile *file);
@@ -186,7 +188,6 @@ public:
 
     QString m_qmakeSysroot;
 
-    QTimer m_asyncUpdateTimer;
     QFutureInterface<void> m_asyncUpdateFutureInterface;
     int m_pendingEvaluateFuturesCount = 0;
     AsyncUpdateState m_asyncUpdateState = Base;

@@ -69,10 +69,21 @@ void KeyframeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
 
     painter->save();
     painter->setPen(pen);
-    painter->setBrush(selected() ? Qt::red : m_style.color);
+    painter->setBrush(locked() ? Qt::black : (selected() ? Qt::red : m_style.color));
     painter->drawEllipse(boundingRect());
 
     painter->restore();
+}
+
+void KeyframeItem::lockedCallback()
+{
+    SelectableItem::lockedCallback();
+
+    if (m_left)
+        m_left->setLocked(locked());
+
+    if (m_right)
+        m_right->setLocked(locked());
 }
 
 KeyframeItem::~KeyframeItem() {}
@@ -92,14 +103,14 @@ bool KeyframeItem::hasRightHandle() const
     return m_frame.hasRightHandle();
 }
 
-HandleSlot KeyframeItem::handleSlot(HandleItem *item) const
+QTransform KeyframeItem::transform() const
 {
-    if (item == m_left)
-        return HandleSlot::Left;
-    else if (item == m_right)
-        return HandleSlot::Right;
-    else
-        return HandleSlot::Undefined;
+    return m_transform;
+}
+
+bool KeyframeItem::contains(HandleItem *handle, const QPointF &point) const
+{
+    return false;
 }
 
 void KeyframeItem::setHandleVisibility(bool visible)
@@ -157,7 +168,7 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
 
     if (m_frame.hasLeftHandle()) {
         if (!m_left) {
-            m_left = new HandleItem(this);
+            m_left = new HandleItem(this, HandleItem::Slot::Left);
             auto updateLeftHandle = [this]() { updateHandle(m_left); };
             connect(m_left, &QGraphicsObject::xChanged, updateLeftHandle);
             connect(m_left, &QGraphicsObject::yChanged, updateLeftHandle);
@@ -170,7 +181,7 @@ void KeyframeItem::setKeyframe(const Keyframe &keyframe)
 
     if (m_frame.hasRightHandle()) {
         if (!m_right) {
-            m_right = new HandleItem(this);
+            m_right = new HandleItem(this, HandleItem::Slot::Right);
             auto updateRightHandle = [this]() { updateHandle(m_right); };
             connect(m_right, &QGraphicsObject::xChanged, updateRightHandle);
             connect(m_right, &QGraphicsObject::yChanged, updateRightHandle);
@@ -233,7 +244,7 @@ void KeyframeItem::moveKeyframe(const QPointF &direction)
     emit redrawCurve();
 }
 
-void KeyframeItem::moveHandle(HandleSlot handle, double deltaAngle, double deltaLength)
+void KeyframeItem::moveHandle(HandleItem::Slot slot, double deltaAngle, double deltaLength)
 {
     auto move = [this, deltaAngle, deltaLength](HandleItem *item) {
         if (!item)
@@ -248,9 +259,9 @@ void KeyframeItem::moveHandle(HandleSlot handle, double deltaAngle, double delta
 
     this->blockSignals(true);
 
-    if (handle == HandleSlot::Left)
+    if (slot == HandleItem::Slot::Left)
         move(m_left);
-    else if (handle == HandleSlot::Right)
+    else if (slot == HandleItem::Slot::Right)
         move(m_right);
 
     this->blockSignals(false);
@@ -269,14 +280,13 @@ void KeyframeItem::updateHandle(HandleItem *handle, bool emitChanged)
 
     QPointF oldPosition;
     QPointF newPosition;
-    HandleSlot slot = HandleSlot::Undefined;
-    if (handle == m_left) {
-        slot = HandleSlot::Left;
+    HandleItem::Slot slot = handle->slot();
+
+    if (slot == HandleItem::Slot::Left) {
         oldPosition = m_frame.leftHandle();
         m_frame.setLeftHandle(m_frame.position() + handlePosition);
         newPosition = m_frame.leftHandle();
-    } else {
-        slot = HandleSlot::Right;
+    } else if (slot == HandleItem::Slot::Right) {
         oldPosition = m_frame.rightHandle();
         m_frame.setRightHandle(m_frame.position() + handlePosition);
         newPosition = m_frame.rightHandle();
@@ -338,14 +348,18 @@ void KeyframeItem::selectionCallback()
     if (selected()) {
         if (m_visibleOverride) {
             setHandleVisibility(true);
-            setHandleVisibility(true);
         }
     } else {
         if (!m_visibleOverride) {
             setHandleVisibility(false);
-            setHandleVisibility(false);
         }
     }
+
+    if (m_left)
+        m_left->setSelected(selected());
+
+    if (m_right)
+        m_right->setSelected(selected());
 }
 
 } // End namespace DesignTools.

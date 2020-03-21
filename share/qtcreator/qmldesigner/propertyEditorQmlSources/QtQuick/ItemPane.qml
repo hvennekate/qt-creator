@@ -107,8 +107,8 @@ Rectangle {
 
                         }
                         Item {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
+                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: 20
                         }
                     }
 
@@ -134,14 +134,121 @@ Rectangle {
 
                         Image {
                             visible: !modelNodeBackend.multiSelection
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16
+                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: 20
+                            horizontalAlignment: Image.AlignHCenter
+                            verticalAlignment: Image.AlignVCenter
                             source: hasAliasExport ? "image://icons/alias-export-checked" : "image://icons/alias-export-unchecked"
                             ToolTipArea {
                                 enabled: !modelNodeBackend.multiSelection
                                 anchors.fill: parent
                                 onClicked: toogleExportAlias()
                                 tooltip: qsTr("Toggles whether this item is exported as an alias property of the root item.")
+                            }
+                        }
+                        Item { //dummy object to preserve layout in case of multiselection
+                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: 20
+                            enabled: modelNodeBackend.multiSelection
+                            visible: enabled
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Custom id")
+                    }
+
+                    SecondColumnLayout {
+                        enabled: !modelNodeBackend.multiSelection
+                        spacing: 2
+
+                        LineEdit {
+                            id: annotationEdit
+                            visible: annotationEditor.hasAuxData
+
+                            backendValue: backendValues.customId__AUX
+                            placeholderText: qsTr("customId")
+                            text: backendValue.value
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 240
+                            width: 240
+                            showTranslateCheckBox: false
+                            showExtendedFunctionButton: false
+
+                            onHoveredChanged: annotationEditor.checkAux()
+                        }
+
+                        StudioControls.AbstractButton {
+                            id: editAnnotationButton
+                            visible: annotationEditor.hasAuxData
+
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            width: 22
+
+                            buttonIcon: StudioTheme.Constants.edit
+
+                            onClicked: annotationEditor.showWidget()
+                            onHoveredChanged: annotationEditor.checkAux()
+                        }
+
+                        StudioControls.AbstractButton {
+                            id: removeAnnotationButton
+                            visible: annotationEditor.hasAuxData
+
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            width: 22
+
+                            buttonIcon: StudioTheme.Constants.closeCross
+
+                            onClicked: annotationEditor.removeFullAnnotation()
+                            onHoveredChanged: annotationEditor.checkAux()
+                        }
+
+                        StudioControls.AbstractButton {
+                            id: addAnnotationButton
+                            visible: !annotationEditor.hasAuxData
+
+                            buttonIcon: qsTr("Add Annotation")
+                            iconFont: StudioTheme.Constants.font
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 240
+                            width: 240
+
+                            onClicked: annotationEditor.showWidget()
+
+                            onHoveredChanged: annotationEditor.checkAux()
+                        }
+
+                        Item {
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            visible: !annotationEditor.hasAuxData
+                        }
+
+                        AnnotationEditor {
+                            id: annotationEditor
+
+                            modelNodeBackendProperty: modelNodeBackend
+
+                            property bool hasAuxData: (annotationEditor.hasAnnotation || annotationEditor.hasCustomId)
+
+                            onModelNodeBackendChanged: checkAux()
+                            onCustomIdChanged: checkAux()
+                            onAnnotationChanged: checkAux()
+
+                            function checkAux() {
+                                hasAuxData = (annotationEditor.hasAnnotation || annotationEditor.hasCustomId)
+                                annotationEdit.update()
+                            }
+
+                            onAccepted: {
+                                hideWidget()
+                            }
+
+                            onCanceled: {
+                                hideWidget()
                             }
                         }
                     }
@@ -323,21 +430,21 @@ Rectangle {
                                         spacing: -StudioTheme.Values.border
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.alignLeft
-                                            tooltip: qsTr("Align objects to left edge")
+                                            tooltip: qsTr("Align left edges.")
                                             onClicked: alignDistribute.alignObjects(AlignDistribute.Left,
                                                                                     alignToComboBox.currentEnum,
                                                                                     keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.alignCenterHorizontal
-                                            tooltip: qsTr("Align objects horizontal center")
+                                            tooltip: qsTr("Align horizontal centers.")
                                             onClicked: alignDistribute.alignObjects(AlignDistribute.CenterH,
                                                                                     alignToComboBox.currentEnum,
                                                                                     keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.alignRight
-                                            tooltip: qsTr("Align objects to right edge")
+                                            tooltip: qsTr("Align right edges.")
                                             onClicked: alignDistribute.alignObjects(AlignDistribute.Right,
                                                                                     alignToComboBox.currentEnum,
                                                                                     keyObjectComboBox.currentText)
@@ -348,21 +455,21 @@ Rectangle {
                                         spacing: -StudioTheme.Values.border
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.alignTop
-                                            tooltip: qsTr("Align objects to top edge")
+                                            tooltip: qsTr("Align top edges.")
                                             onClicked: alignDistribute.alignObjects(AlignDistribute.Top,
                                                                                     alignToComboBox.currentEnum,
                                                                                     keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.alignCenterVertical
-                                            tooltip: qsTr("Align objects vertical center")
+                                            tooltip: qsTr("Align vertical centers.")
                                             onClicked: alignDistribute.alignObjects(AlignDistribute.CenterV,
                                                                                     alignToComboBox.currentEnum,
                                                                                     keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.alignBottom
-                                            tooltip: qsTr("Align objects to bottom edge")
+                                            tooltip: qsTr("Align bottom edges.")
                                             onClicked: alignDistribute.alignObjects(AlignDistribute.Bottom,
                                                                                     alignToComboBox.currentEnum,
                                                                                     keyObjectComboBox.currentText)
@@ -379,21 +486,21 @@ Rectangle {
                                         spacing: -StudioTheme.Values.border
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeLeft
-                                            tooltip: qsTr("Distribute objects left edge")
+                                            tooltip: qsTr("Distribute left edges.")
                                             onClicked: alignDistribute.distributeObjects(AlignDistribute.Left,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeCenterHorizontal
-                                            tooltip: qsTr("Distribute objects horizontal center")
+                                            tooltip: qsTr("Distribute horizontal centers.")
                                             onClicked: alignDistribute.distributeObjects(AlignDistribute.CenterH,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeRight
-                                            tooltip: qsTr("Distribute objects right edge")
+                                            tooltip: qsTr("Distribute right edges.")
                                             onClicked: alignDistribute.distributeObjects(AlignDistribute.Right,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText)
@@ -404,21 +511,21 @@ Rectangle {
                                         spacing: -StudioTheme.Values.border
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeTop
-                                            tooltip: qsTr("Distribute objects top edge")
+                                            tooltip: qsTr("Distribute top edges.")
                                             onClicked: alignDistribute.distributeObjects(AlignDistribute.Top,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeCenterVertical
-                                            tooltip: qsTr("Distribute objects vertical center")
+                                            tooltip: qsTr("Distribute vertical centers.")
                                             onClicked: alignDistribute.distributeObjects(AlignDistribute.CenterV,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText)
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeBottom
-                                            tooltip: qsTr("Distribute objects bottom edge")
+                                            tooltip: qsTr("Distribute bottom edges.")
                                             onClicked: alignDistribute.distributeObjects(AlignDistribute.Bottom,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText)
@@ -435,7 +542,7 @@ Rectangle {
                                         spacing: -StudioTheme.Values.border
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeSpacingHorizontal
-                                            tooltip: qsTr("Distribute spacing horizontal")
+                                            tooltip: qsTr("Distribute spacing horizontally.")
                                             onClicked: alignDistribute.distributeSpacing(AlignDistribute.X,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText,
@@ -444,7 +551,7 @@ Rectangle {
                                         }
                                         AbstractButton {
                                             buttonIcon: StudioTheme.Constants.distributeSpacingVertical
-                                            tooltip: qsTr("Distribute spacing vertical")
+                                            tooltip: qsTr("Distribute spacing vertically.")
                                             onClicked: alignDistribute.distributeSpacing(AlignDistribute.Y,
                                                                                          alignToComboBox.currentEnum,
                                                                                          keyObjectComboBox.currentText,

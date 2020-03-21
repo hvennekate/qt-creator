@@ -249,7 +249,7 @@ void AndroidSdkManagerWidget::onCancel()
 void AndroidSdkManagerWidget::onNativeSdkManager()
 {
     if (m_androidConfig.useNativeUiTools()) {
-        QProcess::startDetached(m_androidConfig.androidToolPath().toString());
+        QProcess::startDetached(m_androidConfig.androidToolPath().toString(), {});
     } else {
         QMessageBox::warning(this, tr("Native SDK Manager Not Available"),
                              tr("SDK manager UI tool is not available in the installed SDK tools "
@@ -436,10 +436,8 @@ void AndroidSdkManagerWidget::cancelPendingOperations()
 
 void AndroidSdkManagerWidget::switchView(AndroidSdkManagerWidget::View view)
 {
-    if (m_currentView == PackageListing) {
+    if (m_currentView == PackageListing)
         m_formatter->clear();
-        m_ui->outputEdit->clear();
-    }
     m_currentView = view;
     if (m_currentView == PackageListing)
         emit updatingSdkFinished();

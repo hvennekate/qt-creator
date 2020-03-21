@@ -40,7 +40,7 @@ class AnimationCurve;
 class KeyframeItem;
 class GraphicsScene;
 
-class CurveItem : public QGraphicsObject
+class CurveItem : public CurveEditorItem
 {
     Q_OBJECT
 
@@ -64,9 +64,9 @@ public:
 
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 
-    bool isDirty() const;
+    void lockedCallback() override;
 
-    bool isUnderMouse() const;
+    bool isDirty() const;
 
     bool hasSelection() const;
 
@@ -102,8 +102,6 @@ public:
 
     void connect(GraphicsScene *scene);
 
-    void setIsUnderMouse(bool under);
-
     void insertKeyframeByTime(double time);
 
     void deleteSelectedKeyframes();
@@ -122,8 +120,6 @@ private:
     QTransform m_transform;
 
     std::vector<KeyframeItem *> m_keyframes;
-
-    bool m_underMouse;
 
     bool m_itemDirty;
 };

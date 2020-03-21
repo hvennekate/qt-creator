@@ -157,8 +157,10 @@ QVariant properDefaultAuxiliaryProperties(const QmlObjectNode &qmlObjectNode,
         return 0;
     else if (propertyName == "outOffset")
         return 0;
-    else if (propertyName == "break")
+    else if (propertyName == "breakPoint")
         return 50;
+    else if (propertyName == "customId")
+        return QString();
 
     return {};
 }
@@ -221,8 +223,10 @@ void PropertyEditorQmlBackend::setupAuxiliaryProperties(const QmlObjectNode &qml
 
     PropertyNameList propertyNames;
 
+    propertyNames.append("customId");
+
     if (itemNode.isFlowTransition()) {
-        propertyNames.append({"color", "width", "inOffset", "outOffset", "dash", "break"});
+        propertyNames.append({"color", "width", "inOffset", "outOffset", "dash", "breakPoint"});
     } else if (itemNode.isFlowItem()) {
         propertyNames.append({"color", "width", "inOffset", "outOffset"});
     } else if (itemNode.isFlowActionArea()) {
@@ -273,7 +277,7 @@ void PropertyEditorQmlBackend::createPropertyEditorValue(const QmlObjectNode &qm
     }
 }
 
-void PropertyEditorQmlBackend::setValue(const QmlObjectNode & qmlObjectNode, const PropertyName &name, const QVariant &value)
+void PropertyEditorQmlBackend::setValue(const QmlObjectNode & , const PropertyName &name, const QVariant &value)
 {
     PropertyName propertyName = name;
     propertyName.replace('.', '_');

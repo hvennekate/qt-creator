@@ -35,11 +35,14 @@
 
 #include <QFutureWatcher>
 #include <QHash>
+#include <QLoggingCategory>
 #include <QMap>
 #include <QPair>
 #include <QStringList>
 
 #include <memory>
+
+namespace ProjectExplorer { class BuildConfiguration; }
 
 namespace Utils {
 class FilePath;
@@ -49,7 +52,6 @@ class FileSystemWatcher;
 namespace QtSupport { class ProFileReader; }
 
 namespace QmakeProjectManager {
-class QmakeBuildConfiguration;
 class QmakeBuildSystem;
 class QmakeProFile;
 class QmakeProject;
@@ -108,6 +110,7 @@ enum class Variable {
 uint qHash(Variable key, uint seed = 0);
 
 namespace Internal {
+Q_DECLARE_LOGGING_CATEGORY(qmakeNodesLog)
 class QmakeEvalInput;
 class QmakeEvalResult;
 class QmakePriFileEvalResult;
@@ -236,7 +239,6 @@ private:
     QmakePriFile *m_parent = nullptr;
     QVector<QmakePriFile *> m_children;
 
-    std::unique_ptr<Core::IDocument> m_priFileDocument;
     Utils::TextFileFormat m_textFormat;
 
     // Memory is cheap...

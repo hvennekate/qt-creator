@@ -48,11 +48,18 @@ CurveEditor::CurveEditor(CurveEditorModel *model, QWidget *parent)
     splitter->setStretchFactor(1, 2);
 
     auto *box = new QVBoxLayout;
-    box->addWidget(createToolBar());
+    box->addWidget(createToolBar(model));
     box->addWidget(splitter);
     setLayout(box);
 
-    connect(m_tree->selectionModel(), &SelectionModel::curvesSelected, m_view, &GraphicsView::reset);
+    connect(m_tree, &TreeView::treeItemLocked, model, &CurveEditorModel::curveChanged);
+    connect(m_tree, &TreeView::treeItemPinned, model, &CurveEditorModel::curveChanged);
+
+    connect(m_tree, &TreeView::treeItemLocked, m_view, &GraphicsView::setLocked);
+    connect(m_tree->selectionModel(),
+            &SelectionModel::curvesSelected,
+            m_view,
+            &GraphicsView::updateSelection);
 }
 
 void CurveEditor::zoomX(double zoom)
@@ -70,7 +77,7 @@ void CurveEditor::clearCanvas()
     m_view->reset({});
 }
 
-QToolBar *CurveEditor::createToolBar()
+QToolBar *CurveEditor::createToolBar(CurveEditorModel *model)
 {
     auto *bar = new QToolBar;
     bar->setFloatable(false);
@@ -99,16 +106,39 @@ QToolBar *CurveEditor::createToolBar()
     Q_UNUSED(tangentStepAction);
     Q_UNUSED(tangentDefaultAction);
 
-    auto *valueBox = new QHBoxLayout;
-    valueBox->addWidget(new QLabel(tr("Value")));
-    valueBox->addWidget(new QDoubleSpinBox);
-    auto *valueWidget = new QWidget;
-    valueWidget->setLayout(valueBox);
-    bar->addWidget(valueWidget);
-
     auto *durationBox = new QHBoxLayout;
-    durationBox->addWidget(new QLabel(tr("Duration")));
-    durationBox->addWidget(new QSpinBox);
+    auto *startSpin = new QSpinBox;
+    auto *endSpin = new QSpinBox;
+
+    startSpin->setRange(std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max());
+    startSpin->setValue(model->minimumTime());
+
+    auto updateStartFrame = [this, model](int frame) {
+        model->setMinimumTime(frame, false);
+        m_view->viewport()->update();
+    };
+    connect(startSpin, QOverload<int>::of(&QSpinBox::valueChanged), updateStartFrame);
+
+    endSpin->setRange(std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max());
+    endSpin->setValue(model->maximumTime());
+
+    auto updateEndFrame = [this, model](int frame) {
+        model->setMaximumTime(frame, false);
+        m_view->viewport()->update();
+    };
+    connect(endSpin, QOverload<int>::of(&QSpinBox::valueChanged), updateEndFrame);
+
+    auto setStartSlot = [startSpin](int frame) { startSpin->setValue(frame); };
+    connect(model, &CurveEditorModel::updateStartFrame, setStartSlot);
+
+    auto setEndSlot = [endSpin](int frame) { endSpin->setValue(frame); };
+    connect(model, &CurveEditorModel::updateEndFrame, setEndSlot);
+
+    durationBox->addWidget(new QLabel(tr("Start Frame")));
+    durationBox->addWidget(startSpin);
+    durationBox->addWidget(new QLabel(tr("End Frame")));
+    durationBox->addWidget(endSpin);
+
     auto *durationWidget = new QWidget;
     durationWidget->setLayout(durationBox);
     bar->addWidget(durationWidget);

@@ -54,30 +54,33 @@ static QStringList flashAndRunArgs(const Target *target)
     const QString projectName = target->project()->displayName();
 
     // TODO: Hack! Implement flash target name handling, properly
-    const QString targetName =
-            target->kit()->value(Constants::KIT_MCUTARGET_VENDOR_KEY).toString() == "NXP"
-            ? QString("flash_%1").arg(projectName)
-            : QString("flash_%1_and_bootloader").arg(projectName);
+    const QString targetName = "flash_" + projectName;
 
     return {"--build", ".", "--target", targetName};
 }
 
-FlashAndRunConfiguration::FlashAndRunConfiguration(Target *target, Core::Id id)
-    : RunConfiguration(target, id)
+class FlashAndRunConfiguration final : public RunConfiguration
 {
-    auto flashAndRunParameters = addAspect<BaseStringAspect>();
-    flashAndRunParameters->setLabelText("Flash and run CMake parameters:");
-    flashAndRunParameters->setDisplayStyle(BaseStringAspect::TextEditDisplay);
-    flashAndRunParameters->setSettingsKey("FlashAndRunConfiguration.Parameters");
+    Q_DECLARE_TR_FUNCTIONS(McuSupport::Internal::FlashAndRunConfiguration)
 
-    setUpdater([target, flashAndRunParameters] {
-        flashAndRunParameters->setValue(flashAndRunArgs(target).join(' '));
-    });
+public:
+    FlashAndRunConfiguration(Target *target, Core::Id id)
+        : RunConfiguration(target, id)
+    {
+        auto flashAndRunParameters = addAspect<BaseStringAspect>();
+        flashAndRunParameters->setLabelText(tr("Flash and run CMake parameters:"));
+        flashAndRunParameters->setDisplayStyle(BaseStringAspect::TextEditDisplay);
+        flashAndRunParameters->setSettingsKey("FlashAndRunConfiguration.Parameters");
 
-    update();
+        setUpdater([target, flashAndRunParameters] {
+            flashAndRunParameters->setValue(flashAndRunArgs(target).join(' '));
+        });
 
-    connect(target->project(), &Project::displayNameChanged, this, &RunConfiguration::update);
-}
+        update();
+
+        connect(target->project(), &Project::displayNameChanged, this, &RunConfiguration::update);
+    }
+};
 
 class FlashAndRunWorker : public SimpleTargetRunner
 {

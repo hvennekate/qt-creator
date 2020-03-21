@@ -666,6 +666,14 @@ bool Abi::isCompatibleWith(const Abi &other) const
     return isCompat;
 }
 
+bool Abi::isFullyCompatibleWith(const Abi &other) const
+{
+    return *this == other
+            || (wordWidth() == other.wordWidth()
+                && architecture() == other.architecture()
+                && compatibleMSVCFlavors(osFlavor(), other.osFlavor()));
+}
+
 bool Abi::isValid() const
 {
     return m_architecture != UnknownArchitecture
@@ -697,6 +705,8 @@ QString Abi::toString(const Architecture &a)
         return QLatin1String("x86");
     case Mcs51Architecture:
         return QLatin1String("mcs51");
+    case Mcs251Architecture:
+        return QLatin1String("mcs251");
     case MipsArchitecture:
         return QLatin1String("mips");
     case PowerPCArchitecture:
@@ -841,6 +851,8 @@ Abi::Architecture Abi::architectureFromString(const QStringRef &a)
         return X86Architecture;
     if (a == "mcs51")
         return Mcs51Architecture;
+    if (a == "mcs251")
+        return Mcs251Architecture;
     if (a == "mips")
         return MipsArchitecture;
     if (a == "ppc")

@@ -234,7 +234,7 @@ QVariantMap QbsBuildStep::qbsConfiguration(VariableHandling variableHandling) co
           Constants::QBS_CONFIG_QUICK_COMPILER_KEY);
 
     if (variableHandling == ExpandVariables) {
-        const MacroExpander * const expander = buildConfiguration()->macroExpander();
+        const MacroExpander * const expander = macroExpander();
         for (auto it = config.begin(), end = config.end(); it != end; ++it) {
             const QString rawString = it.value().toString();
             const QString expandedString = expander->expand(rawString);
@@ -273,7 +273,7 @@ Utils::FilePath QbsBuildStep::installRoot(VariableHandling variableHandling) con
         return Utils::FilePath::fromString(root);
     QString defaultInstallDir = QbsSettings::defaultInstallDirTemplate();
     if (variableHandling == VariableHandling::ExpandVariables)
-        defaultInstallDir = buildConfiguration()->macroExpander()->expand(defaultInstallDir);
+        defaultInstallDir = macroExpander()->expand(defaultInstallDir);
     return FilePath::fromString(defaultInstallDir);
 }
 
@@ -411,7 +411,7 @@ QString QbsBuildStep::buildVariant() const
 
 QbsBuildSystem *QbsBuildStep::qbsBuildSystem() const
 {
-    return static_cast<QbsBuildSystem *>(buildConfiguration()->buildSystem());
+    return static_cast<QbsBuildSystem *>(buildSystem());
 }
 
 void QbsBuildStep::setBuildVariant(const QString &variant)
@@ -523,6 +523,23 @@ void QbsBuildStep::finish()
     emit finished(m_lastWasSuccess);
 }
 
+QbsBuildStepData QbsBuildStep::stepData() const
+{
+    QbsBuildStepData data;
+    data.command = "build";
+    data.dryRun = false;
+    data.keepGoing = m_keepGoing;
+    data.forceProbeExecution = m_forceProbes;
+    data.showCommandLines = m_showCommandLines;
+    data.noInstall = !m_install;
+    data.noBuild = false;
+    data.cleanInstallRoot = m_cleanInstallDir;
+    data.jobCount = maxJobs();
+    data.installRoot = installRoot();
+    return data;
+}
+
+
 // --------------------------------------------------------------------
 // QbsBuildStepConfigWidget:
 // --------------------------------------------------------------------
@@ -627,9 +644,7 @@ QbsBuildStepConfigWidget::QbsBuildStepConfigWidget(QbsBuildStep *step) :
     auto chooser = new Core::VariableChooser(this);
     chooser->addSupportedWidget(propertyEdit);
     chooser->addSupportedWidget(installDirChooser->lineEdit());
-    chooser->addMacroExpanderProvider([step] {
-        return step->buildConfiguration()->macroExpander();
-    });
+    chooser->addMacroExpanderProvider([step] { return step->macroExpander(); });
     propertyEdit->setValidationFunction([this](FancyLineEdit *edit, QString *errorMessage) {
         return validateProperties(edit, errorMessage);
     });
@@ -654,6 +669,7 @@ QbsBuildStepConfigWidget::QbsBuildStepConfigWidget(QbsBuildStep *step) :
     connect(forceProbesCheckBox, &QCheckBox::toggled, this,
             &QbsBuildStepConfigWidget::changeForceProbes);
     updateState();
+    setSummaryText(tr("<b>Qbs:</b> %1").arg("build"));
 }
 
 void QbsBuildStepConfigWidget::updateState()
@@ -674,7 +690,8 @@ void QbsBuildStepConfigWidget::updateState()
     const int idx = (buildVariant == Constants::QBS_VARIANT_DEBUG) ? 0 : 1;
     buildVariantComboBox->setCurrentIndex(idx);
     const auto qbsBuildConfig = static_cast<QbsBuildConfiguration *>(step()->buildConfiguration());
-    QString command = qbsBuildConfig->equivalentCommandLine(qbsStep());
+
+    QString command = qbsBuildConfig->equivalentCommandLine(qbsStep()->stepData());
 
     for (int i = 0; i < m_propertyCache.count(); ++i) {
         command += ' ' + m_propertyCache.at(i).name + ':' + m_propertyCache.at(i).effectiveValue;
@@ -698,8 +715,6 @@ void QbsBuildStepConfigWidget::updateState()
                  Constants::QBS_CONFIG_QUICK_COMPILER_KEY);
 
     commandLineTextEdit->setPlainText(command);
-
-    setSummaryText(tr("<b>Qbs:</b> %1").arg(command));
 }
 
 
@@ -850,7 +865,7 @@ bool QbsBuildStepConfigWidget::validateProperties(Utils::FancyLineEdit *edit, QS
     }
 
     QList<Property> properties;
-    const MacroExpander * const expander = step()->buildConfiguration()->macroExpander();
+    const MacroExpander * const expander = step()->macroExpander();
     foreach (const QString &rawArg, argList) {
         int pos = rawArg.indexOf(':');
         if (pos > 0) {
