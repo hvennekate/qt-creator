@@ -6,20 +6,24 @@
 namespace Autotest {
 	namespace Internal {
 
+		class CxxTestSettings;
+		class CxxTestSettingsPage;
+
 		class CxxTestFramework : public ITestFramework
 		{
 		public:
-			CxxTestFramework() : ITestFramework(true) {}
+			CxxTestFramework();
+
+		private:
 			const char *name() const override;
 			unsigned priority() const override;
-			bool hasFrameworkSettings() const override;
-			IFrameworkSettings *createFrameworkSettings() const override;
-			ITestSettingsPage *createSettingsPage(QSharedPointer<IFrameworkSettings> settings) const override;
+			IFrameworkSettings *frameworkSettings() override;
 			QString groupingToolTip() const override;
-
-		protected:
-			ITestParser *createTestParser() const override;
+			ITestParser *createTestParser() override;
 			TestTreeItem *createRootNode() const override;
+
+			QScopedPointer<CxxTestSettings> m_settings;
+			QScopedPointer<CxxTestSettingsPage> m_settingsPage;
 		};
 
 	} // namespace Internal

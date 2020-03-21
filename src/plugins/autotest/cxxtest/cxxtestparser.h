@@ -11,7 +11,7 @@ namespace Autotest {
 		class CxxTestParseResult : public TestParseResult
 		{
 		public:
-			explicit CxxTestParseResult(const Core::Id &id);
+			explicit CxxTestParseResult(ITestFramework *fw);
 			TestTreeItem *createTestTreeItem() const override;
 			bool matches(const TestTreeItem *item) const;
 		};
@@ -24,6 +24,7 @@ namespace Autotest {
 			CxxTestParseResult *prepareTestParseResult(const QString &fileName, const QString &proFile, CPlusPlus::Symbol *symbol, TestTreeItem::Type type);
 
 		public:
+			explicit CxxTestParser(ITestFramework *framework) : CppParser(framework) {}
 			bool processDocument(QFutureInterface<TestParseResultPtr> futureInterface, const QString &fileName) override;
 		};
 

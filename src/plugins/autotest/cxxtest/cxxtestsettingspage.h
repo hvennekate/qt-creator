@@ -1,20 +1,16 @@
 #ifndef CXXTESTSETTINGSPAGE_H
 #define CXXTESTSETTINGSPAGE_H
 
-#include <autotest/itestsettingspage.h>
+#include <coreplugin/dialogs/ioptionspage.h>
 
 namespace Autotest {
 	namespace Internal {
+		class CxxTestSettings;
 
-		class CxxTestSettingsPagePrivate;
-		class CxxTestSettingsPage : public ITestSettingsPage
+		class CxxTestSettingsPage : public Core::IOptionsPage
 		{
-			Q_DECLARE_PRIVATE(CxxTestSettingsPage)
-			QScopedPointer<CxxTestSettingsPagePrivate> d_ptr;
 		public:
-			CxxTestSettingsPage(QSharedPointer<IFrameworkSettings> settings, const ITestFramework *framework);
-			QWidget *widget() override;
-			void apply() override;
+			CxxTestSettingsPage(CxxTestSettings* settings, Core::Id settingsId);
 		};
 
 	} // namespace Internal

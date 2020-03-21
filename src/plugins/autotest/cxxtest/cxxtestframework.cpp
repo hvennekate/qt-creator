@@ -8,6 +8,12 @@
 
 namespace Autotest {
 	namespace Internal {
+		CxxTestFramework::CxxTestFramework()
+		    : ITestFramework(true),
+		      m_settings(new CxxTestSettings),
+		      m_settingsPage(new CxxTestSettingsPage(m_settings.get(), settingsId()))
+		{}
+
 		const char *CxxTestFramework::name() const
 		{
 			return CxxTest::Constants::FRAMEWORK_NAME;
@@ -18,38 +24,28 @@ namespace Autotest {
 			return CxxTest::Constants::FRAMEWORK_PRIORITY;
 		}
 
-		bool CxxTestFramework::hasFrameworkSettings() const
-		{
-			return true;
-		}
-
-		IFrameworkSettings *CxxTestFramework::createFrameworkSettings() const
+		IFrameworkSettings *CxxTestFramework::frameworkSettings()
 		{
 			return new CxxTestSettings;
-		}
-
-		ITestSettingsPage *CxxTestFramework::createSettingsPage(QSharedPointer<IFrameworkSettings> settings) const
-		{
-			return new CxxTestSettingsPage(settings, this);
 		}
 
 		QString CxxTestFramework::groupingToolTip() const
 		{
 			return QCoreApplication::translate("CxxTestFramework",
-							   "See also CxxTest settings");
+			                                   "See also CxxTest settings");
 		}
 
-		ITestParser *CxxTestFramework::createTestParser() const
+		ITestParser *CxxTestFramework::createTestParser()
 		{
-			return new CxxTestParser;
+			return new CxxTestParser(this);
 		}
 
 		TestTreeItem *CxxTestFramework::createRootNode() const
 		{
 			return new CxxTestTreeItem(
-						QCoreApplication::translate("CxxTestFramework",
-									    CxxTest::Constants::FRAMEWORK_SETTINGS_CATEGORY),
-						QString(), TestTreeItem::Root);
+			            QCoreApplication::translate("CxxTestFramework",
+			                                        CxxTest::Constants::FRAMEWORK_SETTINGS_CATEGORY),
+			            QString(), TestTreeItem::Root);
 		}
 	} // namespace Internal
 } // namespace Autotest

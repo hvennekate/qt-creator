@@ -7,14 +7,10 @@ namespace Autotest {
 			return "CxxTest";
 		}
 
-		void CxxTestSettings::toFrameworkSettings(QSettings *s) const
-		{
-			Q_UNUSED(s);
-		}
+		void CxxTestSettings::toFrameworkSettings(QSettings * /* s */) const
+		{}
 
-		void CxxTestSettings::fromFrameworkSettings(const QSettings *s)
-		{
-			Q_UNUSED(s);
-		}
+		void CxxTestSettings::fromFrameworkSettings(const QSettings * /* s */)
+		{}
 	} // namespace Internal
 } // namespace Autotest

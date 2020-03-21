@@ -43,6 +43,7 @@
 #include "quick/quicktestframework.h"
 #include "gtest/gtestframework.h"
 #include "boost/boosttestframework.h"
+#include "cxxtest/cxxtestframework.h"
 
 #include <coreplugin/icore.h>
 #include <coreplugin/icontext.h>

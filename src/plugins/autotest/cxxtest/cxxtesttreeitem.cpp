@@ -9,7 +9,7 @@ namespace Autotest {
 	namespace Internal {
 
 		CxxTestTreeItem::CxxTestTreeItem(const QString &name, const QString &filePath, Type type)
-			: TestTreeItem(name, filePath, type) {}
+		    : TestTreeItem(name, filePath, type) {}
 
 		QVariant CxxTestTreeItem::data(int column, int role) const
 		{
@@ -26,7 +26,7 @@ namespace Autotest {
 				case Root:
 				case GroupNode:
 				case TestCase:
-				case TestFunctionOrSet:
+				case TestFunction:
 					return checked();
 				default:
 					return QVariant();
@@ -73,30 +73,30 @@ namespace Autotest {
 					config->setProject(project);
 				}
 			case TestCase: {
-			    if (int count = childCount()) {
-				config = new CxxTestConfiguration(name());
-				config->setTestCases(QStringList(name()));
-				config->setTestCaseCount(count);
+				if (int count = childCount()) {
+					config = new CxxTestConfiguration(name());
+					config->setTestCases(QStringList(name()));
+					config->setTestCaseCount(count);
+					config->setProjectFile(proFile());
+					config->setProject(project);
+				}
+				break;
+			}
+			case TestFunction: {
+				CxxTestTreeItem *parent = dynamic_cast<CxxTestTreeItem *>(parentItem());
+				if (!parent)
+					return nullptr;
+				config = new CxxTestConfiguration(parent->name(), name());
+				config->setTestCases(QStringList(parent->name() + " " + name()));
 				config->setProjectFile(proFile());
 				config->setProject(project);
-			    }
-			    break;
-			}
-			case TestFunctionOrSet: {
-			    CxxTestTreeItem *parent = dynamic_cast<CxxTestTreeItem *>(parentItem());
-			    if (!parent)
-				return nullptr;
-			    config = new CxxTestConfiguration(parent->name(), name());
-			    config->setTestCases(QStringList(parent->name() + " " + name()));
-			    config->setProjectFile(proFile());
-			    config->setProject(project);
-			    break;
+				break;
 			}
 			default:
-			    return nullptr;
+				return nullptr;
 			}
 			if (config)
-			    config->setInternalTargets(internalTargets());
+				config->setInternalTargets(internalTargets());
 			return config;
 		}
 
@@ -112,7 +112,7 @@ namespace Autotest {
 			QList<TestConfiguration*> result;
 			ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
 			if (!project || type() != Root)
-			    return result;
+				return result;
 
 			forFirstLevelChildren([&result](TestTreeItem *child) {
 				if (child->type() == TestCase) {
@@ -129,8 +129,7 @@ namespace Autotest {
 		}
 
 		void testConfigsFromCheckState(const TestTreeItem *item,
-					       QList<TestConfiguration*> &configs) {
-			qDebug() << "Getting configs from check state" << item << item->type();
+		                               QList<TestConfiguration*> &configs) {
 			if (!item) return;
 			if (item->type() == TestTreeItem::TestCase) {
 				switch (item->checked()) {
@@ -179,20 +178,18 @@ namespace Autotest {
 
 		QList<TestConfiguration *> CxxTestTreeItem::getSelectedTestConfigurations() const
 		{
-			qDebug() << "Getting selected test configurations";
 			QList<TestConfiguration *> result;
 			ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
 			if (!project || type() != Root)
-			    return result;
+				return result;
 
-			qDebug() << "traversing items to find checked tests";
 			forFirstLevelChildren([&result](TestTreeItem *child) {
 				testConfigsFromCheckState(child, result);
 			});
 			return result;
 		}
 
-		QList<TestConfiguration *> CxxTestTreeItem::getTestConfigurationsForFile(const Utils::FileName &fileName) const
+		QList<TestConfiguration *> CxxTestTreeItem::getTestConfigurationsForFile(const Utils::FilePath &fileName) const
 		{
 			QList<TestConfiguration*> result;
 			ProjectExplorer::Project *project = ProjectExplorer::SessionManager::startupProject();
@@ -200,7 +197,7 @@ namespace Autotest {
 
 			const QString &file = fileName.toString();
 			forAllChildren([&result, &file] (TestTreeItem *item) {
-				if (item->type() != TestFunctionOrSet) return;
+				if (item->type() != TestFunction) return;
 				if (item->filePath() != file) return;
 				auto testCase = item->parentItem();
 				if (!testCase) return;
@@ -215,7 +212,7 @@ namespace Autotest {
 
 		TestTreeItem *findMatchingTestTreeItem(const CxxTestParseResult *result, const CxxTestTreeItem *parentItem) {
 			return parentItem->findFirstLevelChild([&](const TestTreeItem *other) {
-			    return result->matches(other);
+				return result->matches(other);
 			});
 		}
 
@@ -225,20 +222,20 @@ namespace Autotest {
 			if (!result) return nullptr;
 			switch(type()) {
 			case Root:
-				if (TestFrameworkManager::instance()->groupingEnabled(result->frameworkId)) {
-				    const QString path = QFileInfo(result->fileName).absolutePath();
-				    for (int row = 0; row < childCount(); ++row) {
-					TestTreeItem *group = childAt(row);
-					if (group->filePath() != path)
-					    continue;
-					if (auto groupChild = group->find(result))
-					    return groupChild; // TODO check!
-				    }
-				    return nullptr;
+				if (parseResult->framework->grouping()) {
+					const QString path = QFileInfo(result->fileName).absolutePath();
+					for (int row = 0; row < childCount(); ++row) {
+						TestTreeItem *group = childAt(row);
+						if (group->filePath() != path)
+							continue;
+						if (auto groupChild = group->find(result))
+							return groupChild; // TODO check!
+					}
+					return nullptr;
 				}
 			case GroupNode:
 			case TestCase:
-			case TestFunctionOrSet:
+			case TestFunction:
 			case TestDataFunction:
 			case TestSpecialFunction:
 				return findMatchingTestTreeItem(result, this);
@@ -250,9 +247,9 @@ namespace Autotest {
 		TestTreeItem *findMatchingTestTreeItem(const TestTreeItem *item, const CxxTestTreeItem *parentItem) {
 			return parentItem->findFirstLevelChild([&](const TestTreeItem *other) {
 				return item->name() == other->name()
-						&& item->filePath() == other->filePath()
-						&& item->type() == other->type()
-						&& item->proFile() == other->proFile();
+				        && item->filePath() == other->filePath()
+				        && item->type() == other->type()
+				        && item->proFile() == other->proFile();
 			});
 		}
 
@@ -263,7 +260,7 @@ namespace Autotest {
 			case Root:
 			case GroupNode:
 			case TestCase:
-			case TestFunctionOrSet:
+			case TestFunction:
 			case TestDataFunction:
 			case TestSpecialFunction:
 				return findMatchingTestTreeItem(other, this);
@@ -277,8 +274,8 @@ namespace Autotest {
 			if (!result) return false;
 			switch(type()) {
 			case TestCase:
-				return modifyTestCaseContent(result);
-			case TestFunctionOrSet:
+				return modifyLineAndColumn(result);
+			case TestFunction:
 			case TestDataFunction:
 			case TestSpecialFunction:
 				return modifyTestFunctionContent(result);

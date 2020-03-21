@@ -15,7 +15,7 @@ namespace Autotest {
 			return new CxxOutputReader(fi, app, buildDirectory(), projectFile());
 		}
 
-		QStringList CxxTestConfiguration::argumentsForTestRunner(QStringList *omitted) const
+		QStringList CxxTestConfiguration::argumentsForTestRunner(QStringList * /* omitted */) const
 		{
 			if (testCases().empty()) return QStringList();
 			return testCases().first().split(" ");

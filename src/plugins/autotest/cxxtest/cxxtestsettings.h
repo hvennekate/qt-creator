@@ -9,7 +9,7 @@ namespace Autotest {
 		class CxxTestSettings : public IFrameworkSettings
 		{
 		public:
-			CxxTestSettings() {}
+			CxxTestSettings() = default;
 
 			QString name() const override;
 
