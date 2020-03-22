@@ -1,3 +1,7 @@
+# NOTE: This file has been modified from its original version
+#       to support the addition of CxxTest support.
+#       See also the respective cxxtest*.h and cxxtest*.cpp files.
+
 TARGET = AutoTest
 TEMPLATE = lib
 

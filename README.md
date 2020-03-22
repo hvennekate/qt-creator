@@ -1,3 +1,14 @@
+# Note about modification
+
+This version of Qt Creator has been modified to support a customized version of
+the CxxTest framework. See the respective cxxtest\*.h and cxxtest\*.cpp files
+for details. Further files modified:
+    src/plugins/autotest/autotest.pro       (to compile the added files)
+    src/plugins/autotest/autotestplugin.cpp (to add the CxxTest framework)
+    README.md                               (this file)
+
+Modifications by Hendrik Vennekate (Hendrik.Vennekate@posteo.de).
+
 # Qt Creator
 
 Qt Creator is a cross-platform IDE for development with the Qt framework.

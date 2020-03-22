@@ -23,6 +23,12 @@
 **
 ****************************************************************************/
 
+/****************************************************************************
+** Note: This file has been modified to support CxxTest in a customized
+**       version by Hendrik Vennekate. See the respective cxxtest*.cpp
+**       and cxxtest*.h files for details.
+****************************************************************************/
+
 #include "autotestplugin.h"
 #include "autotestconstants.h"
 #include "autotesticons.h"
