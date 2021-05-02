@@ -35,34 +35,19 @@ class IFrameworkSettings;
 class ITestFramework
 {
 public:
-    explicit ITestFramework(bool activeByDefault) : m_active(activeByDefault) {}
-    virtual ~ITestFramework()
-    {
-        delete m_testParser;
-    }
+    explicit ITestFramework(bool activeByDefault);
+    virtual ~ITestFramework();
 
     virtual const char *name() const = 0;
     virtual unsigned priority() const = 0;          // should this be modifyable?
 
     virtual IFrameworkSettings *frameworkSettings() { return nullptr; }
 
-    TestTreeItem *rootNode()
-    {   if (!m_rootNode)
-            m_rootNode = createRootNode();
-        // These are stored in the TestTreeModel and destroyed on shutdown there.
-        return m_rootNode;
-    }
+    TestTreeItem *rootNode();
+    ITestParser *testParser();
 
-    ITestParser *testParser()
-    {
-        if (!m_testParser)
-            m_testParser = createTestParser();
-        return m_testParser;
-    }
-
-    Core::Id settingsId() const;
-
-    Core::Id id() const { return Core::Id(Constants::FRAMEWORK_PREFIX).withSuffix(name()); }
+    Utils::Id settingsId() const;
+    Utils::Id id() const;
 
     bool active() const { return m_active; }
     void setActive(bool active) { m_active = active; }
@@ -71,19 +56,11 @@ public:
     // framework specific tool tip to be displayed on the general settings page
     virtual QString groupingToolTip() const { return QString(); }
 
-    void resetRootNode()
-    {
-        if (!m_rootNode)
-            return;
-        if (m_rootNode->model())
-            static_cast<TestTreeModel *>(m_rootNode->model())->takeItem(m_rootNode);
-        delete m_rootNode;
-        m_rootNode = nullptr;
-    }
+    void resetRootNode();
 
 protected:
     virtual ITestParser *createTestParser() = 0;
-    virtual TestTreeItem *createRootNode() const = 0;
+    virtual TestTreeItem *createRootNode() = 0;
 
 private:
     TestTreeItem *m_rootNode = nullptr;

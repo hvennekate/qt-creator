@@ -59,7 +59,7 @@ public:
     enum Type { WindowsSDK, VS };
     enum Platform { x86, amd64, x86_amd64, ia64, x86_ia64, arm, x86_arm, amd64_arm, amd64_x86 };
 
-    explicit MsvcToolChain(Core::Id typeId);
+    explicit MsvcToolChain(Utils::Id typeId);
     ~MsvcToolChain() override;
 
     Abi targetAbi() const override;
@@ -77,19 +77,15 @@ public:
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
 
     MacroInspectionRunner createMacroInspectionRunner() const override;
-    Macros predefinedMacros(const QStringList &cxxflags) const override;
     Utils::LanguageExtensions languageExtensions(const QStringList &cxxflags) const override;
     Utils::WarningFlags warningFlags(const QStringList &cflags) const override;
     BuiltInHeaderPathsRunner createBuiltInHeaderPathsRunner(
             const Utils::Environment &env) const override;
-    HeaderPaths builtInHeaderPaths(const QStringList &cxxflags,
-                                   const Utils::FilePath &sysRoot,
-                                   const Utils::Environment &env) const override;
     void addToEnvironment(Utils::Environment &env) const override;
 
     Utils::FilePath makeCommand(const Utils::Environment &environment) const override;
     Utils::FilePath compilerCommand() const override;
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
 
     QString varsBatArg() const { return m_varsBatArg; }
     QString varsBat() const { return m_vcvarsBat; }
@@ -127,7 +123,7 @@ protected:
     virtual Macros msvcPredefinedMacros(const QStringList &cxxflags,
                                         const Utils::Environment &env) const;
     virtual Utils::LanguageVersion msvcLanguageVersion(const QStringList &cxxflags,
-                                                       const Core::Id &language,
+                                                       const Utils::Id &language,
                                                        const Macros &macros) const;
 
     struct GenerateEnvResult
@@ -174,7 +170,7 @@ public:
     QStringList suggestedMkspecList() const override;
     void addToEnvironment(Utils::Environment &env) const override;
     Utils::FilePath compilerCommand() const override;
-    IOutputParser *outputParser() const override;
+    QList<Utils::OutputLineParser *> createOutputParsers() const override;
     QVariantMap toMap() const override;
     bool fromMap(const QVariantMap &data) override;
     std::unique_ptr<ToolChainConfigWidget> createConfigurationWidget() override;
@@ -188,7 +184,7 @@ public:
     Macros msvcPredefinedMacros(const QStringList &cxxflags,
                                 const Utils::Environment &env) const override;
     Utils::LanguageVersion msvcLanguageVersion(const QStringList &cxxflags,
-                                               const Core::Id &language,
+                                               const Utils::Id &language,
                                                const Macros &macros) const override;
 
     bool operator==(const ToolChain &) const override;

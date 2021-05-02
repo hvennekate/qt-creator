@@ -33,6 +33,7 @@
 #include <coreplugin/editormanager/ieditor.h>
 #include <coreplugin/icore.h>
 #include <coreplugin/idocument.h>
+#include <coreplugin/vcsmanager.h>
 #include <utils/checkablemessagebox.h>
 #include <utils/fileutils.h>
 
@@ -43,6 +44,7 @@
 
 using namespace Core;
 using namespace Core::Internal;
+using namespace Utils;
 
 ILocatorFilter::MatchLevel FileSystemFilter::matchLevelFor(const QRegularExpressionMatch &match,
                                                            const QString &matchText) const
@@ -102,7 +104,7 @@ QList<LocatorFilterEntry> FileSystemFilter::matchesFor(QFutureInterface<LocatorF
     const QStringList files = dirInfo.entryList(fileFilter,
                                                 QDir::Name|QDir::IgnoreCase|QDir::LocaleAware);
 
-    const QRegularExpression regExp = createRegExp(entryFileName, caseSensitivity_);
+    QRegularExpression regExp = createRegExp(entryFileName, caseSensitivity_);
     if (!regExp.isValid())
         return {};
 
@@ -122,7 +124,10 @@ QList<LocatorFilterEntry> FileSystemFilter::matchesFor(QFutureInterface<LocatorF
         }
     }
     // file names can match with +linenumber or :linenumber
-    const EditorManager::FilePathInfo fp = EditorManager::splitLineAndColumnNumber(entry);
+    const EditorManager::FilePathInfo fp = EditorManager::splitLineAndColumnNumber(entryFileName);
+    regExp = createRegExp(fp.filePath, caseSensitivity_);
+    if (!regExp.isValid())
+        return {};
     const QString fileName = QFileInfo(fp.filePath).fileName();
     for (const QString &file : files) {
         if (future.isCanceled())
@@ -195,6 +200,7 @@ void FileSystemFilter::accept(LocatorFilterEntry selection,
                 QFile file(targetFile);
                 file.open(QFile::WriteOnly);
                 file.close();
+                VcsManager::promptToAdd(QFileInfo(targetFile).absolutePath(), { targetFile });
             }
             const QFileInfo fileInfo(targetFile);
             const QString cleanedFilePath = QDir::cleanPath(fileInfo.absoluteFilePath());

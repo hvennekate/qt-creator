@@ -33,6 +33,7 @@
 #include <remotelinux/abstractremotelinuxdeploystep.h>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace Qdb {
 namespace Internal {
@@ -42,19 +43,15 @@ class QdbMakeDefaultAppStep final : public RemoteLinux::AbstractRemoteLinuxDeplo
     Q_DECLARE_TR_FUNCTIONS(Qdb::Internal::QdbMakeDefaultAppStep)
 
 public:
-    QdbMakeDefaultAppStep(BuildStepList *bsl, Core::Id id);
-
-    static QString stepDisplayName() { return tr("Change default application"); }
+    QdbMakeDefaultAppStep(BuildStepList *bsl, Utils::Id id);
 };
 
-QdbMakeDefaultAppStep::QdbMakeDefaultAppStep(BuildStepList *bsl, Core::Id id)
+QdbMakeDefaultAppStep::QdbMakeDefaultAppStep(BuildStepList *bsl, Utils::Id id)
     : AbstractRemoteLinuxDeployStep(bsl, id)
 {
-    setDefaultDisplayName(stepDisplayName());
-
     auto service = createDeployService<QdbMakeDefaultAppService>();
 
-    auto selection = addAspect<BaseSelectionAspect>();
+    auto selection = addAspect<SelectionAspect>();
     selection->setSettingsKey("QdbMakeDefaultDeployStep.MakeDefault");
     selection->addOption(tr("Set this application to start by default"));
     selection->addOption(tr("Reset default application"));
@@ -70,7 +67,7 @@ QdbMakeDefaultAppStep::QdbMakeDefaultAppStep(BuildStepList *bsl, Core::Id id)
 QdbMakeDefaultAppStepFactory::QdbMakeDefaultAppStepFactory()
 {
     registerStep<QdbMakeDefaultAppStep>(Constants::QdbMakeDefaultAppStepId);
-    setDisplayName(QdbMakeDefaultAppStep::stepDisplayName());
+    setDisplayName(QdbMakeDefaultAppStep::tr("Change default application"));
     setSupportedDeviceType(Qdb::Constants::QdbLinuxOsType);
     setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_DEPLOY);
 }

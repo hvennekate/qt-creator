@@ -33,7 +33,6 @@
 #include <projectexplorer/deployablefile.h>
 #include <projectexplorer/deploymentdata.h>
 #include <projectexplorer/processparameters.h>
-#include <projectexplorer/projectconfigurationaspects.h>
 #include <projectexplorer/projectexplorerconstants.h>
 #include <projectexplorer/project.h>
 #include <projectexplorer/runconfiguration.h>
@@ -41,9 +40,11 @@
 
 #include <qtsupport/qtkitinformation.h>
 
+#include <utils/aspects.h>
 #include <utils/qtcassert.h>
 #include <utils/qtcprocess.h>
 #include <utils/fancylineedit.h>
+#include <utils/layoutbuilder.h>
 
 #include <QLabel>
 #include <QLayout>
@@ -59,7 +60,7 @@ namespace Internal {
 const char ARGUMENTS_KEY[] = "WinRt.BuildStep.Deploy.Arguments";
 const char DEFAULTARGUMENTS_KEY[] = "WinRt.BuildStep.Deploy.DefaultArguments";
 
-class WinRtArgumentsAspect final : public ProjectConfigurationAspect
+class WinRtArgumentsAspect final : public BaseAspect
 {
     Q_DECLARE_TR_FUNCTIONS(WinRt::Internal::WinRtArgumentsAspect)
 
@@ -90,7 +91,7 @@ class WinRtPackageDeploymentStep final : public AbstractProcessStep
     Q_DECLARE_TR_FUNCTIONS(WinRt::Internal::WinRtPackageDeploymentStep)
 
 public:
-    WinRtPackageDeploymentStep(BuildStepList *bsl, Core::Id id);
+    WinRtPackageDeploymentStep(BuildStepList *bsl, Utils::Id id);
 
     QString defaultWinDeployQtArguments() const;
 
@@ -170,7 +171,7 @@ void WinRtArgumentsAspect::restoreDefaultValue()
     setValue(m_defaultValue);
 }
 
-WinRtPackageDeploymentStep::WinRtPackageDeploymentStep(BuildStepList *bsl, Core::Id id)
+WinRtPackageDeploymentStep::WinRtPackageDeploymentStep(BuildStepList *bsl, Utils::Id id)
     : AbstractProcessStep(bsl, id)
 {
     setDisplayName(tr("Run windeployqt"));
@@ -182,6 +183,9 @@ WinRtPackageDeploymentStep::WinRtPackageDeploymentStep(BuildStepList *bsl, Core:
 
 bool WinRtPackageDeploymentStep::init()
 {
+    if (!AbstractProcessStep::init())
+        return false;
+
     RunConfiguration *rc = target()->activeRunConfiguration();
     QTC_ASSERT(rc, return false);
 
@@ -203,7 +207,7 @@ bool WinRtPackageDeploymentStep::init()
     if (!m_targetDirPath.endsWith(QLatin1Char('/')))
         m_targetDirPath += QLatin1Char('/');
 
-    const QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(target()->kit());
+    const QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(kit());
     if (!qt)
         return false;
 
@@ -225,14 +229,16 @@ bool WinRtPackageDeploymentStep::init()
         return false;
     }
     params->setCommandLine(windeployqt);
-    params->setEnvironment(buildEnvironment());
+    params->setEnvironment(target()->activeBuildConfiguration()
+                           ? target()->activeBuildConfiguration()->environment()
+                           : Environment::systemEnvironment());
 
-    return AbstractProcessStep::init();
+    return true;
 }
 
 void WinRtPackageDeploymentStep::doRun()
 {
-    const QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(target()->kit());
+    const QtSupport::BaseQtVersion *qt = QtSupport::QtKitAspect::qtVersion(kit());
     if (!qt)
         return;
 
@@ -347,14 +353,14 @@ QString WinRtPackageDeploymentStep::defaultWinDeployQtArguments() const
 
 void WinRtPackageDeploymentStep::raiseError(const QString &errorMessage)
 {
-    emit addTask(DeploymentTask(Task::Error, errorMessage), 1);
     emit addOutput(errorMessage, BuildStep::OutputFormat::ErrorMessage);
+    emit addTask(DeploymentTask(Task::Error, errorMessage), 1);
 }
 
 void WinRtPackageDeploymentStep::raiseWarning(const QString &warningMessage)
 {
-    emit addTask(DeploymentTask(Task::Warning, warningMessage), 1);
     emit addOutput(warningMessage, BuildStep::OutputFormat::NormalMessage);
+    emit addTask(DeploymentTask(Task::Warning, warningMessage), 1);
 }
 
 bool WinRtPackageDeploymentStep::parseIconsAndExecutableFromManifest(QString manifestFileName, QStringList *icons, QString *executable)

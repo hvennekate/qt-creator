@@ -77,7 +77,7 @@ bool isClCompatibleCompiler(const QString &compilerName)
     return compilerName.endsWith("cl");
 }
 
-Core::Id getCompilerId(QString compilerName)
+Utils::Id getCompilerId(QString compilerName)
 {
     if (Utils::HostOsInfo::isWindowsHost()) {
         if (compilerName.endsWith(".exe"))
@@ -95,7 +95,7 @@ Core::Id getCompilerId(QString compilerName)
     return ProjectExplorer::Constants::CLANG_TOOLCHAIN_TYPEID;
 }
 
-ToolChain *toolchainFromCompilerId(const Core::Id &compilerId, const Core::Id &language)
+ToolChain *toolchainFromCompilerId(const Utils::Id &compilerId, const Utils::Id &language)
 {
     return ToolChainManager::toolChain([&compilerId, &language](const ToolChain *tc) {
         if (!tc->isValid() || tc->language() != language)
@@ -125,7 +125,7 @@ QString compilerPath(QString pathFlag)
     return QDir::fromNativeSeparators(pathFlag);
 }
 
-ToolChain *toolchainFromFlags(const Kit *kit, const QStringList &flags, const Core::Id &language)
+ToolChain *toolchainFromFlags(const Kit *kit, const QStringList &flags, const Utils::Id &language)
 {
     if (flags.empty())
         return ToolChainKitAspect::toolChain(kit, language);
@@ -138,7 +138,7 @@ ToolChain *toolchainFromFlags(const Kit *kit, const QStringList &flags, const Co
     if (toolchain)
         return toolchain;
 
-    Core::Id compilerId = getCompilerId(compiler.fileName());
+    Utils::Id compilerId = getCompilerId(compiler.fileName());
     if ((toolchain = toolchainFromCompilerId(compilerId, language)))
         return toolchain;
 
@@ -201,7 +201,6 @@ RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
             kitInfo.cToolChain = toolchainFromFlags(kit,
                                                     originalFlags,
                                                     ProjectExplorer::Constants::C_LANGUAGE_ID);
-            ToolChainKitAspect::setToolChain(kit, kitInfo.cToolChain);
         }
         addDriverModeFlagIfNeeded(kitInfo.cToolChain, flags, originalFlags);
         rpp.setFlagsForC({kitInfo.cToolChain, flags});
@@ -210,7 +209,6 @@ RawProjectPart makeRawProjectPart(const Utils::FilePath &projectFile,
             kitInfo.cxxToolChain = toolchainFromFlags(kit,
                                                       originalFlags,
                                                       ProjectExplorer::Constants::CXX_LANGUAGE_ID);
-            ToolChainKitAspect::setToolChain(kit, kitInfo.cxxToolChain);
         }
         addDriverModeFlagIfNeeded(kitInfo.cxxToolChain, flags, originalFlags);
         rpp.setFlagsForCxx({kitInfo.cxxToolChain, flags});
@@ -447,9 +445,11 @@ Utils::FilePath CompilationDatabaseProject::rootPathFromSettings() const
 #endif
 }
 
-void CompilationDatabaseProject::configureAsExampleProject()
+void CompilationDatabaseProject::configureAsExampleProject(Kit *kit)
 {
-    if (KitManager::defaultKit())
+    if (kit)
+        addTargetForKit(kit);
+    else if (KitManager::defaultKit())
         addTargetForKit(KitManager::defaultKit());
 }
 
@@ -518,7 +518,7 @@ CompilationDatabaseEditorFactory::CompilationDatabaseEditorFactory()
 class CompilationDatabaseBuildConfiguration : public BuildConfiguration
 {
 public:
-    CompilationDatabaseBuildConfiguration(Target *target, Core::Id id)
+    CompilationDatabaseBuildConfiguration(Target *target, Utils::Id id)
         : BuildConfiguration(target, id)
     {
     }

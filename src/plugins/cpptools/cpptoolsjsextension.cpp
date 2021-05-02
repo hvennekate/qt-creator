@@ -121,13 +121,13 @@ QString CppToolsJsExtension::closeNamespaces(const QString &klass) const
 QString CppToolsJsExtension::includeStatement(
         const QString &fullyQualifiedClassName,
         const QString &suffix,
-        const QString &specialClasses,
+        const QStringList &specialClasses,
         const QString &pathOfIncludingFile
         )
 {
     if (fullyQualifiedClassName.isEmpty())
         return {};
-    const QString className = parts(fullyQualifiedClassName).last();
+    const QString className = parts(fullyQualifiedClassName).constLast();
     if (className.isEmpty() || specialClasses.contains(className))
         return {};
     if (className.startsWith('Q') && className.length() > 2 && className.at(1).isUpper())

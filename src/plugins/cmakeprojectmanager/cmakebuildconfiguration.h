@@ -26,19 +26,16 @@
 #pragma once
 
 #include "cmakeconfigitem.h"
-#include "cmakeproject.h"
 #include "configmodel.h"
 
+#include <projectexplorer/buildaspects.h>
 #include <projectexplorer/buildconfiguration.h>
-#include <projectexplorer/buildtargetinfo.h>
-#include <projectexplorer/deploymentdata.h>
 
 namespace CMakeProjectManager {
 class CMakeProject;
 
 namespace Internal {
 
-class BuildDirManager;
 class CMakeBuildSystem;
 class CMakeBuildSettingsWidget;
 
@@ -47,12 +44,15 @@ class CMakeBuildConfiguration final : public ProjectExplorer::BuildConfiguration
     Q_OBJECT
 
     friend class ProjectExplorer::BuildConfigurationFactory;
-    CMakeBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
+    CMakeBuildConfiguration(ProjectExplorer::Target *target, Utils::Id id);
     ~CMakeBuildConfiguration() final;
 
 public:
-    CMakeConfig configurationForCMake() const;
     CMakeConfig configurationFromCMake() const;
+
+    QStringList extraCMakeArguments() const;
+
+    QStringList initialCMakeArguments() const;
 
     QString error() const;
     QString warning() const;
@@ -65,11 +65,11 @@ public:
     void buildTarget(const QString &buildTarget);
     ProjectExplorer::BuildSystem *buildSystem() const final;
 
+    void runCMakeWithExtraArguments();
+
 signals:
     void errorOccurred(const QString &message);
     void warningOccurred(const QString &message);
-
-    void configurationForCMakeChanged();
 
 private:
     QVariantMap toMap() const override;
@@ -83,13 +83,13 @@ private:
     void clearError(ForceEnabledChanged fec = ForceEnabledChanged::False);
 
     void setConfigurationFromCMake(const CMakeConfig &config);
-    void setConfigurationForCMake(const QList<ConfigModel::DataItem> &items);
-    void setConfigurationForCMake(const CMakeConfig &config);
+
+    void setExtraCMakeArguments(const QStringList &args);
+    void setInitialCMakeArguments(const QStringList &args);
 
     void setError(const QString &message);
     void setWarning(const QString &message);
 
-    CMakeConfig m_configurationForCMake;
     CMakeConfig m_initialConfiguration;
     QString m_error;
     QString m_warning;
@@ -97,10 +97,11 @@ private:
     CMakeConfig m_configurationFromCMake;
     CMakeBuildSystem *m_buildSystem = nullptr;
 
+    QStringList m_extraCMakeArguments;
+
     friend class CMakeBuildSettingsWidget;
     friend class CMakeBuildSystem;
     friend class CMakeProject;
-    friend class BuildDirManager;
 };
 
 class CMakeProjectImporter;
@@ -123,6 +124,14 @@ private:
     static ProjectExplorer::BuildInfo createBuildInfo(BuildType buildType);
 
     friend class CMakeProjectImporter;
+};
+
+class InitialCMakeArgumentsAspect final : public Utils::StringAspect
+{
+    Q_OBJECT
+
+public:
+    InitialCMakeArgumentsAspect();
 };
 
 } // namespace Internal

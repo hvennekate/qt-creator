@@ -38,7 +38,6 @@
 
 #include <QDir>
 #include <QGroupBox>
-#include <QRegExp>
 #include <QVBoxLayout>
 #include <QMenu>
 
@@ -102,7 +101,7 @@ void GitSubmitEditorWidget::initialize(CommitType commitType,
         logChangeGroupBox->setLayout(logChangeLayout);
         m_logChangeWidget = new LogChangeWidget;
         m_logChangeWidget->init(repository);
-        connect(m_logChangeWidget, &LogChangeWidget::commitActivated, this, &GitSubmitEditorWidget::show);
+        connect(m_logChangeWidget, &LogChangeWidget::commitActivated, this, &GitSubmitEditorWidget::showRequested);
         logChangeLayout->addWidget(m_logChangeWidget);
         insertLeftWidget(logChangeGroupBox);
         m_gitSubmitPanelUi.editGroup->hide();

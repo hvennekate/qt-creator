@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: BlackBerry (qt@blackberry.com)
+** Copyright (C) 2020 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of Qt Creator.
 **
@@ -27,6 +27,10 @@
 
 #include <QVector>
 
+namespace Utils {
+class FilePath;
+}
+
 namespace McuSupport {
 namespace Internal {
 class McuPackage;
@@ -36,9 +40,8 @@ namespace Sdk {
 
 McuPackage *createQtForMCUsPackage();
 
-// Legacy: List of targets supported by Qt for MCUs 1.0
-void hardcodedTargetsAndPackages(const Utils::FilePath &qulDir,
-                                 QVector<McuPackage*> *packages, QVector<McuTarget*> *mcuTargets);
+void targetsAndPackages(const Utils::FilePath &qulDir,
+                        QVector<McuPackage*> *packages, QVector<McuTarget*> *mcuTargets);
 
 } // namespace Sdk
 } // namespace Internal

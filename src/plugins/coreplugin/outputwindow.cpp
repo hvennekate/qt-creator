@@ -26,23 +26,31 @@
 #include "outputwindow.h"
 
 #include "actionmanager/actionmanager.h"
+#include "editormanager/editormanager.h"
 #include "coreconstants.h"
 #include "coreplugin.h"
 #include "icore.h"
 
 #include <utils/outputformatter.h>
+#include <utils/qtcassert.h>
 
 #include <QAction>
 #include <QCursor>
+#include <QElapsedTimer>
 #include <QMimeData>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTimer>
 
 #ifdef WITH_TESTS
 #include <QtTest>
 #endif
+
+#include <numeric>
+
+const int chunkSize = 10000;
 
 using namespace Utils;
 
@@ -58,16 +66,12 @@ public:
     {
     }
 
-    ~OutputWindowPrivate()
-    {
-        ICore::removeContextObject(outputWindowContext);
-        delete outputWindowContext;
-    }
-
-    IContext *outputWindowContext = nullptr;
     QString settingsKey;
-    AggregatingOutputFormatter formatter;
+    OutputFormatter formatter;
+    QList<QPair<QString, OutputFormat>> queuedOutput;
+    QTimer queueTimer;
 
+    bool flushRequested = false;
     bool scrollToBottom = true;
     bool linksActive = true;
     bool zoomEnabled = false;
@@ -80,6 +84,8 @@ public:
     int lastFilteredBlockNumber = -1;
     QPalette originalPalette;
     OutputWindow::FilterModeFlags filterMode = OutputWindow::FilterModeFlag::Default;
+    QTimer scrollTimer;
+    QElapsedTimer lastMessage;
 };
 
 } // namespace Internal
@@ -97,12 +103,16 @@ OutputWindow::OutputWindow(Context context, const QString &settingsKey, QWidget 
     setUndoRedoEnabled(false);
     d->formatter.setPlainTextEdit(this);
 
+    d->queueTimer.setSingleShot(true);
+    d->queueTimer.setInterval(10);
+    connect(&d->queueTimer, &QTimer::timeout, this, &OutputWindow::handleNextOutputChunk);
+
     d->settingsKey = settingsKey;
 
-    d->outputWindowContext = new IContext;
-    d->outputWindowContext->setContext(context);
-    d->outputWindowContext->setWidget(this);
-    ICore::addContextObject(d->outputWindowContext);
+    auto outputWindowContext = new IContext(this);
+    outputWindowContext->setContext(context);
+    outputWindowContext->setWidget(this);
+    ICore::addContextObject(outputWindowContext);
 
     auto undoAction = new QAction(this);
     auto redoAction = new QAction(this);
@@ -138,16 +148,24 @@ OutputWindow::OutputWindow(Context context, const QString &settingsKey, QWidget 
             Core::ICore::settings()->setValue(d->settingsKey, fontZoom());
     });
 
+    connect(outputFormatter(), &OutputFormatter::openInEditorRequested, this,
+            [](const Utils::FilePath &fp, int line, int column) {
+        EditorManager::openEditorAt(fp.toString(), line, column);
+    });
+
+    connect(verticalScrollBar(), &QAbstractSlider::sliderMoved,
+            this, &OutputWindow::updateAutoScroll);
+
     undoAction->setEnabled(false);
     redoAction->setEnabled(false);
     cutAction->setEnabled(false);
     copyAction->setEnabled(false);
 
-    m_scrollTimer.setInterval(10);
-    m_scrollTimer.setSingleShot(true);
-    connect(&m_scrollTimer, &QTimer::timeout,
+    d->scrollTimer.setInterval(10);
+    d->scrollTimer.setSingleShot(true);
+    connect(&d->scrollTimer, &QTimer::timeout,
             this, &OutputWindow::scrollToBottom);
-    m_lastMessage.start();
+    d->lastMessage.start();
 
     d->originalFontSize = font().pointSizeF();
 
@@ -168,12 +186,17 @@ void OutputWindow::mousePressEvent(QMouseEvent *e)
     QPlainTextEdit::mousePressEvent(e);
 }
 
+void OutputWindow::handleLink(const QPoint &pos)
+{
+    const QString href = anchorAt(pos);
+    if (!href.isEmpty())
+        d->formatter.handleLink(href);
+}
+
 void OutputWindow::mouseReleaseEvent(QMouseEvent *e)
 {
-    if (d->linksActive && d->mouseButtonPressed == Qt::LeftButton) {
-        const QString href = anchorAt(e->pos());
-        d->formatter.handleLink(href);
-    }
+    if (d->linksActive && d->mouseButtonPressed == Qt::LeftButton)
+        handleLink(e->pos());
 
     // Mouse was released, activate links again
     d->linksActive = true;
@@ -199,9 +222,8 @@ void OutputWindow::resizeEvent(QResizeEvent *e)
 {
     //Keep scrollbar at bottom of window while resizing, to ensure we keep scrolling
     //This can happen if window is resized while building, or if the horizontal scrollbar appears
-    bool atBottom = isScrollbarAtBottom();
     QPlainTextEdit::resizeEvent(e);
-    if (atBottom)
+    if (d->scrollToBottom)
         scrollToBottom();
 }
 
@@ -216,9 +238,15 @@ void OutputWindow::keyPressEvent(QKeyEvent *ev)
         verticalScrollBar()->triggerAction(QAbstractSlider::SliderToMaximum);
 }
 
-void OutputWindow::setFormatters(const QList<OutputFormatter *> &formatters)
+void OutputWindow::setLineParsers(const QList<OutputLineParser *> &parsers)
 {
-    d->formatter.setFormatters(formatters);
+    reset();
+    d->formatter.setLineParsers(parsers);
+}
+
+OutputFormatter *OutputWindow::outputFormatter() const
+{
+    return &d->formatter;
 }
 
 void OutputWindow::showEvent(QShowEvent *e)
@@ -226,7 +254,6 @@ void OutputWindow::showEvent(QShowEvent *e)
     QPlainTextEdit::showEvent(e);
     if (d->scrollToBottom)
         verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-    d->scrollToBottom = false;
 }
 
 void OutputWindow::wheelEvent(QWheelEvent *e)
@@ -246,6 +273,7 @@ void OutputWindow::wheelEvent(QWheelEvent *e)
         }
     }
     QAbstractScrollArea::wheelEvent(e);
+    updateAutoScroll();
     updateMicroFocus();
 }
 
@@ -322,8 +350,6 @@ void OutputWindow::updateFilterProperties(
 
 void OutputWindow::filterNewContent()
 {
-    bool atBottom = isScrollbarAtBottom();
-
     QTextBlock lastBlock = document()->findBlockByNumber(d->lastFilteredBlockNumber);
     if (!lastBlock.isValid())
         lastBlock = document()->begin();
@@ -355,29 +381,41 @@ void OutputWindow::filterNewContent()
     // FIXME: Why on earth is this necessary? We should probably do something else instead...
     setDocument(document());
 
-    if (atBottom)
+    if (d->scrollToBottom)
         scrollToBottom();
 }
 
-void OutputWindow::setMaxCharCount(int count)
+void OutputWindow::handleNextOutputChunk()
 {
-    d->maxCharCount = count;
-    setMaximumBlockCount(count / 100);
+    QTC_ASSERT(!d->queuedOutput.isEmpty(), return);
+    auto &chunk = d->queuedOutput.first();
+    if (chunk.first.size() <= chunkSize) {
+        handleOutputChunk(chunk.first, chunk.second);
+        d->queuedOutput.removeFirst();
+    } else {
+        handleOutputChunk(chunk.first.left(chunkSize), chunk.second);
+        chunk.first.remove(0, chunkSize);
+    }
+    if (!d->queuedOutput.isEmpty())
+        d->queueTimer.start();
+    else if (d->flushRequested) {
+        d->formatter.flush();
+        d->flushRequested = false;
+    }
 }
 
-int OutputWindow::maxCharCount() const
-{
-    return d->maxCharCount;
-}
-
-void OutputWindow::appendMessage(const QString &output, OutputFormat format)
+void OutputWindow::handleOutputChunk(const QString &output, OutputFormat format)
 {
     QString out = output;
     if (out.size() > d->maxCharCount) {
-        // Current line alone exceeds limit, we need to cut it.
-        out.truncate(d->maxCharCount);
-        out.append("[...]");
-        setMaximumBlockCount(1);
+        // Current chunk alone exceeds limit, we need to cut it.
+        const int elided = out.size() - d->maxCharCount;
+        out = out.left(d->maxCharCount / 2)
+                + "[[[... "
+                + tr("Elided %n characters due to Application Output settings", nullptr, elided)
+                + " ...]]]"
+                + out.right(d->maxCharCount / 2);
+        setMaximumBlockCount(out.count('\n') + 1);
     } else {
         int plannedChars = document()->characterCount() + out.size();
         if (plannedChars > d->maxCharCount) {
@@ -394,21 +432,45 @@ void OutputWindow::appendMessage(const QString &output, OutputFormat format)
         }
     }
 
-    const bool atBottom = isScrollbarAtBottom() || m_scrollTimer.isActive();
-    d->scrollToBottom = true;
     d->formatter.appendMessage(out, format);
 
-    if (atBottom) {
-        if (m_lastMessage.elapsed() < 5) {
-            m_scrollTimer.start();
+    if (d->scrollToBottom) {
+        if (d->lastMessage.elapsed() < 5) {
+            d->scrollTimer.start();
         } else {
-            m_scrollTimer.stop();
+            d->scrollTimer.stop();
             scrollToBottom();
         }
     }
 
-    m_lastMessage.start();
+    d->lastMessage.start();
     enableUndoRedo();
+}
+
+void OutputWindow::updateAutoScroll()
+{
+    d->scrollToBottom = isScrollbarAtBottom();
+}
+
+void OutputWindow::setMaxCharCount(int count)
+{
+    d->maxCharCount = count;
+    setMaximumBlockCount(count / 100);
+}
+
+int OutputWindow::maxCharCount() const
+{
+    return d->maxCharCount;
+}
+
+void OutputWindow::appendMessage(const QString &output, OutputFormat format)
+{
+    if (d->queuedOutput.isEmpty() || d->queuedOutput.last().second != format)
+        d->queuedOutput << qMakePair(output, format);
+    else
+        d->queuedOutput.last().first.append(output);
+    if (!d->queueTimer.isActive())
+        d->queueTimer.start();
 }
 
 bool OutputWindow::isScrollbarAtBottom() const
@@ -446,11 +508,35 @@ QMimeData *OutputWindow::createMimeDataFromSelection() const
 void OutputWindow::clear()
 {
     d->formatter.clear();
+    d->scrollToBottom = true;
 }
 
 void OutputWindow::flush()
 {
+    const int totalQueuedSize = std::accumulate(d->queuedOutput.cbegin(), d->queuedOutput.cend(), 0,
+            [](int val,  const QPair<QString, OutputFormat> &c) { return val + c.first.size(); });
+    if (totalQueuedSize > 5 * chunkSize) {
+        d->flushRequested = true;
+        return;
+    }
+    d->queueTimer.stop();
+    for (const auto &chunk : d->queuedOutput)
+        handleOutputChunk(chunk.first, chunk.second);
+    d->queuedOutput.clear();
     d->formatter.flush();
+}
+
+void OutputWindow::reset()
+{
+    flush();
+    d->queueTimer.stop();
+    d->formatter.reset();
+    if (!d->queuedOutput.isEmpty()) {
+        d->queuedOutput.clear();
+        d->formatter.appendMessage(tr("[Discarding excessive amount of pending output.]\n"),
+                                   ErrorMessageFormat);
+    }
+    d->flushRequested = false;
 }
 
 void OutputWindow::scrollToBottom()
@@ -503,42 +589,37 @@ void OutputWindow::setWordWrapEnabled(bool wrap)
 
 // Handles all lines starting with "A" and the following ones up to and including the next
 // one starting with "A".
-class TestFormatterA : public OutputFormatter
+class TestFormatterA : public OutputLineParser
 {
 private:
-    Status handleMessage(const QString &text, OutputFormat format) override
+    Result handleLine(const QString &text, OutputFormat) override
     {
+        static const QString replacement = "handled by A";
         if (m_handling) {
-            appendMessageDefault("handled by A\n", format);
             if (text.startsWith("A")) {
                 m_handling = false;
-                return Status::Done;
+                return {Status::Done, {}, replacement};
             }
-            return Status::InProgress;
+            return {Status::InProgress, {}, replacement};
         }
         if (text.startsWith("A")) {
             m_handling = true;
-            appendMessageDefault("handled by A\n", format);
-            return Status::InProgress;
+            return {Status::InProgress, {}, replacement};
         }
         return Status::NotHandled;
     }
 
-    void reset() override { m_handling = false; }
-
     bool m_handling = false;
 };
 
-// Handles all lines starting with "B". No continuation logic
-class TestFormatterB : public OutputFormatter
+// Handles all lines starting with "B". No continuation logic.
+class TestFormatterB : public OutputLineParser
 {
 private:
-    Status handleMessage(const QString &text, OutputFormat format) override
+    Result handleLine(const QString &text, OutputFormat) override
     {
-        if (text.startsWith("B")) {
-            appendMessageDefault("handled by B\n", format);
-            return Status::Done;
-        }
+        if (text.startsWith("B"))
+            return {Status::Done, {}, QString("handled by B")};
         return Status::NotHandled;
     }
 };
@@ -546,8 +627,8 @@ private:
 void Internal::CorePlugin::testOutputFormatter()
 {
     const QString input =
-            "B to be handled by B\r\n"
-            "not to be handled\n"
+            "B to be handled by B\r\r\n"
+            "not to be handled\n\n\n\n"
             "A to be handled by A\n"
             "continuation for A\r\n"
             "B looks like B, but still continuation for A\r\n"
@@ -555,10 +636,11 @@ void Internal::CorePlugin::testOutputFormatter()
             "A next A\n"
             "A end of next A\n"
             " A trick\r\n"
+            "line with \r embedded carriage return\n"
             "B to be handled by B\n";
     const QString output =
             "handled by B\n"
-            "not to be handled\n"
+            "not to be handled\n\n\n\n"
             "handled by A\n"
             "handled by A\n"
             "handled by A\n"
@@ -566,21 +648,20 @@ void Internal::CorePlugin::testOutputFormatter()
             "handled by A\n"
             "handled by A\n"
             " A trick\n"
+            " embedded carriage return\n"
             "handled by B\n";
-    TestFormatterA formatterA;
-    TestFormatterB formatterB;
-    AggregatingOutputFormatter formatter;
-    QPlainTextEdit textEdit;
-    formatter.setPlainTextEdit(&textEdit);
-    formatter.setFormatters({&formatterB, &formatterA});
 
     // Stress-test the implementation by providing the input in chunks, splitting at all possible
     // offsets.
     for (int i = 0; i < input.length(); ++i) {
-        formatter.appendMessage(input.left(i), NormalMessageFormat);
-        formatter.appendMessage(input.mid(i), NormalMessageFormat);
+        OutputFormatter formatter;
+        QPlainTextEdit textEdit;
+        formatter.setPlainTextEdit(&textEdit);
+        formatter.setLineParsers({new TestFormatterB, new TestFormatterA});
+        formatter.appendMessage(input.left(i), StdOutFormat);
+        formatter.appendMessage(input.mid(i), StdOutFormat);
+        formatter.flush();
         QCOMPARE(textEdit.toPlainText(), output);
-        formatter.clear();
     }
 }
 #endif // WITH_TESTS

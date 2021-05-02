@@ -57,6 +57,8 @@ Editing
 * Updated to Qt 5.15 parser (QTCREATORBUG-23591)
 * Improved support for multiple imports into same namespace (QTCREATORBUG-15684)
 * Added scanning of `app.qmltypes` and `lib.qmltypes` for type information
+* Fixed highlighting for new keywords in Qt 5.15
+* Fixed reading of `qmltypes` from Qt 5.15 (QTCREATORBUG-23855)
 
 ### Python
 
@@ -92,24 +94,29 @@ Projects
 * Improved renaming of files (QTCREATORBUG-19257)
 * Fixed handling of `object_parallel_to_source` (QTCREATORBUG-18136)
 * Fixed crash with circular includes (QTCREATORBUG-23567)
+* Fixed issue with renaming files (QTCREATORBUG-23720)
 
 ### CMake
 
 * Improved handling of `source_group` (QTCREATORBUG-23372)
 * Added support for `Add build library search path to LD_LIBRARY_PATH` (QTCREATORBUG-23464)
 * Added automatic registration of CMake documentation, if available (QTCREATORBUG-21338)
+* Fixed that `.cmake` directory was created in project source directory (QTCREATORBUG-23816)
 * Fixed issues with `snap` on Ubuntu Linux (QTCREATORBUG-23376)
 * Fixed handling of `Enable QML` in debugger settings (QTCREATORBUG-23541)
 * Fixed unneeded reparsing of files
+* Fixed code model issues with precompiled headers (QTCREATORBUG-22888)
 
 ### Qbs
 
+* Updated included Qbs version to 1.16.0
 * Changed to use separate Qbs executable instead of direcly linking to Qbs (QTCREATORBUG-20622)
 * Added option for default install root (QTCREATORBUG-12983)
 
 ### Python
 
 * Added option to disable buffered output (QTCREATORBUG-23539)
+* Added support for PySide 5.15 to wizards (QTCREATORBUG-23824)
 
 ### Generic
 
@@ -139,6 +146,7 @@ Analyzer
 ### Clang
 
 * Improved filtering
+* Added `Analyze Current File` to `Tools` menu and editor context menu
 * Added context menu item that opens help on diagnostics
 
 ### CppCheck
@@ -161,6 +169,8 @@ Qt Quick Designer
 * Added locking and pinning of animation curves (QDS-550, QDS-551)
 * Added support for annotations (QDS-39)
 * Fixed dragging of keyframes in curve editor (QDS-1405)
+* Fixed crash when selecting icon (QTCREATORBUG-23773)
+* Fixed missing import options (QDS-1592)
 
 Version Control Systems
 -----------------------
@@ -181,6 +191,7 @@ Test Integration
 ### Google Test
 
 * Added support for internal logging (QTCREATORBUG-23354)
+* Added support for `GTEST_SKIP` (QTCREATORBUG-23736)
 
 Platforms
 ---------
@@ -198,14 +209,20 @@ Platforms
 
 ### Android
 
+* Discontinued support for Ministro
 * Added auto-detection of Java JDK (QTCREATORBUG-23407)
 * Added option to automatically download and install required Android tools (QTCREATORBUG-23285)
 * Added option to register multiple NDKs (QTCREATORBUG-23286)
 * Added automatic selection of correct NDK for Qt version (QTCREATORBUG-23583)
+* Added option to download and use [OpenSSL for Android](https://github.com/KDAB/android_openssl)
+  (QTBUG-80625)
 * Added support for Android 11 with API level 30
 * Improved examples browser to only show items tagged with `android` (QTBUG-80716)
 * Improved manifest editor (QTCREATORBUG-23283)
+* Fixed issues with latest SDK r29 (QTCREATORBUG-23726)
 * Fixed several issues with AVD manager (QTCREATORBUG-23284, QTCREATORBUG-23448)
+* Fixed that some essential packages were not installed (QTCREATORBUG-23829)
+* Fixed that ABI selection in build configuration did not persist (QTCREATORBUG-23756)
 
 ### iOS
 
@@ -221,6 +238,13 @@ Platforms
 * Added support for RL78 architecture
 * Added support for J-Link and EBlink GDB servers
 * Added support for KEIL uVision v5.x debugger
+
+### MCU
+
+* Added auto-registration of documentation and examples (UL-1685, UL-1218)
+* Switched to MCUXpresso IDE instead of SEGGER JLink for NXP kits (QTCREATORBUG-23821)
+* Fixed issues with desktop kit (QTCREATORBUG-23820)
+* Fixed issues with RH850 (QTCREATORBUG-23822)
 
 Credits for these changes go to:
 --------------------------------
@@ -243,6 +267,7 @@ Eike Ziller
 Fawzi Mohamed  
 Federico Guerinoni  
 Filippo Cucchetto  
+Friedemann Kleint  
 Halfdan Ingvarsson  
 Hannes Domani  
 Henning Gruendl  
@@ -266,6 +291,7 @@ Nikolai Kosjar
 Nikolay Panov  
 Oliver Wolff  
 Orgad Shaneh  
+Richard Weickelt  
 Robert Löhning  
 Sergey Morozov  
 Tasuku Suzuki  
@@ -276,6 +302,8 @@ Tim Jenssen
 Tobias Hunger  
 Topi Reinio  
 Ulf Hermann  
+Unseon Ryu  
+Venugopal Shivashankar  
 Vikas Pachdha  
 Ville Voutilainen  
 Volodymyr Samokhatko  

@@ -483,8 +483,12 @@ AndroidDeviceDialog::~AndroidDeviceDialog()
 
 AndroidDeviceInfo AndroidDeviceDialog::device()
 {
+    refreshDeviceList();
+
     if (!m_defaultDevice.isEmpty()) {
-        auto device = std::find_if(m_connectedDevices.begin(), m_connectedDevices.end(), [this](const AndroidDeviceInfo& info) {
+        auto device = std::find_if(m_connectedDevices.begin(),
+                                   m_connectedDevices.end(),
+                                   [this](const AndroidDeviceInfo &info) {
             return info.serialNumber == m_defaultDevice ||
                     info.avdname == m_defaultDevice;
         });
@@ -493,8 +497,6 @@ AndroidDeviceInfo AndroidDeviceDialog::device()
             return *device;
         m_defaultDevice.clear();
     }
-
-    refreshDeviceList();
 
     if (exec() == QDialog::Accepted)
         return m_model->device(m_ui->deviceView->currentIndex());
@@ -604,20 +606,6 @@ void AndroidDeviceDialog::enableOkayButton()
     AndroidDeviceModelNode *node = static_cast<AndroidDeviceModelNode *>(m_ui->deviceView->currentIndex().internalPointer());
     bool enable = node && (!node->deviceInfo().serialNumber.isEmpty() || !node->deviceInfo().avdname.isEmpty());
     m_ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(enable);
-}
-
-// Does not work.
-void AndroidDeviceDialog::clickedOnView(const QModelIndex &idx)
-{
-    if (idx.isValid()) {
-        auto node = static_cast<AndroidDeviceModelNode *>(idx.internalPointer());
-        if (!node->displayName().isEmpty()) {
-            if (m_ui->deviceView->isExpanded(idx))
-                m_ui->deviceView->collapse(idx);
-            else
-                m_ui->deviceView->expand(idx);
-        }
-    }
 }
 
 void AndroidDeviceDialog::showHelp()

@@ -26,7 +26,7 @@
 #include "selectableitem.h"
 #include "keyframeitem.h"
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 CurveEditorItem::CurveEditorItem(QGraphicsItem *parent)
     : QGraphicsObject(parent)
@@ -83,7 +83,6 @@ SelectableItem::SelectableItem(QGraphicsItem *parent)
     : CurveEditorItem(parent)
     , m_active(false)
     , m_selected(false)
-    , m_locked(false)
     , m_preSelected(SelectionMode::Undefined)
 {
     setFlag(QGraphicsItem::ItemIsSelectable, false);
@@ -99,6 +98,7 @@ void SelectableItem::lockedCallback()
 {
     m_preSelected = SelectionMode::Undefined;
     m_selected = false;
+    m_active = false;
     selectionCallback();
 }
 
@@ -129,17 +129,23 @@ bool SelectableItem::selected() const
 
 void SelectableItem::setActivated(bool active)
 {
+    if (locked())
+        return;
+
     m_active = active;
 }
 
 void SelectableItem::setSelected(bool selected)
 {
+    if (locked())
+        return;
+
     m_selected = selected;
 }
 
 void SelectableItem::setPreselected(SelectionMode mode)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     m_preSelected = mode;
@@ -158,7 +164,7 @@ void SelectableItem::selectionCallback() {}
 
 void SelectableItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     m_active = true;
@@ -168,7 +174,7 @@ void SelectableItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
 void SelectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     if (type() == KeyframeItem::Type && !selected())
@@ -179,7 +185,7 @@ void SelectableItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
 void SelectableItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_locked)
+    if (locked())
         return;
 
     m_active = false;
@@ -187,4 +193,4 @@ void SelectableItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     activationCallback();
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

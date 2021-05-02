@@ -35,13 +35,13 @@
 #include <cmath>
 #include <sstream>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 CurveItem::CurveItem(QGraphicsItem *parent)
     : CurveEditorItem(parent)
     , m_id(0)
     , m_style()
-    , m_type(ValueType::Undefined)
+    , m_type(PropertyTreeItem::ValueType::Undefined)
     , m_component(PropertyTreeItem::Component::Generic)
     , m_transform()
     , m_keyframes()
@@ -52,7 +52,7 @@ CurveItem::CurveItem(unsigned int id, const AnimationCurve &curve, QGraphicsItem
     : CurveEditorItem(parent)
     , m_id(id)
     , m_style()
-    , m_type(ValueType::Undefined)
+    , m_type(PropertyTreeItem::ValueType::Undefined)
     , m_component(PropertyTreeItem::Component::Generic)
     , m_transform()
     , m_keyframes()
@@ -87,6 +87,16 @@ QRectF CurveItem::boundingRect() const
     for (auto *item : m_keyframes)
         bbox(bounds, item->keyframe());
 
+    if (auto *s = qobject_cast<GraphicsScene *>(scene())) {
+        bounds.setLeft(s->animationRangeMin());
+        bounds.setRight(s->animationRangeMax());
+    }
+
+    if (qFuzzyCompare(bounds.height(), 0.0)) {
+        auto tmp = CurveEditorStyle::defaultValueRange() / 2.0;
+        bounds.adjust(0.0, -tmp, 0.0, tmp);
+    }
+
     return m_transform.mapRect(bounds);
 }
 
@@ -118,10 +128,12 @@ void CurveItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidg
                 pen.setColor(m_style.easingCurveColor);
             } else {
                 if (locked())
-                    pen.setColor(Qt::black);
+                    pen.setColor(m_style.lockedColor);
+                else if (!segment.isLegal())
+                    pen.setColor(m_style.errorColor);
                 else if (isUnderMouse())
-                    pen.setColor(Qt::red);
-                else if (hasSelection())
+                    pen.setColor(m_style.hoverColor);
+                else if (hasSelectedKeyframe())
                     pen.setColor(m_style.selectionColor);
                 else
                     pen.setColor(m_style.color);
@@ -146,7 +158,25 @@ bool CurveItem::isDirty() const
     return m_itemDirty;
 }
 
-bool CurveItem::hasSelection() const
+bool CurveItem::hasActiveKeyframe() const
+{
+    for (auto *frame : m_keyframes) {
+        if (frame->activated())
+            return true;
+    }
+    return false;
+}
+
+bool CurveItem::hasActiveHandle() const
+{
+    for (auto *frame : m_keyframes) {
+        if (frame->hasActiveHandle())
+            return true;
+    }
+    return false;
+}
+
+bool CurveItem::hasSelectedKeyframe() const
 {
     for (auto *frame : m_keyframes) {
         if (frame->selected())
@@ -155,12 +185,47 @@ bool CurveItem::hasSelection() const
     return false;
 }
 
+bool CurveItem::hasEditableSegment(double time) const
+{
+    return curve().segment(time).interpolation() != Keyframe::Interpolation::Easing;
+}
+
+bool CurveItem::isFirst(const KeyframeItem *key) const
+{
+    if (m_keyframes.empty())
+        return false;
+
+    return m_keyframes.first() == key;
+}
+
+bool CurveItem::isLast(const KeyframeItem *key) const
+{
+    if (m_keyframes.empty())
+        return false;
+
+    return m_keyframes.last() == key;
+}
+
+int CurveItem::indexOf(const KeyframeItem *key) const
+{
+    if (m_keyframes.empty())
+        return -1;
+
+    int out = 0;
+    for (auto &&el : m_keyframes) {
+        if (el == key)
+            return out;
+        out++;
+    }
+    return -1;
+}
+
 unsigned int CurveItem::id() const
 {
     return m_id;
 }
 
-ValueType CurveItem::valueType() const
+PropertyTreeItem::ValueType CurveItem::valueType() const
 {
     return m_type;
 }
@@ -203,7 +268,7 @@ std::vector<AnimationCurve> CurveItem::curves() const
 
     std::vector<Keyframe> tmp;
 
-    for (size_t i = 0; i < m_keyframes.size(); ++i) {
+    for (int i = 0; i < m_keyframes.size(); ++i) {
         KeyframeItem *item = m_keyframes[i];
 
         Keyframe current = item->keyframe();
@@ -233,6 +298,49 @@ std::vector<AnimationCurve> CurveItem::curves() const
     return out;
 }
 
+QVector<KeyframeItem *> CurveItem::keyframes() const
+{
+    return m_keyframes;
+}
+
+QVector<KeyframeItem *> CurveItem::selectedKeyframes() const
+{
+    QVector<KeyframeItem *> out;
+    for (auto *frame : m_keyframes) {
+        if (frame->selected())
+            out.push_back(frame);
+    }
+    return out;
+}
+
+QVector<HandleItem *> CurveItem::handles() const
+{
+    QVector<HandleItem *> out;
+    for (auto *frame : m_keyframes) {
+        if (auto *left = frame->leftHandle())
+            out.push_back(left);
+        if (auto *right = frame->rightHandle())
+            out.push_back(right);
+    }
+    return out;
+}
+
+CurveSegment CurveItem::segment(const KeyframeItem *keyframe, HandleItem::Slot slot) const
+{
+    auto finder = [keyframe](KeyframeItem *item) { return item == keyframe; };
+    auto iter = std::find_if(m_keyframes.begin(), m_keyframes.end(), finder);
+    if (iter == m_keyframes.end())
+        return CurveSegment();
+
+    int index = static_cast<int>(std::distance(m_keyframes.begin(), iter));
+    if (slot == HandleItem::Slot::Left && index > 0)
+        return CurveSegment(m_keyframes[index - 1]->keyframe(), keyframe->keyframe());
+    else if (slot == HandleItem::Slot::Right && index < (m_keyframes.size() - 1))
+        return CurveSegment(keyframe->keyframe(), m_keyframes[index + 1]->keyframe());
+
+    return CurveSegment();
+}
+
 void CurveItem::restore()
 {
     if (m_keyframes.empty())
@@ -248,7 +356,7 @@ void CurveItem::restore()
     if (prevItem->hasLeftHandle())
         prevItem->setLeftHandle(QPointF());
 
-    for (size_t i = 1; i < m_keyframes.size(); ++i) {
+    for (int i = 1; i < m_keyframes.size(); ++i) {
         KeyframeItem *currItem = m_keyframes[i];
 
         bool left = prevItem->hasRightHandle();
@@ -277,7 +385,7 @@ void CurveItem::setHandleVisibility(bool visible)
         frame->setHandleVisibility(visible);
 }
 
-void CurveItem::setValueType(ValueType type)
+void CurveItem::setValueType(PropertyTreeItem::ValueType type)
 {
     m_type = type;
 }
@@ -291,12 +399,14 @@ void CurveItem::setCurve(const AnimationCurve &curve)
 {
     freeClear(m_keyframes);
 
-    for (auto frame : curve.keyframes()) {
+    for (const auto &frame : curve.keyframes()) {
         auto *item = new KeyframeItem(frame, this);
         item->setLocked(locked());
         item->setComponentTransform(m_transform);
         m_keyframes.push_back(item);
         QObject::connect(item, &KeyframeItem::redrawCurve, this, &CurveItem::emitCurveChanged);
+        QObject::connect(item, &KeyframeItem::keyframeMoved, this, &CurveItem::keyframeMoved);
+        QObject::connect(item, &KeyframeItem::handleMoved, this, &CurveItem::handleMoved);
     }
 
     emitCurveChanged();
@@ -326,7 +436,7 @@ void CurveItem::setInterpolation(Keyframe::Interpolation interpolation)
         return;
 
     KeyframeItem *prevItem = m_keyframes[0];
-    for (size_t i = 1; i < m_keyframes.size(); ++i) {
+    for (int i = 1; i < m_keyframes.size(); ++i) {
         KeyframeItem *currItem = m_keyframes[i];
         if (currItem->selected()) {
             Keyframe prev = prevItem->keyframe();
@@ -344,18 +454,31 @@ void CurveItem::setInterpolation(Keyframe::Interpolation interpolation)
     emit curveChanged(id(), curve());
 }
 
+void CurveItem::toggleUnified()
+{
+    if (m_keyframes.empty())
+        return;
+
+    for (auto *frame : m_keyframes) {
+        if (frame->selected())
+            frame->toggleUnified();
+    }
+    emit curveChanged(id(), curve());
+}
+
 void CurveItem::connect(GraphicsScene *scene)
 {
     QObject::connect(this, &CurveItem::curveChanged, scene, &GraphicsScene::curveChanged);
 
-    for (auto *frame : m_keyframes) {
-        QObject::connect(frame, &KeyframeItem::keyframeMoved, scene, &GraphicsScene::keyframeMoved);
-        QObject::connect(frame, &KeyframeItem::handleMoved, scene, &GraphicsScene::handleMoved);
-    }
+    QObject::connect(this, &CurveItem::keyframeMoved, scene, &GraphicsScene::keyframeMoved);
+    QObject::connect(this, &CurveItem::handleMoved, scene, &GraphicsScene::handleMoved);
 }
 
 void CurveItem::insertKeyframeByTime(double time)
 {
+    if (locked())
+        return;
+
     AnimationCurve acurve = curve();
     acurve.insert(time);
     setCurve(acurve);
@@ -385,4 +508,4 @@ void CurveItem::emitCurveChanged()
     update();
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

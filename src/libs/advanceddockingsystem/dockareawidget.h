@@ -155,7 +155,7 @@ public:
     /**
      * Virtual Destructor
      */
-    virtual ~DockAreaWidget() override;
+    ~DockAreaWidget() override;
 
     /**
      * Returns the dock manager object this dock area belongs to
@@ -257,7 +257,7 @@ public:
     /**
      * Update the close button if visibility changed
      */
-    virtual void setVisible(bool visible) override;
+    void setVisible(bool visible) override;
 
     /**
      * Configures the areas of this particular dock area that are allowed for docking
@@ -290,6 +290,13 @@ public:
      * This function closes all other areas except of this area
      */
     void closeOtherAreas();
+
+    /**
+     * Returns the largest minimumSizeHint() of the dock widgets in this
+     * area.
+     * The minimum size hint is updated if a dock widget is removed or added.
+     */
+    QSize minimumSizeHint() const override;
 
 signals:
     /**

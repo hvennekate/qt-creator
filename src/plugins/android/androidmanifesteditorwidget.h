@@ -28,6 +28,9 @@
 #include <texteditor/texteditor.h>
 
 #include <QAbstractListModel>
+#include <QGroupBox>
+#include <QGridLayout>
+#include <QTabWidget>
 #include <QStackedWidget>
 #include <QTimer>
 
@@ -54,6 +57,8 @@ namespace Internal {
 class AndroidManifestEditor;
 class AndroidManifestEditorIconContainerWidget;
 class AndroidManifestEditorWidget;
+class AndroidServiceWidget;
+class SplashIconContainerWidget;
 
 class PermissionsModel: public QAbstractListModel
 {
@@ -63,7 +68,6 @@ public:
     void setPermissions(const QStringList &permissions);
     const QStringList &permissions();
     QModelIndex addPermission(const QString &permission);
-    bool updatePermission(const QModelIndex &index, const QString &permission);
     void removePermission(int index);
     QVariant data(const QModelIndex &index, int role) const override;
 
@@ -78,7 +82,6 @@ class AndroidManifestTextEditorWidget : public TextEditor::TextEditorWidget
 {
 public:
     explicit AndroidManifestTextEditorWidget(AndroidManifestEditorWidget *parent);
-    ~AndroidManifestTextEditorWidget() override;
 
 private:
     Core::IContext *m_context;
@@ -136,10 +139,16 @@ private:
 
     void updateInfoBar(const QString &errorMessage, int line, int column);
     void hideInfoBar();
+    void setInvalidServiceInfo();
+    void clearInvalidServiceInfo();
+
     void updateTargetComboBox();
 
     void parseManifest(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     void parseApplication(QXmlStreamReader &reader, QXmlStreamWriter &writer);
+    void parseSplashScreen(QXmlStreamWriter &writer);
+    void parseService(QXmlStreamReader &reader, QXmlStreamWriter &writer);
+    void parseNewServices(QXmlStreamWriter &writer);
     void parseActivity(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     bool parseMetaData(QXmlStreamReader &reader, QXmlStreamWriter &writer);
     void parseUsesSdk(QXmlStreamReader &reader, QXmlStreamWriter &writer);
@@ -147,7 +156,12 @@ private:
                                 QXmlStreamWriter &writer,
                                 const QSet<QString> &permissions);
     QString parseComment(QXmlStreamReader &reader, QXmlStreamWriter &writer);
-    void parseUnknownElement(QXmlStreamReader &reader, QXmlStreamWriter &writer);
+    void parseUnknownElement(QXmlStreamReader &reader, QXmlStreamWriter &writer, bool ignore=false);
+
+    QGroupBox *createPermissionsGroupBox(QWidget *parent);
+    QGroupBox *createPackageFormLayout(QWidget *parent);
+    QGroupBox *createApplicationGroupBox(QWidget *parent);
+    QGroupBox *createAdvancedGroupBox(QWidget *parent);
 
     bool m_dirty; // indicates that we need to call syncToEditor()
     bool m_stayClean;
@@ -167,7 +181,9 @@ private:
     QLineEdit *m_activityNameLineEdit;
     QComboBox *m_targetLineEdit;
     QComboBox *m_styleExtractMethod;
+    QComboBox *m_screenOrientation;
     AndroidManifestEditorIconContainerWidget *m_iconButtons;
+    SplashIconContainerWidget *m_splashButtons;
 
     // Permissions
     QCheckBox *m_defaultPermissonsCheckBox;
@@ -178,10 +194,13 @@ private:
     QPushButton *m_removePermissionButton;
     QComboBox *m_permissionsComboBox;
 
+    // Services
+    AndroidServiceWidget *m_services;
     QTimer m_timerParseCheck;
     TextEditor::TextEditorWidget *m_textEditorWidget;
     AndroidManifestEditor *m_editor;
     QString m_androidNdkPlatform;
+    QTabWidget *m_advanvedTabWidget = nullptr;
 };
 } // namespace Internal
 } // namespace Android

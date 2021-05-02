@@ -8,7 +8,6 @@ add_qtc_plugin(ProjectExplorer
     addrunconfigdialog.cpp addrunconfigdialog.h
     allprojectsfilter.cpp allprojectsfilter.h
     allprojectsfind.cpp allprojectsfind.h
-    ansifilterparser.cpp ansifilterparser.h
     applicationlauncher.cpp applicationlauncher.h
     appoutputpane.cpp appoutputpane.h
     baseprojectwizarddialog.cpp baseprojectwizarddialog.h
@@ -36,6 +35,7 @@ add_qtc_plugin(ProjectExplorer
     customexecutablerunconfiguration.cpp customexecutablerunconfiguration.h
     customparser.cpp customparser.h
     customparserconfigdialog.cpp customparserconfigdialog.h customparserconfigdialog.ui
+    customparserssettingspage.cpp customparserssettingspage.h
     customtoolchain.cpp customtoolchain.h
     customwizard/customwizard.cpp customwizard/customwizard.h
     customwizard/customwizardpage.cpp customwizard/customwizardpage.h
@@ -115,7 +115,7 @@ add_qtc_plugin(ProjectExplorer
     lldparser.cpp lldparser.h
     linuxiccparser.cpp linuxiccparser.h
     localenvironmentaspect.cpp localenvironmentaspect.h
-    makestep.cpp makestep.h makestep.ui
+    makestep.cpp makestep.h
     miniprojecttargetselector.cpp miniprojecttargetselector.h
     msvcparser.cpp msvcparser.h
     msvctoolchain.cpp msvctoolchain.h
@@ -127,7 +127,6 @@ add_qtc_plugin(ProjectExplorer
     processstep.cpp processstep.h
     project.cpp project.h
     projectconfiguration.cpp projectconfiguration.h
-    projectconfigurationaspects.cpp projectconfigurationaspects.h
     projectconfigurationmodel.cpp projectconfigurationmodel.h
     projectexplorer.cpp projectexplorer.h
     projectexplorer.qrc
@@ -182,6 +181,11 @@ add_qtc_plugin(ProjectExplorer
     vcsannotatetaskhandler.cpp vcsannotatetaskhandler.h
     waitforstopdialog.cpp waitforstopdialog.h
     xcodebuildparser.cpp xcodebuildparser.h
+)
+
+extend_qtc_plugin(ProjectExplorer
+  CONDITION PROJECT_USER_FILE_EXTENSION
+  DEFINES "PROJECT_USER_FILE_EXTENSION=${PROJECT_USER_FILE_EXTENSION}"
 )
 
 if (TARGET libclang)

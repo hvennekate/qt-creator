@@ -39,7 +39,6 @@
 #include "vcsmanager.h"
 #include "versiondialog.h"
 #include "statusbarmanager.h"
-#include "id.h"
 #include "manhattanstyle.h"
 #include "navigationwidget.h"
 #include "rightpane.h"
@@ -76,6 +75,7 @@
 #include <utils/stringutils.h>
 #include <utils/utilsicons.h>
 
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QColorDialog>
@@ -84,6 +84,7 @@
 #include <QFileInfo>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPrinter>
 #include <QSettings>
 #include <QStatusBar>
@@ -206,6 +207,16 @@ void MainWindow::setSidebarVisible(bool visible, Side side)
 {
     if (NavigationWidgetPlaceHolder::current(side))
         navigationWidget(side)->setShown(visible);
+}
+
+bool MainWindow::askConfirmationBeforeExit() const
+{
+    return m_askConfirmationBeforeExit;
+}
+
+void MainWindow::setAskConfirmationBeforeExit(bool ask)
+{
+    m_askConfirmationBeforeExit = ask;
 }
 
 void MainWindow::setOverrideColor(const QColor &color)
@@ -334,6 +345,17 @@ void MainWindow::closeEvent(QCloseEvent *event)
     static bool alreadyClosed = false;
     if (alreadyClosed) {
         event->accept();
+        return;
+    }
+
+    if (m_askConfirmationBeforeExit &&
+            (QMessageBox::question(this,
+                                   tr("Exit %1?").arg(Constants::IDE_DISPLAY_NAME),
+                                   tr("Exit %1?").arg(Constants::IDE_DISPLAY_NAME),
+                                   QMessageBox::Yes | QMessageBox::No,
+                                   QMessageBox::No)
+             == QMessageBox::No)) {
+        event->ignore();
         return;
     }
 
@@ -549,11 +571,7 @@ void MainWindow::registerDefaultActions()
     mfile->addAction(cmd, Constants::G_FILE_SAVE);
 
     // SaveAll Action
-    m_saveAllAction = new QAction(tr("Save A&ll"), this);
-    cmd = ActionManager::registerAction(m_saveAllAction, Constants::SAVEALL);
-    cmd->setDefaultKeySequence(QKeySequence(useMacShortcuts ? QString() : tr("Ctrl+Shift+S")));
-    mfile->addAction(cmd, Constants::G_FILE_SAVE);
-    connect(m_saveAllAction, &QAction::triggered, this, &MainWindow::saveAll);
+    DocumentManager::registerSaveAllAction();
 
     // Print Action
     icon = QIcon::fromTheme(QLatin1String("document-print"));
@@ -897,11 +915,6 @@ void MainWindow::setFocusToEditor()
     EditorManagerPrivate::doEscapeKeyFocusMoveMagic();
 }
 
-void MainWindow::saveAll()
-{
-    DocumentManager::saveAllModifiedDocumentsSilently();
-}
-
 void MainWindow::exit()
 {
     // this function is most likely called from a user action
@@ -926,9 +939,10 @@ void MainWindow::openFileWith()
     }
 }
 
-IContext *MainWindow::contextObject(QWidget *widget)
+IContext *MainWindow::contextObject(QWidget *widget) const
 {
-    return m_contextWidgets.value(widget);
+    const auto it = m_contextWidgets.find(widget);
+    return it == m_contextWidgets.end() ? nullptr : it->second;
 }
 
 void MainWindow::addContextObject(IContext *context)
@@ -936,10 +950,11 @@ void MainWindow::addContextObject(IContext *context)
     if (!context)
         return;
     QWidget *widget = context->widget();
-    if (m_contextWidgets.contains(widget))
+    if (m_contextWidgets.find(widget) != m_contextWidgets.end())
         return;
 
-    m_contextWidgets.insert(widget, context);
+    m_contextWidgets.insert(std::make_pair(widget, context));
+    connect(context, &QObject::destroyed, this, [this, context] { removeContextObject(context); });
 }
 
 void MainWindow::removeContextObject(IContext *context)
@@ -947,11 +962,17 @@ void MainWindow::removeContextObject(IContext *context)
     if (!context)
         return;
 
-    QWidget *widget = context->widget();
-    if (!m_contextWidgets.contains(widget))
+    disconnect(context, &QObject::destroyed, this, nullptr);
+
+    const auto it = std::find_if(m_contextWidgets.cbegin(),
+                                 m_contextWidgets.cend(),
+                                 [context](const std::pair<QWidget *, IContext *> &v) {
+                                     return v.second == context;
+                                 });
+    if (it == m_contextWidgets.cend())
         return;
 
-    m_contextWidgets.remove(widget);
+    m_contextWidgets.erase(it);
     if (m_activeContext.removeAll(context) > 0)
         updateContextObject(m_activeContext);
 }
@@ -968,7 +989,7 @@ void MainWindow::updateFocusWidget(QWidget *old, QWidget *now)
     if (QWidget *p = QApplication::focusWidget()) {
         IContext *context = nullptr;
         while (p) {
-            context = m_contextWidgets.value(p);
+            context = contextObject(p);
             if (context)
                 newContext.append(context);
             p = p->parentWidget();
@@ -995,12 +1016,15 @@ void MainWindow::updateContextObject(const QList<IContext *> &context)
 void MainWindow::aboutToShutdown()
 {
     disconnect(qApp, &QApplication::focusChanged, this, &MainWindow::updateFocusWidget);
+    for (auto contextPair : m_contextWidgets)
+        disconnect(contextPair.second, &QObject::destroyed, this, nullptr);
     m_activeContext.clear();
     hide();
 }
 
 static const char settingsGroup[] = "MainWindow";
 static const char colorKey[] = "Color";
+static const char askBeforeExitKey[] = "AskBeforeExit";
 static const char windowGeometryKey[] = "WindowGeometry";
 static const char windowStateKey[] = "WindowState";
 static const char modeSelectorLayoutKey[] = "ModeSelectorLayout";
@@ -1018,6 +1042,8 @@ void MainWindow::readSettings()
         StyleHelper::setBaseColor(settings->value(QLatin1String(colorKey),
                                   QColor(StyleHelper::DEFAULT_BASE_COLOR)).value<QColor>());
     }
+
+    m_askConfirmationBeforeExit = settings->value(askBeforeExitKey, false).toBool();
 
     {
         ModeManager::Style modeStyle =
@@ -1049,6 +1075,8 @@ void MainWindow::saveSettings()
 
     if (!(m_overrideColor.isValid() && StyleHelper::baseColor() == m_overrideColor))
         settings->setValue(QLatin1String(colorKey), StyleHelper::requestedBaseColor());
+
+    settings->setValue(askBeforeExitKey, m_askConfirmationBeforeExit);
 
     settings->endGroup();
 

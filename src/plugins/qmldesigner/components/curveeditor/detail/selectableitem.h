@@ -27,7 +27,7 @@
 
 #include <QGraphicsObject>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class CurveEditorItem : public QGraphicsObject
 {
@@ -58,13 +58,14 @@ enum ItemType {
     ItemTypeCurve = QGraphicsItem::UserType + 3
 };
 
-enum class SelectionMode : unsigned int { Undefined, Clear, New, Add, Remove, Toggle };
 
 class SelectableItem : public CurveEditorItem
 {
     Q_OBJECT
 
 public:
+    enum class SelectionMode : unsigned int { Undefined, Clear, New, Add, Remove, Toggle };
+
     SelectableItem(QGraphicsItem *parent = nullptr);
 
     ~SelectableItem() override;
@@ -99,9 +100,7 @@ private:
 
     bool m_selected;
 
-    bool m_locked;
-
     SelectionMode m_preSelected;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

@@ -55,6 +55,7 @@
 #include <QTextStream>
 #include <QToolBar>
 #include <QXmlStreamWriter>
+#include <QWindow>
 
 static Q_LOGGING_CATEGORY(adsLog, "qtc.qmldesigner.advanceddockingsystem", QtWarningMsg)
 
@@ -83,6 +84,7 @@ namespace ADS
         QSize m_toolBarIconSizeFloating = QSize(24, 24);
         bool m_isFloatingTopLevel = false;
         QList<QAction *> m_titleBarActions;
+        DockWidget::eMinimumSizeHintMode m_minimumSizeHintMode = DockWidget::MinimumSizeHintFromDockWidget;
 
         /**
          * Private data constructor
@@ -126,6 +128,7 @@ namespace ADS
         if (!m_dockArea) {
             FloatingDockContainer *floatingWidget = new FloatingDockContainer(q);
             floatingWidget->resize(q->size());
+            m_tabWidget->show();
             floatingWidget->show();
         } else {
             m_dockArea->setCurrentDockWidget(q);
@@ -203,6 +206,9 @@ namespace ADS
         d->m_toggleViewAction->setCheckable(true);
         connect(d->m_toggleViewAction, &QAction::triggered, this, &DockWidget::toggleView);
         setToolbarFloatingStyle(false);
+
+        if (DockManager::testConfigFlag(DockManager::FocusHighlighting))
+            setFocusPolicy(Qt::ClickFocus);
     }
 
     DockWidget::~DockWidget()
@@ -221,7 +227,10 @@ namespace ADS
 
     void DockWidget::setWidget(QWidget *widget, eInsertMode insertMode)
     {
-        QScrollArea *scrollAreaWidget = qobject_cast<QScrollArea *>(widget);
+        if (d->m_widget)
+            takeWidget();
+
+        auto scrollAreaWidget = qobject_cast<QAbstractScrollArea *>(widget);
         if (scrollAreaWidget || ForceNoScrollArea == insertMode) {
             d->m_layout->addWidget(widget);
             if (scrollAreaWidget && scrollAreaWidget->viewport())
@@ -237,11 +246,23 @@ namespace ADS
 
     QWidget *DockWidget::takeWidget()
     {
-        // TODO Shouldn't m_widget being set to nullptr?!
-        d->m_scrollArea->takeWidget();
-        d->m_layout->removeWidget(d->m_widget);
-        d->m_widget->setParent(nullptr);
-        return d->m_widget;
+        QWidget *w = nullptr;
+        if (d->m_scrollArea) {
+            d->m_layout->removeWidget(d->m_scrollArea);
+            w = d->m_scrollArea->takeWidget();
+            delete d->m_scrollArea;
+            d->m_scrollArea = nullptr;
+            d->m_widget = nullptr;
+        } else if (d->m_widget) {
+            d->m_layout->removeWidget(d->m_widget);
+            w = d->m_widget;
+            d->m_widget = nullptr;
+        }
+
+        if (w)
+            w->setParent(nullptr);
+
+        return w;
     }
 
     QWidget *DockWidget::widget() const { return d->m_widget; }
@@ -250,9 +271,9 @@ namespace ADS
 
     void DockWidget::setFeatures(DockWidgetFeatures features)
     {
-        if (d->m_features == features) {
+        if (d->m_features == features)
             return;
-        }
+
         d->m_features = features;
         emit featuresChanged(d->m_features);
         d->m_tabWidget->onDockWidgetFeaturesChanged();
@@ -273,11 +294,10 @@ namespace ADS
 
     DockContainerWidget *DockWidget::dockContainer() const
     {
-        if (d->m_dockArea) {
+        if (d->m_dockArea)
             return d->m_dockArea->dockContainer();
-        } else {
+        else
             return nullptr;
-        }
     }
 
     DockAreaWidget *DockWidget::dockAreaWidget() const { return d->m_dockArea; }
@@ -317,6 +337,11 @@ namespace ADS
         }
     }
 
+    void DockWidget::setMinimumSizeHintMode(eMinimumSizeHintMode mode)
+    {
+        d->m_minimumSizeHintMode = mode;
+    }
+
     void DockWidget::toggleView(bool open)
     {
         // If the toggle view action mode is ActionModeShow, then Open is always
@@ -341,11 +366,11 @@ namespace ADS
                                                    ? beforeDockContainerWidget->topLevelDockWidget()
                                                    : nullptr;
 
-        if (open) {
+        if (open)
             d->showDockWidget();
-        } else {
+        else
             d->hideDockWidget();
-        }
+
         d->m_closed = !open;
         //d->m_toggleViewAction->blockSignals(true);
         d->m_toggleViewAction->setChecked(open);
@@ -443,7 +468,7 @@ namespace ADS
             d->m_toggleViewAction->setToolTip(text);
 
         if (d->m_dockArea)
-            d->m_dockArea->markTitleBarMenuOutdated(); //update tabs menu
+            d->m_dockArea->markTitleBarMenuOutdated(); // update tabs menu
     }
 #endif
 
@@ -545,7 +570,13 @@ namespace ADS
 
     void DockWidget::setClosedState(bool closed) { d->m_closed = closed; }
 
-    QSize DockWidget::minimumSizeHint() const { return QSize(60, 40); }
+    QSize DockWidget::minimumSizeHint() const
+    {
+        if (d->m_minimumSizeHintMode == DockWidget::MinimumSizeHintFromDockWidget || !d->m_widget)
+            return QSize(60, 40);
+        else
+            return d->m_widget->minimumSizeHint();
+    }
 
     void DockWidget::setFloating()
     {
@@ -587,6 +618,7 @@ namespace ADS
                     floatingWidget->hide();
             }
             deleteDockWidget();
+            emit closed();
         } else {
             toggleView(false);
         }
@@ -602,6 +634,60 @@ namespace ADS
     QList<QAction *> DockWidget::titleBarActions() const
     {
         return d->m_titleBarActions;
+    }
+
+    void DockWidget::showFullScreen()
+    {
+        if (isFloating())
+            dockContainer()->floatingWidget()->showFullScreen();
+        else
+            Super::showFullScreen();
+    }
+
+    void DockWidget::showNormal()
+    {
+        if (isFloating())
+            dockContainer()->floatingWidget()->showNormal();
+        else
+            Super::showNormal();
+    }
+
+    bool DockWidget::isFullScreen() const
+    {
+        if (isFloating())
+            return dockContainer()->floatingWidget()->isFullScreen();
+        else
+            return Super::isFullScreen();
+    }
+
+    void DockWidget::setAsCurrentTab()
+    {
+        if (d->m_dockArea && !isClosed())
+            d->m_dockArea->setCurrentDockWidget(this);
+    }
+
+    bool DockWidget::isTabbed() const
+    {
+        return d->m_dockArea && (d->m_dockArea->openDockWidgetsCount() > 1);
+    }
+
+    bool DockWidget::isCurrentTab() const
+    {
+        return d->m_dockArea && (d->m_dockArea->currentDockWidget() == this);
+    }
+
+    void DockWidget::raise()
+    {
+        if (isClosed())
+            return;
+
+        setAsCurrentTab();
+        if (isInFloatingContainer())
+        {
+            auto floatingWindow = window();
+            floatingWindow->raise();
+            floatingWindow->activateWindow();
+        }
     }
 
 } // namespace ADS

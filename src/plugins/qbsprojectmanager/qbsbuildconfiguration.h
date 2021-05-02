@@ -62,7 +62,7 @@ class QbsBuildConfiguration final : public ProjectExplorer::BuildConfiguration
     Q_OBJECT
 
     friend class ProjectExplorer::BuildConfigurationFactory;
-    QbsBuildConfiguration(ProjectExplorer::Target *target, Core::Id id);
+    QbsBuildConfiguration(ProjectExplorer::Target *target, Utils::Id id);
     ~QbsBuildConfiguration() final;
 
 public:
@@ -85,9 +85,9 @@ public:
     QString configurationName() const;
     QString equivalentCommandLine(const QbsBuildStepData &stepData) const;
 
-    ProjectExplorer::TriState qmlDebuggingSetting() const;
-    ProjectExplorer::TriState qtQuickCompilerSetting() const;
-    ProjectExplorer::TriState separateDebugInfoSetting() const;
+    Utils::TriState qmlDebuggingSetting() const;
+    Utils::TriState qtQuickCompilerSetting() const;
+    Utils::TriState separateDebugInfoSetting() const;
 
 signals:
     void qbsConfigurationChanged();
@@ -100,7 +100,7 @@ private:
     QStringList m_changedFiles;
     QStringList m_activeFileTags;
     QStringList m_products;
-    ProjectExplorer::BaseStringAspect *m_configurationName = nullptr;
+    Utils::StringAspect *m_configurationName = nullptr;
     QbsBuildSystem *m_buildSystem = nullptr;
 };
 

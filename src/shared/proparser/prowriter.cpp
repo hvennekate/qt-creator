@@ -181,7 +181,7 @@ QString ProWriter::compileScope(const QString &scope)
     if (scope.isEmpty())
         return QString();
     QMakeParser parser(nullptr, nullptr, nullptr);
-    ProFile *includeFile = parser.parsedProBlock(QStringRef(&scope), 0, "no-file", 1);
+    ProFile *includeFile = parser.parsedProBlock(Utils::make_stringview(scope), 0, "no-file", 1);
     if (!includeFile)
         return QString();
     const QString result = includeFile->items();
@@ -347,7 +347,8 @@ void ProWriter::putVarValues(ProFile *profile, QStringList *lines, const QString
                 QString newLine = effectiveContIndent(contInfo) + v;
                 if (curLineNo == endLineNo) {
                     QString &oldLastLine = (*lines)[endLineNo - 1];
-                    oldLastLine.insert(lineInfo(oldLastLine).continuationPos, " \\");
+                    if (!oldLastLine.endsWith('\\'))
+                        oldLastLine.insert(lineInfo(oldLastLine).continuationPos, " \\");
                 } else {
                     newLine += " \\";
                 }
@@ -471,12 +472,17 @@ QList<int> ProWriter::removeVarValues(ProFile *profile, QStringList *lines,
 
     // This code expects proVars to be sorted by the variables' appearance in the file.
     int delta = 1;
-    for (const VarLocation &loc : qAsConst(varLocations)) {
+    for (int varIndex = 0; varIndex < varLocations.count(); ++varIndex) {
+       const VarLocation &loc = varLocations[varIndex];
        bool first = true;
        int lineNo = loc.second - delta;
        typedef QPair<int, int> ContPos;
        QList<ContPos> contPos;
-       while (lineNo < lines->count()) {
+       const auto nextSegmentStart = [varIndex, lines, &delta, &varLocations] {
+           return varIndex == varLocations.count() - 1
+                   ? lines->count() : varLocations[varIndex + 1].second - delta;
+       };
+       while (lineNo < nextSegmentStart()) {
            QString &line = (*lines)[lineNo];
            int lineLen = line.length();
            bool killed = false;

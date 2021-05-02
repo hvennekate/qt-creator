@@ -12,6 +12,7 @@
     "options":
     [
         { "key": "MainQmlFile", "value": "%{ProjectName}.qml" },
+        { "key": "RootItemName", "value": "%{ProjectName}" },
         { "key": "CMakeFile", "value": "%{ProjectDirectory}/CMakeLists.txt" }
     ],
 

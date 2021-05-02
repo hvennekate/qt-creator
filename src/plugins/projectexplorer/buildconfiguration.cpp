@@ -30,6 +30,7 @@
 #include "buildsteplist.h"
 #include "buildstepspage.h"
 #include "buildsystem.h"
+#include "customparser.h"
 #include "environmentwidget.h"
 #include "kit.h"
 #include "kitinformation.h"
@@ -45,14 +46,15 @@
 #include "toolchain.h"
 
 #include <coreplugin/idocument.h>
-#include <coreplugin/variablechooser.h>
 
 #include <utils/algorithm.h>
 #include <utils/detailswidget.h>
 #include <utils/macroexpander.h>
 #include <utils/mimetypes/mimedatabase.h>
 #include <utils/mimetypes/mimetype.h>
+#include <utils/layoutbuilder.h>
 #include <utils/qtcassert.h>
+#include <utils/variablechooser.h>
 
 #include <QCheckBox>
 #include <QDebug>
@@ -65,13 +67,14 @@ const char BUILD_STEP_LIST_COUNT[] = "ProjectExplorer.BuildConfiguration.BuildSt
 const char BUILD_STEP_LIST_PREFIX[] = "ProjectExplorer.BuildConfiguration.BuildStepList.";
 const char CLEAR_SYSTEM_ENVIRONMENT_KEY[] = "ProjectExplorer.BuildConfiguration.ClearSystemEnvironment";
 const char USER_ENVIRONMENT_CHANGES_KEY[] = "ProjectExplorer.BuildConfiguration.UserEnvironmentChanges";
+const char CUSTOM_PARSERS_KEY[] = "ProjectExplorer.BuildConfiguration.CustomParsers";
 
 namespace ProjectExplorer {
 namespace Internal {
 
 class BuildEnvironmentWidget : public NamedWidget
 {
-    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::BuildEnvironmentWidget)
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::BuildEnvironmentWidget)
 
 public:
     explicit BuildEnvironmentWidget(BuildConfiguration *bc)
@@ -107,6 +110,25 @@ public:
     }
 };
 
+class CustomParsersBuildWidget : public NamedWidget
+{
+    Q_DECLARE_TR_FUNCTIONS(ProjectExplorer::Internal::CustomParsersBuildWidget)
+public:
+    CustomParsersBuildWidget(BuildConfiguration *bc) : NamedWidget(tr("Custom Output Parsers"))
+    {
+        const auto selectionWidget = new CustomParsersSelectionWidget(this);
+        const auto layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(selectionWidget);
+
+        connect(selectionWidget, &CustomParsersSelectionWidget::selectionChanged,
+                [selectionWidget, bc] {
+            bc->setCustomParsers(selectionWidget->selectedParsers());
+        });
+        selectionWidget->setSelectedParsers(bc->customParsers());
+    }
+};
+
 
 class BuildConfigurationPrivate
 {
@@ -125,9 +147,10 @@ public:
     mutable Environment m_cachedEnvironment;
     QString m_configWidgetDisplayName;
     bool m_configWidgetHasFrame = false;
-    QList<Core::Id> m_initialBuildSteps;
-    QList<Core::Id> m_initialCleanSteps;
+    QList<Utils::Id> m_initialBuildSteps;
+    QList<Utils::Id> m_initialCleanSteps;
     Utils::MacroExpander m_macroExpander;
+    QList<Utils::Id> m_customParsers;
 
     // FIXME: Remove.
     BuildConfiguration::BuildType m_initialBuildType = BuildConfiguration::Unknown;
@@ -136,7 +159,7 @@ public:
 
 } // Internal
 
-BuildConfiguration::BuildConfiguration(Target *target, Core::Id id)
+BuildConfiguration::BuildConfiguration(Target *target, Utils::Id id)
     : ProjectConfiguration(target, id), d(new Internal::BuildConfigurationPrivate(this))
 {
     QTC_CHECK(target && target == this->target());
@@ -149,11 +172,18 @@ BuildConfiguration::BuildConfiguration(Target *target, Core::Id id)
     expander->registerVariable("buildDir", tr("Build directory"),
             [this] { return buildDirectory().toUserOutput(); });
 
+    // TODO: Remove "Current" variants in ~4.16.
     expander->registerVariable(Constants::VAR_CURRENTBUILD_NAME, tr("Name of current build"),
             [this] { return displayName(); }, false);
 
+    expander->registerVariable("BuildConfig:Name", tr("Name of the build configuration"),
+            [this] { return displayName(); });
+
     expander->registerPrefix(Constants::VAR_CURRENTBUILD_ENV,
                              tr("Variables in the current build environment"),
+                             [this](const QString &var) { return environment().expandedValueForKey(var); }, false);
+    expander->registerPrefix("BuildConfig:Env",
+                             tr("Variables in the build configuration's environment"),
                              [this](const QString &var) { return environment().expandedValueForKey(var); });
 
     updateCacheAndEmitEnvironmentChanged();
@@ -167,15 +197,15 @@ BuildConfiguration::BuildConfiguration(Target *target, Core::Id id)
     connect(ProjectTree::instance(), &ProjectTree::currentProjectChanged,
             this, &BuildConfiguration::updateCacheAndEmitEnvironmentChanged);
 
-    d->m_buildDirectoryAspect = addAspect<BuildDirectoryAspect>();
+    d->m_buildDirectoryAspect = addAspect<BuildDirectoryAspect>(this);
     d->m_buildDirectoryAspect->setBaseFileName(target->project()->projectDirectory());
     d->m_buildDirectoryAspect->setEnvironment(environment());
     d->m_buildDirectoryAspect->setMacroExpanderProvider([this] { return macroExpander(); });
-    connect(d->m_buildDirectoryAspect, &BaseStringAspect::changed,
+    connect(d->m_buildDirectoryAspect, &StringAspect::changed,
             this, &BuildConfiguration::emitBuildDirectoryChanged);
     connect(this, &BuildConfiguration::environmentChanged, this, [this] {
         d->m_buildDirectoryAspect->setEnvironment(environment());
-        this->target()->buildEnvironmentChanged(this);
+        emit this->target()->buildEnvironmentChanged(this);
     });
 
     connect(target, &Target::parsingStarted, this, &BuildConfiguration::enabledChanged);
@@ -234,10 +264,10 @@ void BuildConfiguration::doInitialize(const BuildInfo &info)
 
     d->m_initialBuildType = info.buildType;
 
-    for (Core::Id id : qAsConst(d->m_initialBuildSteps))
+    for (Utils::Id id : qAsConst(d->m_initialBuildSteps))
         d->m_buildSteps.appendStep(id);
 
-    for (Core::Id id : qAsConst(d->m_initialCleanSteps))
+    for (Utils::Id id : qAsConst(d->m_initialCleanSteps))
         d->m_cleanSteps.appendStep(id);
 
     acquaintAspects();
@@ -284,9 +314,9 @@ NamedWidget *BuildConfiguration::createConfigWidget()
     }
 
     LayoutBuilder builder(widget);
-    for (ProjectConfigurationAspect *aspect : aspects()) {
+    for (BaseAspect *aspect : aspects()) {
         if (aspect->isVisible())
-            aspect->addToLayout(builder.startNewRow());
+            aspect->addToLayout(builder.finishRow());
     }
 
     return named;
@@ -294,7 +324,10 @@ NamedWidget *BuildConfiguration::createConfigWidget()
 
 QList<NamedWidget *> BuildConfiguration::createSubConfigWidgets()
 {
-    return {new Internal::BuildEnvironmentWidget(this)};
+    return {
+        new Internal::BuildEnvironmentWidget(this),
+        new Internal::CustomParsersBuildWidget(this)
+    };
 }
 
 BuildSystem *BuildConfiguration::buildSystem() const
@@ -313,12 +346,12 @@ BuildStepList *BuildConfiguration::cleanSteps() const
     return &d->m_cleanSteps;
 }
 
-void BuildConfiguration::appendInitialBuildStep(Core::Id id)
+void BuildConfiguration::appendInitialBuildStep(Utils::Id id)
 {
     d->m_initialBuildSteps.append(id);
 }
 
-void BuildConfiguration::appendInitialCleanStep(Core::Id id)
+void BuildConfiguration::appendInitialCleanStep(Utils::Id id)
 {
     d->m_initialCleanSteps.append(id);
 }
@@ -333,6 +366,8 @@ QVariantMap BuildConfiguration::toMap() const
     map.insert(QLatin1String(BUILD_STEP_LIST_COUNT), 2);
     map.insert(QLatin1String(BUILD_STEP_LIST_PREFIX) + QString::number(0), d->m_buildSteps.toMap());
     map.insert(QLatin1String(BUILD_STEP_LIST_PREFIX) + QString::number(1), d->m_cleanSteps.toMap());
+
+    map.insert(CUSTOM_PARSERS_KEY, transform(d->m_customParsers,&Utils::Id::toSetting));
 
     return map;
 }
@@ -354,7 +389,7 @@ bool BuildConfiguration::fromMap(const QVariantMap &map)
             qWarning() << "No data for build step list" << i << "found!";
             continue;
         }
-        Core::Id id = idFromMap(data);
+        Utils::Id id = idFromMap(data);
         if (id == Constants::BUILDSTEPS_BUILD) {
             if (!d->m_buildSteps.fromMap(data))
                 qWarning() << "Failed to restore build step list";
@@ -365,6 +400,8 @@ bool BuildConfiguration::fromMap(const QVariantMap &map)
             qWarning() << "Ignoring unknown step list";
         }
     }
+
+    d->m_customParsers = transform(map.value(CUSTOM_PARSERS_KEY).toList(), &Utils::Id::fromSetting);
 
     return ProjectConfiguration::fromMap(map);
 }
@@ -418,7 +455,7 @@ Environment BuildConfiguration::baseEnvironment() const
     if (useSystemEnvironment())
         result = Environment::systemEnvironment();
     addToEnvironment(result);
-    target()->kit()->addToEnvironment(result);
+    kit()->addToEnvironment(result);
     result.modify(project()->additionalEnvironment());
     return result;
 }
@@ -447,6 +484,16 @@ void BuildConfiguration::setUseSystemEnvironment(bool b)
 void BuildConfiguration::addToEnvironment(Environment &env) const
 {
     Q_UNUSED(env)
+}
+
+const QList<Utils::Id> BuildConfiguration::customParsers() const
+{
+    return d->m_customParsers;
+}
+
+void BuildConfiguration::setCustomParsers(const QList<Utils::Id> &parsers)
+{
+    d->m_customParsers = parsers;
 }
 
 bool BuildConfiguration::useSystemEnvironment() const
@@ -583,7 +630,7 @@ const QList<BuildInfo>
     return list;
 }
 
-bool BuildConfigurationFactory::supportsTargetDeviceType(Core::Id id) const
+bool BuildConfigurationFactory::supportsTargetDeviceType(Utils::Id id) const
 {
     if (m_supportedTargetDeviceTypes.isEmpty())
         return true;
@@ -594,7 +641,7 @@ bool BuildConfigurationFactory::supportsTargetDeviceType(Core::Id id) const
 BuildConfigurationFactory *BuildConfigurationFactory::find(const Kit *k, const FilePath &projectPath)
 {
     QTC_ASSERT(k, return nullptr);
-    const Core::Id deviceType = DeviceTypeKitAspect::deviceTypeId(k);
+    const Utils::Id deviceType = DeviceTypeKitAspect::deviceTypeId(k);
     for (BuildConfigurationFactory *factory : g_buildConfigurationFactories) {
         if (Utils::mimeTypeForFile(projectPath.toString())
                 .matchesName(factory->m_supportedProjectMimeTypeName)
@@ -614,7 +661,7 @@ BuildConfigurationFactory * BuildConfigurationFactory::find(Target *parent)
     return nullptr;
 }
 
-void BuildConfigurationFactory::setSupportedProjectType(Core::Id id)
+void BuildConfigurationFactory::setSupportedProjectType(Utils::Id id)
 {
     m_supportedProjectType = id;
 }
@@ -624,7 +671,7 @@ void BuildConfigurationFactory::setSupportedProjectMimeTypeName(const QString &m
     m_supportedProjectMimeTypeName = mimeTypeName;
 }
 
-void BuildConfigurationFactory::addSupportedTargetDeviceType(Core::Id id)
+void BuildConfigurationFactory::addSupportedTargetDeviceType(Utils::Id id)
 {
     m_supportedTargetDeviceTypes.append(id);
 }
@@ -668,7 +715,7 @@ BuildConfiguration *BuildConfigurationFactory::create(Target *parent, const Buil
 
 BuildConfiguration *BuildConfigurationFactory::restore(Target *parent, const QVariantMap &map)
 {
-    const Core::Id id = idFromMap(map);
+    const Utils::Id id = idFromMap(map);
     for (BuildConfigurationFactory *factory : g_buildConfigurationFactories) {
         QTC_ASSERT(factory->m_creator, return nullptr);
         if (!factory->canHandle(parent))

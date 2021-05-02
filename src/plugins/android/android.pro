@@ -13,6 +13,8 @@ HEADERS += \
     androidmanifesteditoriconwidget.h \
     androidrunconfiguration.h \
     androidruncontrol.h \
+    androidservicewidget.h \
+    androidservicewidget_p.h \
     androidsettingswidget.h \
     androidtoolchain.h \
     androiderrormessage.h \
@@ -40,8 +42,6 @@ HEADERS += \
     avddialog.h \
     android_global.h \
     androidbuildapkstep.h \
-    androidbuildapkwidget.h \
-    androidtoolmanager.h \
     androidsdkmanager.h \
     androidavdmanager.h \
     adbcommandswidget.h \
@@ -51,7 +51,8 @@ HEADERS += \
     androidpackageinstallationstep.h \
     androidextralibrarylistmodel.h \
     createandroidmanifestwizard.h \
-    androidsdkdownloader.h
+    androidsdkdownloader.h \
+    splashiconcontainerwidget.h
 
 SOURCES += \
     androidconfigurations.cpp \
@@ -60,6 +61,7 @@ SOURCES += \
     androidmanifesteditoriconwidget.cpp \
     androidrunconfiguration.cpp \
     androidruncontrol.cpp \
+    androidservicewidget.cpp \
     androidsettingswidget.cpp \
     androidtoolchain.cpp \
     androiderrormessage.cpp \
@@ -85,8 +87,6 @@ SOURCES += \
     javaindenter.cpp \
     avddialog.cpp \
     androidbuildapkstep.cpp \
-    androidbuildapkwidget.cpp \
-    androidtoolmanager.cpp \
     androidsdkmanager.cpp \
     androidavdmanager.cpp \
     adbcommandswidget.cpp \
@@ -96,7 +96,8 @@ SOURCES += \
     androidpackageinstallationstep.cpp \
     androidextralibrarylistmodel.cpp \
     createandroidmanifestwizard.cpp \
-    androidsdkdownloader.cpp
+    androidsdkdownloader.cpp \
+    splashiconcontainerwidget.cpp
 
 FORMS += \
     androidsettingswidget.ui \

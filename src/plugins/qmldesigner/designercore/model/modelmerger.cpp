@@ -33,11 +33,13 @@
 #include "bindingproperty.h"
 #include "variantproperty.h"
 #include "rewritertransaction.h"
+#include "signalhandlerproperty.h"
 #include <rewritingexception.h>
 
 #include <QUrl>
 
 #include <QDebug>
+#include <QtCore/qregularexpression.h>
 
 namespace QmlDesigner {
 
@@ -45,10 +47,13 @@ static ModelNode createNodeFromNode(const ModelNode &modelNode,const QHash<QStri
 
 static QString fixExpression(const QString &expression, const QHash<QString, QString> &idRenamingHash)
 {
+    const QString pattern("\\b%1\\b"); // Match only full ids
     QString newExpression = expression;
-    foreach (const QString &id, idRenamingHash.keys()) {
-        if (newExpression.contains(id))
-            newExpression = newExpression.replace(id, idRenamingHash.value(id));
+    const auto keys = idRenamingHash.keys();
+    for (const QString &id : keys) {
+        QRegularExpression re(pattern.arg(id));
+        if (newExpression.contains(re))
+            newExpression = newExpression.replace(re, idRenamingHash.value(id));
     }
     return newExpression;
 }
@@ -74,6 +79,13 @@ static void syncBindingProperties(ModelNode &outputNode, const ModelNode &inputN
     }
 }
 
+static void syncSignalHandlerProperties(ModelNode &outputNode, const ModelNode &inputNode,  const QHash<QString, QString> &idRenamingHash)
+{
+    foreach (const SignalHandlerProperty &signalProperty, inputNode.signalProperties()) {
+        outputNode.signalHandlerProperty(signalProperty.name()).setSource(fixExpression(signalProperty.source(), idRenamingHash));
+    }
+}
+
 static void syncId(ModelNode &outputNode, const ModelNode &inputNode, const QHash<QString, QString> &idRenamingHash)
 {
     if (!inputNode.id().isEmpty())
@@ -86,7 +98,7 @@ static void splitIdInBaseNameAndNumber(const QString &id, QString *baseId, int *
     int counter = 0;
     while (counter < id.count()) {
         bool canConvertToInteger = false;
-        int newNumber = id.rightRef(counter +1).toInt(&canConvertToInteger);
+        int newNumber = id.right(counter + 1).toInt(&canConvertToInteger);
         if (canConvertToInteger)
             *number = newNumber;
         else
@@ -147,6 +159,7 @@ static ModelNode createNodeFromNode(const ModelNode &modelNode,const QHash<QStri
                                             propertyList, variantPropertyList, modelNode.nodeSource(), modelNode.nodeSourceType()));
     syncAuxiliaryProperties(newNode, modelNode);
     syncBindingProperties(newNode, modelNode, idRenamingHash);
+    syncSignalHandlerProperties(newNode, modelNode, idRenamingHash);
     syncId(newNode, modelNode, idRenamingHash);
     syncNodeProperties(newNode, modelNode, idRenamingHash, view);
     syncNodeListProperties(newNode, modelNode, idRenamingHash, view);

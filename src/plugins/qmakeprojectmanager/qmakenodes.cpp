@@ -26,7 +26,6 @@
 #include "qmakenodes.h"
 
 #include "qmakeproject.h"
-#include "qmakeprojectmanagerplugin.h"
 
 #include <projectexplorer/buildconfiguration.h>
 #include <projectexplorer/runconfiguration.h>
@@ -112,6 +111,7 @@ bool QmakeBuildSystem::supportsAction(Node *context, ProjectAction action, const
             }
             QTC_ASSERT(proFileNode, return false);
             pro = proFileNode->proFile();
+            QTC_ASSERT(pro, return false);
             t = pro->projectType();
         }
 
@@ -342,7 +342,7 @@ bool QmakeProFileNode::validParse() const
 
 void QmakeProFileNode::build()
 {
-    QmakeProjectManagerPlugin::buildProduct(getProject(), this);
+    m_buildSystem->buildHelper(QmakeBuildSystem::BUILD, false, this, nullptr);
 }
 
 QStringList QmakeProFileNode::targetApplications() const
@@ -358,8 +358,10 @@ QStringList QmakeProFileNode::targetApplications() const
     return apps;
 }
 
-QVariant QmakeProFileNode::data(Core::Id role) const
+QVariant QmakeProFileNode::data(Utils::Id role) const
 {
+    if (role == Android::Constants::ANDROID_ABIS)
+        return variableValue(Variable::AndroidAbis);
     if (role == Android::Constants::AndroidPackageSourceDir)
         return singleVariableValue(Variable::AndroidPackageSourceDir);
     if (role == Android::Constants::AndroidDeploySettingsFile)
@@ -412,7 +414,7 @@ QVariant QmakeProFileNode::data(Core::Id role) const
     return {};
 }
 
-bool QmakeProFileNode::setData(Core::Id role, const QVariant &value) const
+bool QmakeProFileNode::setData(Utils::Id role, const QVariant &value) const
 {
     QmakeProFile *pro = proFile();
     if (!pro)
@@ -421,7 +423,7 @@ bool QmakeProFileNode::setData(Core::Id role, const QVariant &value) const
     int flags = QmakeProjectManager::Internal::ProWriter::ReplaceValues;
     if (Target *target = m_buildSystem->target()) {
         QtSupport::BaseQtVersion *version = QtSupport::QtKitAspect::qtVersion(target->kit());
-        if (version && version->qtVersion() < QtSupport::QtVersionNumber(5, 14, 0)) {
+        if (version && !version->supportsMultipleQtAbis()) {
             const QString arch = pro->singleVariableValue(Variable::AndroidArch);
             scope = "contains(ANDROID_TARGET_ARCH," + arch + ')';
             flags |= QmakeProjectManager::Internal::ProWriter::MultiLine;
@@ -432,6 +434,8 @@ bool QmakeProFileNode::setData(Core::Id role, const QVariant &value) const
         return pro->setProVariable("ANDROID_EXTRA_LIBS", value.toStringList(), scope, flags);
     if (role == Android::Constants::AndroidPackageSourceDir)
         return pro->setProVariable("ANDROID_PACKAGE_SOURCE_DIR", {value.toString()}, scope, flags);
+    if (role == Android::Constants::ANDROID_APPLICATION_ARGUMENTS)
+        return pro->setProVariable("ANDROID_APPLICATION_ARGUMENTS", {value.toString()}, scope, flags);
 
     return false;
 }
@@ -503,12 +507,6 @@ QString QmakeProFileNode::singleVariableValue(const Variable var) const
 {
     const QStringList &values = variableValue(var);
     return values.isEmpty() ? QString() : values.first();
-}
-
-FilePath QmakeProFileNode::buildDir(BuildConfiguration *bc) const
-{
-    const QmakeProFile *pro = proFile();
-    return pro ? pro->buildDir(bc) : FilePath();
 }
 
 QString QmakeProFileNode::objectExtension() const

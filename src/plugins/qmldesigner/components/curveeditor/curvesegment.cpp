@@ -33,7 +33,7 @@
 
 #include <assert.h>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class CubicPolynomial
 {
@@ -162,6 +162,29 @@ bool CurveSegment::isValid() const
             return false;
     }
     return true;
+}
+
+bool CurveSegment::isLegal() const
+{
+    if (!isValid())
+        return false;
+
+    if (interpolation() == Keyframe::Interpolation::Step)
+        return true;
+
+    if (interpolation() == Keyframe::Interpolation::Linear)
+        return true;
+
+    std::vector<double> ex = CubicPolynomial(m_left.position().x(),
+                                             m_left.rightHandle().x(),
+                                             m_right.leftHandle().x(),
+                                             m_right.position().x())
+                                 .extrema();
+
+    ex.erase(std::remove_if(ex.begin(), ex.end(), [](double val) { return val <= 0. || val >= 1.; }),
+             ex.end());
+
+    return ex.size() == 0;
 }
 
 bool CurveSegment::containsX(double x) const
@@ -447,9 +470,11 @@ std::array<Keyframe, 3> CurveSegment::splitAt(double time)
 
             out[0].setInterpolation(left().interpolation());
             out[0].setData(left().data());
+            out[0].setUnified(left().isUnified());
 
             out[2].setInterpolation(right().interpolation());
             out[2].setData(right().data());
+            out[2].setUnified(right().isUnified());
             return out;
         }
     }
@@ -498,6 +523,31 @@ void CurveSegment::setRight(const Keyframe &frame)
     m_right = frame;
 }
 
+void CurveSegment::moveLeftTo(const QPointF &pos)
+{
+    QPointF delta = pos - m_left.position();
+
+    if (m_left.hasLeftHandle())
+        m_left.setLeftHandle(m_left.leftHandle() + delta);
+
+    if (m_left.hasRightHandle())
+        m_left.setRightHandle(m_left.rightHandle() + delta);
+
+    m_left.setPosition(pos);
+}
+
+void CurveSegment::moveRightTo(const QPointF &pos)
+{
+    QPointF delta = pos - m_right.position();
+    if (m_right.hasLeftHandle())
+        m_right.setLeftHandle(m_right.leftHandle() + delta);
+
+    if (m_right.hasRightHandle())
+        m_right.setRightHandle(m_right.rightHandle() + delta);
+
+    m_right.setPosition(pos);
+}
+
 void CurveSegment::setInterpolation(const Keyframe::Interpolation &interpol)
 {
     m_right.setInterpolation(interpol);
@@ -516,4 +566,4 @@ void CurveSegment::setInterpolation(const Keyframe::Interpolation &interpol)
     }
 }
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

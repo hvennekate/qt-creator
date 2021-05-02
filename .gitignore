@@ -115,8 +115,10 @@ compile_commands.json
 .pch/
 .rcc/
 .uic/
+.clangd/
 /*-debug/
 /*-release/
+/build*/
 /dist/gdb/*.gz
 /dist/gdb/python/
 /dist/gdb/qtcreator-*/
@@ -126,6 +128,7 @@ compile_commands.json
 /doc/html/qtcreator/
 /doc/html/qtcreator-dev/
 /doc/html/qtdesignstudio/
+/doc/qtdesignstudio/doc/html
 /lib/
 /lib64/
 /libexec/

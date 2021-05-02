@@ -37,14 +37,15 @@
 
 #include <projectexplorer/buildsystem.h>
 #include <projectexplorer/localenvironmentaspect.h>
-#include <projectexplorer/projectconfigurationaspects.h>
 #include <projectexplorer/runconfigurationaspects.h>
 #include <projectexplorer/target.h>
 #include <projectexplorer/taskhub.h>
 
 #include <texteditor/textdocument.h>
 
+#include <utils/aspects.h>
 #include <utils/fileutils.h>
+#include <utils/layoutbuilder.h>
 #include <utils/outputformatter.h>
 #include <utils/theme/theme.h>
 
@@ -60,10 +61,10 @@ using namespace Utils;
 namespace Python {
 namespace Internal {
 
-class PythonOutputFormatter : public OutputFormatter
+class PythonOutputLineParser : public OutputLineParser
 {
 public:
-    PythonOutputFormatter()
+    PythonOutputLineParser()
         // Note that moc dislikes raw string literals.
         : filePattern("^(\\s*)(File \"([^\"]+)\", line (\\d+), .*$)")
     {
@@ -71,30 +72,24 @@ public:
     }
 
 private:
-    Status handleMessage(const QString &text, OutputFormat format) final
+    Result handleLine(const QString &text, OutputFormat format) final
     {
         if (!m_inTraceBack) {
             m_inTraceBack = format == StdErrFormat
                     && text.startsWith("Traceback (most recent call last):");
-            if (m_inTraceBack) {
-                OutputFormatter::appendMessageDefault(text, format);
+            if (m_inTraceBack)
                 return Status::InProgress;
-            }
             return Status::NotHandled;
         }
 
-        const Core::Id category(PythonErrorTaskCategory);
+        const Utils::Id category(PythonErrorTaskCategory);
         const QRegularExpressionMatch match = filePattern.match(text);
         if (match.hasMatch()) {
-            QTextCursor tc = plainTextEdit()->textCursor();
-            tc.movePosition(QTextCursor::End, QTextCursor::MoveAnchor);
-            tc.insertText(match.captured(1));
-            tc.insertText(match.captured(2), linkFormat(charFormat(format), match.captured(2)));
-
+            const LinkSpec link(match.capturedStart(2), match.capturedLength(2), match.captured(2));
             const auto fileName = FilePath::fromString(match.captured(3));
-            const int lineNumber = match.capturedRef(4).toInt();
+            const int lineNumber = match.captured(4).toInt();
             m_tasks.append({Task::Warning, QString(), fileName, lineNumber, category});
-            return Status::InProgress;
+            return {Status::InProgress, {link}};
         }
 
         Status status = Status::InProgress;
@@ -105,9 +100,9 @@ private:
                 m_tasks.append({Task::Warning, text.trimmed(), {}, -1, category});
             } else {
                 Task &task = m_tasks.back();
-                if (!task.description.isEmpty())
-                    task.description += ' ';
-                task.description += text.trimmed();
+                if (!task.summary.isEmpty())
+                    task.summary += ' ';
+                task.summary += text.trimmed();
             }
         } else {
             // The actual exception. This ends the traceback.
@@ -118,7 +113,6 @@ private:
             m_inTraceBack = false;
             status = Status::Done;
         }
-        OutputFormatter::appendMessageDefault(text, format);
         return status;
     }
 
@@ -128,15 +122,9 @@ private:
         if (!match.hasMatch())
             return false;
         const QString fileName = match.captured(3);
-        const int lineNumber = match.capturedRef(4).toInt();
+        const int lineNumber = match.captured(4).toInt();
         Core::EditorManager::openEditorAt(fileName, lineNumber);
         return true;
-    }
-
-    void reset() override
-    {
-        m_inTraceBack = false;
-        m_tasks.clear();
     }
 
     const QRegularExpression filePattern;
@@ -146,7 +134,7 @@ private:
 
 ////////////////////////////////////////////////////////////////
 
-class InterpreterAspect : public ProjectConfigurationAspect
+class InterpreterAspect : public BaseAspect
 {
     Q_OBJECT
 
@@ -189,7 +177,7 @@ void InterpreterAspect::fromMap(const QVariantMap &map)
 
 void InterpreterAspect::toMap(QVariantMap &map) const
 {
-    map.insert(settingsKey(), m_currentId);
+    saveToMap(map, m_currentId, QString());
 }
 
 void InterpreterAspect::addToLayout(LayoutBuilder &builder)
@@ -206,7 +194,7 @@ void InterpreterAspect::addToLayout(LayoutBuilder &builder)
         Core::ICore::showOptionsDialog(Constants::C_PYTHONOPTIONS_PAGE_ID);
     });
 
-    builder.addItems(tr("Interpreter"), m_comboBox.data(), manageButton);
+    builder.addItems({tr("Interpreter"), m_comboBox.data(), manageButton});
 }
 
 void InterpreterAspect::updateCurrentInterpreter()
@@ -238,7 +226,7 @@ void InterpreterAspect::updateComboBox()
     updateCurrentInterpreter();
 }
 
-class MainScriptAspect : public BaseStringAspect
+class MainScriptAspect : public StringAspect
 {
     Q_OBJECT
 
@@ -246,7 +234,7 @@ public:
     MainScriptAspect() = default;
 };
 
-PythonRunConfiguration::PythonRunConfiguration(Target *target, Core::Id id)
+PythonRunConfiguration::PythonRunConfiguration(Target *target, Utils::Id id)
     : RunConfiguration(target, id)
 {
     auto interpreterAspect = addAspect<InterpreterAspect>();
@@ -262,16 +250,16 @@ PythonRunConfiguration::PythonRunConfiguration(Target *target, Core::Id id)
     aspect<InterpreterAspect>()->setDefaultInterpreter(
         interpreters.isEmpty() ? PythonSettings::defaultInterpreter() : interpreters.first());
 
-    auto bufferedAspect = addAspect<BaseBoolAspect>();
+    auto bufferedAspect = addAspect<BoolAspect>();
     bufferedAspect->setSettingsKey("PythonEditor.RunConfiguation.Buffered");
-    bufferedAspect->setLabel(tr("Buffered output"), BaseBoolAspect::LabelPlacement::AtCheckBox);
+    bufferedAspect->setLabel(tr("Buffered output"), BoolAspect::LabelPlacement::AtCheckBox);
     bufferedAspect->setToolTip(tr("Enabling improves output performance, "
                                   "but results in delayed output."));
 
     auto scriptAspect = addAspect<MainScriptAspect>();
     scriptAspect->setSettingsKey("PythonEditor.RunConfiguation.Script");
     scriptAspect->setLabelText(tr("Script:"));
-    scriptAspect->setDisplayStyle(BaseStringAspect::LabelDisplay);
+    scriptAspect->setDisplayStyle(StringAspect::LabelDisplay);
 
     addAspect<LocalEnvironmentAspect>(target);
 
@@ -294,6 +282,7 @@ PythonRunConfiguration::PythonRunConfiguration(Target *target, Core::Id id)
         const QString script = bti.targetFilePath.toUserOutput();
         setDefaultDisplayName(tr("Run %1").arg(script));
         scriptAspect->setValue(script);
+        aspect<WorkingDirectoryAspect>()->setDefaultWorkingDirectory(bti.targetFilePath.parentDir());
     });
 
     connect(target, &Target::buildSystemUpdated, this, &RunConfiguration::update);
@@ -311,9 +300,6 @@ void PythonRunConfiguration::updateLanguageServer()
                 PyLSConfigureAssistant::instance()->openDocumentWithPython(python, document);
         }
     }
-
-    aspect<WorkingDirectoryAspect>()->setDefaultWorkingDirectory(
-        Utils::FilePath::fromString(mainScript()).parentDir());
 }
 
 bool PythonRunConfiguration::supportsDebugger() const
@@ -344,10 +330,10 @@ PythonRunConfigurationFactory::PythonRunConfigurationFactory()
 
 PythonOutputFormatterFactory::PythonOutputFormatterFactory()
 {
-    setFormatterCreator([](Target *t) -> OutputFormatter * {
-        if (t->project()->mimeType() == Constants::C_PY_MIMETYPE)
-            return new PythonOutputFormatter;
-        return nullptr;
+    setFormatterCreator([](Target *t) -> QList<OutputLineParser *> {
+        if (t && t->project()->mimeType() == Constants::C_PY_MIMETYPE)
+            return {new PythonOutputLineParser};
+        return {};
     });
 }
 

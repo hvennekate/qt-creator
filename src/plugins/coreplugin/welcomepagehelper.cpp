@@ -57,15 +57,17 @@ static QFont sizedFont(int size, const QWidget *widget)
 SearchBox::SearchBox(QWidget *parent)
     : WelcomePageFrame(parent)
 {
-    QPalette pal;
+    QPalette pal = buttonPalette(false, false, true);
     pal.setColor(QPalette::Base, themeColor(Theme::Welcome_BackgroundColor));
+    // for macOS dark mode
+    pal.setColor(QPalette::Text, themeColor(Theme::Welcome_TextColor));
+    setPalette(pal);
 
     m_lineEdit = new FancyLineEdit;
     m_lineEdit->setFiltering(true);
     m_lineEdit->setFrame(false);
     m_lineEdit->setFont(sizedFont(14, this));
     m_lineEdit->setAttribute(Qt::WA_MacShowFocusRect, false);
-    m_lineEdit->setPalette(pal);
 
     auto box = new QHBoxLayout(this);
     box->setContentsMargins(10, 3, 3, 3);
@@ -603,6 +605,10 @@ bool ListItemDelegate::editorEvent(QEvent *event, QAbstractItemModel *model,
         if (!item)
             return false;
         auto mev = static_cast<QMouseEvent *>(event);
+
+        if (mev->button() != Qt::LeftButton) // do not react on right click
+            return false;
+
         if (index.isValid()) {
             const QPoint pos = mev->pos();
             if (pos.y() > option.rect.y() + GridProxyModel::TagsSeparatorY) {

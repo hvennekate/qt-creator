@@ -35,6 +35,7 @@
 #include <projectexplorer/task.h>
 
 #include <utils/environment.h>
+#include <utils/id.h>
 
 #include <QFutureWatcher>
 #include <QHash>
@@ -64,7 +65,7 @@ public:
 
     ProjectExplorer::DeploymentKnowledge deploymentKnowledge() const override;
 
-    void configureAsExampleProject() final;
+    void configureAsExampleProject(ProjectExplorer::Kit *kit) final;
 
 private:
     mutable ProjectExplorer::ProjectImporter *m_importer = nullptr;
@@ -92,7 +93,7 @@ public:
                     const QString &filePath, const QString &newFilePath) final;
 
     QStringList filesGeneratedFrom(const QString &sourceFile) const final;
-    QVariant additionalData(Core::Id id) const final;
+    QVariant additionalData(Utils::Id id) const final;
 
     bool isProjectEditable() const;
     bool addFilesToProduct(const QStringList &filePaths,

@@ -26,6 +26,7 @@
 #pragma once
 
 #include "testsettings.h"
+#include "testtreemodel.h"
 
 #include <projectexplorer/project.h>
 
@@ -46,10 +47,11 @@ public:
     bool useGlobalSettings() const { return m_useGlobalSettings; }
     void setRunAfterBuild(RunAfterBuildMode mode) {m_runAfterBuild = mode; }
     RunAfterBuildMode runAfterBuild() const { return m_runAfterBuild; }
-    void setActiveFrameworks(const QMap<ITestFramework *, bool> enabledFrameworks)
+    void setActiveFrameworks(const QHash<ITestFramework *, bool> enabledFrameworks)
     { m_activeTestFrameworks = enabledFrameworks; }
-    QMap<ITestFramework *, bool> activeFrameworks() const { return m_activeTestFrameworks; }
-    void activateFramework(const Core::Id &id, bool activate);
+    QHash<ITestFramework *, bool> activeFrameworks() const { return m_activeTestFrameworks; }
+    void activateFramework(const Utils::Id &id, bool activate);
+    Internal::ItemDataCache<Qt::CheckState> *checkStateCache() { return &m_checkStateCache; }
 private:
     void load();
     void save();
@@ -57,7 +59,8 @@ private:
     ProjectExplorer::Project *m_project;
     bool m_useGlobalSettings = true;
     RunAfterBuildMode m_runAfterBuild = RunAfterBuildMode::None;
-    QMap<ITestFramework *, bool> m_activeTestFrameworks;
+    QHash<ITestFramework *, bool> m_activeTestFrameworks;
+    Internal::ItemDataCache<Qt::CheckState> m_checkStateCache;
 };
 
 } // namespace Internal

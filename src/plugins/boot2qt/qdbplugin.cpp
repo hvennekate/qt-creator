@@ -155,7 +155,7 @@ template <class Step>
 class QdbDeployStepFactory : public ProjectExplorer::BuildStepFactory
 {
 public:
-    explicit QdbDeployStepFactory(Core::Id id)
+    explicit QdbDeployStepFactory(Utils::Id id)
     {
         registerStep<Step>(id);
         setDisplayName(Step::displayName());
@@ -183,8 +183,8 @@ public:
     QdbDeployStepFactory<RemoteLinux::MakeInstallStep>
         m_makeInstallStepFactory{RemoteLinux::Constants::MakeInstallStepId};
 
-    const QList<Core::Id> supportedRunConfigs {
-        m_runConfigFactory.id(),
+    const QList<Utils::Id> supportedRunConfigs {
+        m_runConfigFactory.runConfigurationId(),
         "QmlProjectManager.QmlRunConfiguration"
     };
 

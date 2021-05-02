@@ -27,50 +27,31 @@
 
 #include "itestframework.h"
 
-#include <QHash>
-
 QT_BEGIN_NAMESPACE
 class QSettings;
 QT_END_NAMESPACE
 
-namespace Core { class Id; }
-
 namespace Autotest {
 namespace Internal {
-class TestRunner;
 struct TestSettings;
 }
 
-class IFrameworkSettings;
-class ITestParser;
-
-class TestFrameworkManager
+class TestFrameworkManager final
 {
-public:
-    static TestFrameworkManager *instance();
-    virtual ~TestFrameworkManager();
 
-    static ITestFramework *frameworkForId(Core::Id frameworkId);
+public:
+    TestFrameworkManager();
+    ~TestFrameworkManager();
 
     bool registerTestFramework(ITestFramework *framework);
-
-    void activateFrameworksFromSettings(const Internal::TestSettings *settings);
-    TestFrameworks registeredFrameworks() const;
-    TestFrameworks sortedRegisteredFrameworks() const;
-    TestFrameworks sortedActiveFrameworks() const;
-
-    IFrameworkSettings *settingsForTestFramework(const Core::Id &frameworkId) const;
     void synchronizeSettings(QSettings *s);
-    bool hasActiveFrameworks() const;
+
+    static ITestFramework *frameworkForId(Utils::Id frameworkId);
+    static void activateFrameworksFromSettings(const Internal::TestSettings *settings);
+    static TestFrameworks registeredFrameworks();
 
 private:
-    TestFrameworks activeFrameworks() const;
-    explicit TestFrameworkManager();
-    QHash<Core::Id, ITestFramework *> m_registeredFrameworks;
-    QHash<Core::Id, IFrameworkSettings *> m_frameworkSettings;
-    Internal::TestRunner *m_testRunner;
-
-    typedef QHash<Core::Id, ITestFramework *>::ConstIterator FrameworkIterator;
+    TestFrameworks m_registeredFrameworks;
 };
 
 } // namespace Autotest

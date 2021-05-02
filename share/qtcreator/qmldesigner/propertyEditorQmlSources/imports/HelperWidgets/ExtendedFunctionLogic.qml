@@ -42,6 +42,8 @@ Item {
 
     signal reseted
 
+    property bool menuVisible: false
+
     function show() {
         menuLoader.show()
     }
@@ -97,6 +99,10 @@ Item {
                 onAboutToShow: {
                     exportMenuItem.checked = backendValue.hasPropertyAlias()
                     exportMenuItem.enabled = !backendValue.isAttachedProperty()
+                    extendedFunctionButton.menuVisible = true
+                }
+                onAboutToHide: {
+                    extendedFunctionButton.menuVisible = false
                 }
 
                 StudioControls.MenuItem {
@@ -148,9 +154,7 @@ Item {
             id: bindingEditorParent
 
             Component.onCompleted: {
-                var x = extendedFunctionButton.mapToGlobal(0,0).x - 200
-                var y = extendedFunctionButton.mapToGlobal(0,0).y - 40
-                bindingEditor.showWidget(x, y)
+                bindingEditor.showWidget()
                 bindingEditor.text = backendValue.expression
                 bindingEditor.prepareBindings()
             }

@@ -24,13 +24,16 @@
 ****************************************************************************/
 #pragma once
 
+#include "import.h"
+
+#include <qprocessuniqueptr.h>
+
 #include <QSet>
-#include <QtCore/qobject.h>
-#include <QtCore/qstringlist.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qjsonobject.h>
-
-#include "import.h"
+#include <QtCore/qobject.h>
+#include <QtCore/qprocess.h>
+#include <QtCore/qstringlist.h>
 
 QT_BEGIN_NAMESPACE
 class QSSGAssetImportManager;
@@ -72,6 +75,9 @@ signals:
     void importNearlyFinished() const;
     void importFinished();
 
+private slots:
+    void processFinished(int exitCode, QProcess::ExitStatus exitStatus);
+
 private:
     void notifyFinished();
     void reset();
@@ -83,6 +89,8 @@ private:
     void notifyProgress(int value, const QString &text) const;
     void keepUiAlive() const;
     bool confirmAssetOverwrite(const QString &assetName);
+    bool generateComponentIcon(int size, const QString &iconFile, const QString &iconSource);
+    void finalizeQuick3DImport();
 
 #ifdef IMPORT_QUICK3D_ASSETS
     QScopedPointer<QSSGAssetImportManager> m_quick3DAssetImporter;
@@ -93,5 +101,7 @@ private:
     bool m_cancelled = false;
     QString m_importPath;
     QTemporaryDir *m_tempDir = nullptr;
+    std::vector<QProcessUniquePointer> m_qmlPuppetProcesses;
+    int m_qmlPuppetCount = 0;
 };
 } // QmlDesigner

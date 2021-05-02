@@ -32,7 +32,6 @@
 #include "pythonsettings.h"
 
 #include <coreplugin/editormanager/editormanager.h>
-#include <coreplugin/infobar.h>
 #include <coreplugin/progressmanager/progressmanager.h>
 
 #include <languageclient/languageclientmanager.h>
@@ -44,6 +43,7 @@
 #include <texteditor/textdocument.h>
 
 #include <utils/consoleprocess.h>
+#include <utils/infobar.h>
 #include <utils/mimetypes/mimedatabase.h>
 #include <utils/qtcassert.h>
 #include <utils/runextensions.h>
@@ -118,8 +118,8 @@ FilePath getPylsModulePath(CommandLine pylsCommand)
                                                    QRegularExpression::MultilineOption);
 
     const QString &output = response.allOutput();
-    for (auto regex : {regexCached, regexNotCached}) {
-        QRegularExpressionMatch result = regex.match(output);
+    for (const auto &regex : {regexCached, regexNotCached}) {
+        const QRegularExpressionMatch result = regex.match(output);
         if (result.hasMatch()) {
             const FilePath &modulePath = FilePath::fromUserInput(result.captured(1));
             cache[pylsCommand.executable()] = modulePath;
@@ -197,7 +197,7 @@ static FilePath detectPython(const FilePath &documentPath)
         python = PythonSettings::defaultInterpreter().command;
 
     if (!python.exists() && !PythonSettings::interpreters().isEmpty())
-        python = PythonSettings::interpreters().first().command;
+        python = PythonSettings::interpreters().constFirst().command;
 
     return python;
 }
@@ -289,7 +289,7 @@ private:
         m_future.reportFinished();
         if (exitStatus == QProcess::NormalExit && exitCode == 0) {
             if (Client *client = registerLanguageServer(m_python))
-                LanguageClientManager::reOpenDocumentWithClient(m_document, client);
+                LanguageClientManager::openDocumentWithClient(m_document, client);
         } else {
             Core::MessageManager::write(
                 tr("Installing the Python language server failed with exit code %1").arg(exitCode));
@@ -338,7 +338,7 @@ static void setupPythonLanguageServer(const FilePath &python,
 {
     document->infoBar()->removeInfo(startPylsInfoBarId);
     if (Client *client = registerLanguageServer(python))
-        LanguageClientManager::reOpenDocumentWithClient(document, client);
+        LanguageClientManager::openDocumentWithClient(document, client);
 }
 
 static void enablePythonLanguageServer(const FilePath &python,
@@ -349,7 +349,7 @@ static void enablePythonLanguageServer(const FilePath &python,
         LanguageClientManager::enableClientSettings(setting->m_id);
         if (const StdIOSettings *setting = PyLSConfigureAssistant::languageServerForPython(python)) {
             if (Client *client = LanguageClientManager::clientForSetting(setting).value(0)) {
-                LanguageClientManager::reOpenDocumentWithClient(document, client);
+                LanguageClientManager::openDocumentWithClient(document, client);
                 PyLSConfigureAssistant::updateEditorInfoBars(python, client);
             }
         }
@@ -406,21 +406,21 @@ void PyLSConfigureAssistant::handlePyLSState(const FilePath &python,
     if (state.state == PythonLanguageServerState::AlreadyConfigured) {
         if (const StdIOSettings *setting = languageServerForPython(python)) {
             if (Client *client = LanguageClientManager::clientForSetting(setting).value(0))
-                LanguageClientManager::reOpenDocumentWithClient(document, client);
+                LanguageClientManager::openDocumentWithClient(document, client);
         }
         return;
     }
 
     resetEditorInfoBar(document);
-    Core::InfoBar *infoBar = document->infoBar();
+    Utils::InfoBar *infoBar = document->infoBar();
     if (state.state == PythonLanguageServerState::CanBeInstalled
         && infoBar->canInfoBeAdded(installPylsInfoBarId)) {
         auto message = tr("Install and set up Python language server (PyLS) for %1 (%2). "
                           "The language server provides Python specific completion and annotation.")
                            .arg(pythonName(python), python.toUserOutput());
-        Core::InfoBarEntry info(installPylsInfoBarId,
-                                message,
-                                Core::InfoBarEntry::GlobalSuppression::Enabled);
+        Utils::InfoBarEntry info(installPylsInfoBarId,
+                                 message,
+                                 Utils::InfoBarEntry::GlobalSuppression::Enabled);
         info.setCustomButtonInfo(tr("Install"),
                                  [=]() { installPythonLanguageServer(python, document); });
         infoBar->addInfo(info);
@@ -430,10 +430,10 @@ void PyLSConfigureAssistant::handlePyLSState(const FilePath &python,
         auto message = tr("Found a Python language server for %1 (%2). "
                           "Set it up for this document?")
                            .arg(pythonName(python), python.toUserOutput());
-        Core::InfoBarEntry info(startPylsInfoBarId,
-                                message,
-                                Core::InfoBarEntry::GlobalSuppression::Enabled);
-        info.setCustomButtonInfo(tr("Setup"),
+        Utils::InfoBarEntry info(startPylsInfoBarId,
+                                 message,
+                                 Utils::InfoBarEntry::GlobalSuppression::Enabled);
+        info.setCustomButtonInfo(tr("Set Up"),
                                  [=]() { setupPythonLanguageServer(python, document); });
         infoBar->addInfo(info);
         m_infoBarEntries[python] << document;
@@ -441,9 +441,9 @@ void PyLSConfigureAssistant::handlePyLSState(const FilePath &python,
                && infoBar->canInfoBeAdded(enablePylsInfoBarId)) {
         auto message = tr("Enable Python language server for %1 (%2)?")
                            .arg(pythonName(python), python.toUserOutput());
-        Core::InfoBarEntry info(enablePylsInfoBarId,
-                                message,
-                                Core::InfoBarEntry::GlobalSuppression::Enabled);
+        Utils::InfoBarEntry info(enablePylsInfoBarId,
+                                 message,
+                                 Utils::InfoBarEntry::GlobalSuppression::Enabled);
         info.setCustomButtonInfo(tr("Enable"),
                                  [=]() { enablePythonLanguageServer(python, document); });
         infoBar->addInfo(info);
@@ -456,7 +456,7 @@ void PyLSConfigureAssistant::updateEditorInfoBars(const FilePath &python, Client
     for (TextEditor::TextDocument *document : instance()->m_infoBarEntries.take(python)) {
         instance()->resetEditorInfoBar(document);
         if (client)
-            LanguageClientManager::reOpenDocumentWithClient(document, client);
+            LanguageClientManager::openDocumentWithClient(document, client);
     }
 }
 
@@ -464,7 +464,7 @@ void PyLSConfigureAssistant::resetEditorInfoBar(TextEditor::TextDocument *docume
 {
     for (QList<TextEditor::TextDocument *> &documents : m_infoBarEntries)
         documents.removeAll(document);
-    Core::InfoBar *infoBar = document->infoBar();
+    Utils::InfoBar *infoBar = document->infoBar();
     infoBar->removeInfo(installPylsInfoBarId);
     infoBar->removeInfo(startPylsInfoBarId);
     infoBar->removeInfo(enablePylsInfoBarId);

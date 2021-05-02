@@ -60,6 +60,7 @@
 #include <QSpinBox>
 #include <QTabBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -153,8 +154,10 @@ void TabWidget::slotContextMenuRequested(const QPoint &pos)
 AppOutputPane::RunControlTab::RunControlTab(RunControl *runControl, Core::OutputWindow *w) :
     runControl(runControl), window(w)
 {
-    if (runControl && w)
-        w->setFormatters(runControl->outputFormatters());
+    if (runControl && w) {
+        w->reset();
+        runControl->setupFormatter(w->outputFormatter());
+    }
 }
 
 AppOutputPane::AppOutputPane() :
@@ -201,9 +204,9 @@ AppOutputPane::AppOutputPane() :
     connect(m_attachButton, &QToolButton::clicked,
             this, &AppOutputPane::attachToRunControl);
 
-    connect(this, &Core::IOutputPane::zoomIn, this, &AppOutputPane::zoomIn);
-    connect(this, &Core::IOutputPane::zoomOut, this, &AppOutputPane::zoomOut);
-    connect(this, &IOutputPane::resetZoom, this, &AppOutputPane::resetZoom);
+    connect(this, &IOutputPane::zoomInRequested, this, &AppOutputPane::zoomIn);
+    connect(this, &IOutputPane::zoomOutRequested, this, &AppOutputPane::zoomOut);
+    connect(this, &IOutputPane::resetZoomRequested, this, &AppOutputPane::resetZoom);
 
     m_settingsButton->setToolTip(tr("Open Settings Page"));
     m_settingsButton->setIcon(Utils::Icons::SETTINGS_TOOLBAR.icon());
@@ -338,10 +341,6 @@ void AppOutputPane::clearContents()
         currentWindow->clear();
 }
 
-void AppOutputPane::visibilityChanged(bool /* b */)
-{
-}
-
 bool AppOutputPane::hasFocus() const
 {
     QWidget *widget = m_tabWidget->currentWidget();
@@ -404,7 +403,8 @@ void AppOutputPane::createNewOutputWindow(RunControl *rc)
         if (tab.runControl)
             tab.runControl->initiateFinish();
         tab.runControl = rc;
-        tab.window->setFormatters(rc->outputFormatters());
+        tab.window->reset();
+        rc->setupFormatter(tab.window->outputFormatter());
 
         handleOldOutput(tab.window);
 
@@ -418,7 +418,7 @@ void AppOutputPane::createNewOutputWindow(RunControl *rc)
     }
     // Create new
     static int counter = 0;
-    Core::Id contextId = Core::Id(C_APP_OUTPUT).withSuffix(counter++);
+    Utils::Id contextId = Utils::Id(C_APP_OUTPUT).withSuffix(counter++);
     Core::Context context(contextId);
     Core::OutputWindow *ow = new Core::OutputWindow(context, SETTINGS_KEY, m_tabWidget);
     ow->setWindowTitle(tr("Application Output Window"));

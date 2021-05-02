@@ -26,27 +26,29 @@
 #include "runcontrol.h"
 
 #include "devicesupport/desktopdevice.h"
-#include "project.h"
-#include "target.h"
-#include "toolchain.h"
 #include "abi.h"
 #include "buildconfiguration.h"
+#include "customparser.h"
 #include "environmentaspect.h"
 #include "kitinformation.h"
+#include "project.h"
+#include "projectexplorer.h"
 #include "runconfigurationaspects.h"
 #include "session.h"
-#include "kitinformation.h"
+#include "target.h"
+#include "toolchain.h"
 
 #include <utils/algorithm.h>
 #include <utils/checkablemessagebox.h>
 #include <utils/detailswidget.h>
+#include <utils/fileinprojectfinder.h>
 #include <utils/outputformatter.h>
 #include <utils/qtcassert.h>
 #include <utils/utilsicons.h>
+#include <utils/variablechooser.h>
 
 #include <coreplugin/icontext.h>
 #include <coreplugin/icore.h>
-#include <coreplugin/variablechooser.h>
 
 #include <QDir>
 #include <QFormLayout>
@@ -73,13 +75,13 @@ namespace ProjectExplorer {
 
 static QList<RunWorkerFactory *> g_runWorkerFactories;
 
-static QSet<Core::Id> g_runModes;
-static QSet<Core::Id> g_runConfigs;
+static QSet<Utils::Id> g_runModes;
+static QSet<Utils::Id> g_runConfigs;
 
 RunWorkerFactory::RunWorkerFactory(const WorkerCreator &producer,
-                                   const QList<Core::Id> &runModes,
-                                   const QList<Core::Id> &runConfigs,
-                                   const QList<Core::Id> &deviceTypes)
+                                   const QList<Utils::Id> &runModes,
+                                   const QList<Utils::Id> &runConfigs,
+                                   const QList<Utils::Id> &deviceTypes)
         : m_producer(producer),
           m_supportedRunModes(runModes),
           m_supportedRunConfigurations(runConfigs),
@@ -88,9 +90,9 @@ RunWorkerFactory::RunWorkerFactory(const WorkerCreator &producer,
     g_runWorkerFactories.append(this);
 
     // Debugging only.
-    for (Core::Id runMode : runModes)
+    for (Utils::Id runMode : runModes)
         g_runModes.insert(runMode);
-    for (Core::Id runConfig : runConfigs)
+    for (Utils::Id runConfig : runConfigs)
         g_runConfigs.insert(runConfig);
 }
 
@@ -99,8 +101,8 @@ RunWorkerFactory::~RunWorkerFactory()
     g_runWorkerFactories.removeOne(this);
 }
 
-bool RunWorkerFactory::canRun(Core::Id runMode,
-                              Core::Id deviceType,
+bool RunWorkerFactory::canRun(Utils::Id runMode,
+                              Utils::Id deviceType,
                               const QString &runConfigId) const
 {
     if (!m_supportedRunModes.contains(runMode))
@@ -111,7 +113,7 @@ bool RunWorkerFactory::canRun(Core::Id runMode,
         //if (!m_supportedRunConfigurations.contains(runConfigId)
         // return false;
         bool ok = false;
-        for (const Core::Id &id : m_supportedRunConfigurations) {
+        for (const Utils::Id &id : m_supportedRunConfigurations) {
             if (runConfigId.startsWith(id.toString())) {
                 ok = true;
                 break;
@@ -130,13 +132,13 @@ bool RunWorkerFactory::canRun(Core::Id runMode,
 
 void RunWorkerFactory::dumpAll()
 {
-    const QList<Core::Id> devices =
+    const QList<Utils::Id> devices =
             Utils::transform(IDeviceFactory::allDeviceFactories(), &IDeviceFactory::deviceType);
 
-    for (Core::Id runMode : qAsConst(g_runModes)) {
+    for (Utils::Id runMode : qAsConst(g_runModes)) {
         qDebug() << "";
-        for (Core::Id device : devices) {
-            for (Core::Id runConfig : qAsConst(g_runConfigs)) {
+        for (Utils::Id device : devices) {
+            for (Utils::Id runConfig : qAsConst(g_runConfigs)) {
                 const auto check = std::bind(&RunWorkerFactory::canRun,
                                              std::placeholders::_1,
                                              runMode,
@@ -275,7 +277,7 @@ static QString stateName(RunControlState s)
 class RunControlPrivate : public QObject
 {
 public:
-    RunControlPrivate(RunControl *parent, Core::Id mode)
+    RunControlPrivate(RunControl *parent, Utils::Id mode)
         : q(parent), runMode(mode)
     {
         icon = Icons::RUN_SMALL_TOOLBAR;
@@ -288,7 +290,6 @@ public:
         q = nullptr;
         qDeleteAll(m_workers);
         m_workers.clear();
-        qDeleteAll(outputFormatters);
     }
 
     Q_ENUM(RunControlState)
@@ -319,13 +320,13 @@ public:
     QString displayName;
     Runnable runnable;
     IDevice::ConstPtr device;
-    Core::Id runMode;
+    Utils::Id runMode;
     Utils::Icon icon;
     const MacroExpander *macroExpander;
     QPointer<RunConfiguration> runConfiguration; // Not owned. Avoid use.
     QString buildKey;
-    QMap<Core::Id, QVariantMap> settingsData;
-    Core::Id runConfigId;
+    QMap<Utils::Id, QVariantMap> settingsData;
+    Utils::Id runConfigId;
     BuildTargetInfo buildTargetInfo;
     BuildConfiguration::BuildType buildType = BuildConfiguration::Unknown;
     FilePath buildDirectory;
@@ -333,7 +334,6 @@ public:
     Kit *kit = nullptr; // Not owned.
     QPointer<Target> target; // Not owned.
     QPointer<Project> project; // Not owned.
-    QList<Utils::OutputFormatter *> outputFormatters;
     std::function<bool(bool*)> promptToStop;
     std::vector<RunWorkerFactory> m_factories;
 
@@ -349,7 +349,7 @@ public:
 
 using namespace Internal;
 
-RunControl::RunControl(Core::Id mode) :
+RunControl::RunControl(Utils::Id mode) :
     d(std::make_unique<RunControlPrivate>(this,  mode))
 {
 }
@@ -383,9 +383,6 @@ void RunControl::setTarget(Target *target)
         d->buildDirectory = bc->buildDirectory();
         d->buildEnvironment = bc->environment();
     }
-
-    QTC_CHECK(d->outputFormatters.isEmpty());
-    d->outputFormatters = OutputFormatterFactory::createFormatters(target);
 
     setKit(target->kit());
     d->project = target->project();
@@ -463,7 +460,7 @@ void RunControl::initiateFinish()
     QTimer::singleShot(0, d.get(), &RunControlPrivate::initiateFinish);
 }
 
-RunWorker *RunControl::createWorker(Core::Id workerId)
+RunWorker *RunControl::createWorker(Utils::Id workerId)
 {
     const auto check = std::bind(&RunWorkerFactory::canRun,
                                  std::placeholders::_1,
@@ -493,7 +490,7 @@ bool RunControl::createMainWorker()
     return candidates.front()->producer()(this) != nullptr;
 }
 
-bool RunControl::canRun(Core::Id runMode, Core::Id deviceType, Core::Id runConfigId)
+bool RunControl::canRun(Utils::Id runMode, Utils::Id deviceType, Utils::Id runConfigId)
 {
     const auto check = std::bind(&RunWorkerFactory::canRun,
                                  std::placeholders::_1,
@@ -828,12 +825,26 @@ void RunControlPrivate::showError(const QString &msg)
         q->appendMessage(msg + '\n', ErrorMessageFormat);
 }
 
-QList<Utils::OutputFormatter *> RunControl::outputFormatters() const
+void RunControl::setupFormatter(OutputFormatter *formatter) const
 {
-    return d->outputFormatters;
+    QList<Utils::OutputLineParser *> parsers = OutputFormatterFactory::createFormatters(target());
+    if (const auto customParsersAspect
+            = (runConfiguration() ? runConfiguration()->aspect<CustomParsersAspect>() : nullptr)) {
+        for (const Utils::Id id : customParsersAspect->parsers()) {
+            if (CustomParser * const parser = CustomParser::createFromId(id))
+                parsers << parser;
+        }
+    }
+    formatter->setLineParsers(parsers);
+    if (project()) {
+        Utils::FileInProjectFinder fileFinder;
+        fileFinder.setProjectDirectory(project()->projectDirectory());
+        fileFinder.setProjectFiles(project()->files(Project::AllFiles));
+        formatter->setFileFinder(fileFinder);
+    }
 }
 
-Core::Id RunControl::runMode() const
+Utils::Id RunControl::runMode() const
 {
     return d->runMode;
 }
@@ -898,12 +909,12 @@ const MacroExpander *RunControl::macroExpander() const
     return d->macroExpander;
 }
 
-ProjectConfigurationAspect *RunControl::aspect(Core::Id id) const
+BaseAspect *RunControl::aspect(Utils::Id id) const
 {
     return d->runConfiguration ? d->runConfiguration->aspect(id) : nullptr;
 }
 
-QVariantMap RunControl::settingsData(Core::Id id) const
+QVariantMap RunControl::settingsData(Utils::Id id) const
 {
     return d->settingsData.value(id);
 }
@@ -1034,7 +1045,7 @@ bool RunControl::showPromptToStopDialog(const QString &title,
 {
     // Show a question message box where user can uncheck this
     // question for this class.
-    Utils::CheckableMessageBox messageBox(Core::ICore::mainWindow());
+    Utils::CheckableMessageBox messageBox(Core::ICore::dialogParent());
     messageBox.setWindowTitle(title);
     messageBox.setText(text);
     messageBox.setStandardButtons(QDialogButtonBox::Yes|QDialogButtonBox::Cancel);
@@ -1606,18 +1617,15 @@ OutputFormatterFactory::~OutputFormatterFactory()
     g_outputFormatterFactories.removeOne(this);
 }
 
-QList<OutputFormatter *> OutputFormatterFactory::createFormatters(Target *target)
+QList<OutputLineParser *> OutputFormatterFactory::createFormatters(Target *target)
 {
-    QList<OutputFormatter *> formatters;
-    for (auto factory : qAsConst(g_outputFormatterFactories)) {
-        if (auto formatter = factory->m_creator(target))
-            formatters << formatter;
-    }
+    QList<OutputLineParser *> formatters;
+    for (auto factory : qAsConst(g_outputFormatterFactories))
+        formatters << factory->m_creator(target);
     return formatters;
 }
 
-void OutputFormatterFactory::setFormatterCreator
-    (const std::function<OutputFormatter *(Target *)> &creator)
+void OutputFormatterFactory::setFormatterCreator(const FormatterCreator &creator)
 {
     m_creator = creator;
 }

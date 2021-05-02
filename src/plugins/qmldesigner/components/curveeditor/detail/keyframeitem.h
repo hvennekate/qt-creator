@@ -32,7 +32,7 @@
 
 #include <QGraphicsObject>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class HandleItem;
 
@@ -66,13 +66,21 @@ public:
 
     Keyframe keyframe() const;
 
+    bool isUnified() const;
+
     bool hasLeftHandle() const;
 
     bool hasRightHandle() const;
 
-    QTransform transform() const;
+    bool hasActiveHandle() const;
 
-    bool contains(HandleItem *handle, const QPointF &point) const;
+    HandleItem *leftHandle() const;
+
+    HandleItem *rightHandle() const;
+
+    CurveSegment segment(HandleItem::Slot slot) const;
+
+    QTransform transform() const;
 
     void setHandleVisibility(bool visible);
 
@@ -81,6 +89,10 @@ public:
     void setStyle(const CurveEditorStyle &style);
 
     void setKeyframe(const Keyframe &keyframe);
+
+    void toggleUnified();
+
+    void setActivated(bool active, HandleItem::Slot slot);
 
     void setInterpolation(Keyframe::Interpolation interpolation);
 
@@ -117,7 +129,9 @@ private:
 
     HandleItem *m_right;
 
+    QPointF m_validPos;
+
     bool m_visibleOverride = true;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

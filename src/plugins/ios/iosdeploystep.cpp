@@ -65,7 +65,7 @@ public:
         TransferFailed
     };
 
-    IosDeployStep(BuildStepList *bc, Core::Id id);
+    IosDeployStep(BuildStepList *bc, Utils::Id id);
 
 private:
     void cleanup();
@@ -83,7 +83,7 @@ private:
     void updateDisplayNames();
 
     bool init() final;
-    BuildStepConfigWidget *createConfigWidget() final;
+    QWidget *createConfigWidget() final;
     IDevice::ConstPtr device() const;
     IosDevice::ConstPtr iosdevice() const;
     IosSimulator::ConstPtr iossimulator() const;
@@ -99,7 +99,7 @@ private:
     bool m_expectFail = false;
 };
 
-IosDeployStep::IosDeployStep(BuildStepList *parent, Core::Id id)
+IosDeployStep::IosDeployStep(BuildStepList *parent, Utils::Id id)
     : BuildStep(parent, id)
 {
     setImmutable(true);
@@ -112,16 +112,15 @@ IosDeployStep::IosDeployStep(BuildStepList *parent, Core::Id id)
 
 void IosDeployStep::updateDisplayNames()
 {
-    IDevice::ConstPtr dev = DeviceKitAspect::device(target()->kit());
+    IDevice::ConstPtr dev = DeviceKitAspect::device(kit());
     const QString devName = dev.isNull() ? IosDevice::name() : dev->displayName();
-    setDefaultDisplayName(tr("Deploy to %1").arg(devName));
     setDisplayName(tr("Deploy to %1").arg(devName));
 }
 
 bool IosDeployStep::init()
 {
     QTC_ASSERT(m_transferStatus == NoTransfer, return false);
-    m_device = DeviceKitAspect::device(target()->kit());
+    m_device = DeviceKitAspect::device(kit());
     auto runConfig = qobject_cast<const IosRunConfiguration *>(
         this->target()->activeRunConfiguration());
     QTC_ASSERT(runConfig, return false);
@@ -231,16 +230,16 @@ void IosDeployStep::handleErrorMsg(IosToolHandler *handler, const QString &msg)
     emit addOutput(msg, OutputFormat::ErrorMessage);
 }
 
-BuildStepConfigWidget *IosDeployStep::createConfigWidget()
+QWidget *IosDeployStep::createConfigWidget()
 {
-    auto widget = new BuildStepConfigWidget(this);
+    auto widget = new QWidget;
 
     widget->setObjectName("IosDeployStepWidget");
-    widget->setDisplayName(QString("<b>%1</b>").arg(displayName()));
-    widget->setSummaryText(widget->displayName());
+    setDisplayName(QString("<b>%1</b>").arg(displayName()));
+    setSummaryText(displayName());
 
     connect(this, &ProjectConfiguration::displayNameChanged,
-            widget, &BuildStepConfigWidget::updateSummary);
+            this, &BuildStep::updateSummary);
 
     return widget;
 }
@@ -315,16 +314,11 @@ IosSimulator::ConstPtr IosDeployStep::iossimulator() const
 
 IosDeployStepFactory::IosDeployStepFactory()
 {
-    registerStep<IosDeployStep>(stepId());
-    setDisplayName(IosDeployStep::tr("Deploy to iOS device or emulator"));
+    registerStep<IosDeployStep>(Constants::IOS_DEPLOY_STEP_ID);
+    setDisplayName(IosDeployStep::tr("Deploy to iOS device"));
     setSupportedStepList(ProjectExplorer::Constants::BUILDSTEPS_DEPLOY);
     setSupportedDeviceTypes({Constants::IOS_DEVICE_TYPE, Constants::IOS_SIMULATOR_TYPE});
     setRepeatable(false);
-}
-
-Core::Id IosDeployStepFactory::stepId()
-{
-    return "Qt4ProjectManager.IosDeployStep";
 }
 
 } // namespace Internal

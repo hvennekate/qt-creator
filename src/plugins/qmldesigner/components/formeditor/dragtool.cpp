@@ -101,12 +101,17 @@ void DragTool::createQmlItemNode(const ItemLibraryEntry &itemLibraryEntry,
 
     const bool rootIsFlow = QmlItemNode(view()->rootModelNode()).isFlowView();
 
-    if (rootIsFlow)
+    QmlItemNode adjustedParentNode = parentNode;
+
+    if (rootIsFlow) {
         itemPos = QPointF();
+        adjustedParentNode = view()->rootModelNode();
+    }
 
-    m_dragNode = QmlItemNode::createQmlItemNode(view(), itemLibraryEntry, itemPos, parentNode);
+    m_dragNode = QmlItemNode::createQmlItemNode(view(), itemLibraryEntry, itemPos, adjustedParentNode);
 
-    m_dragNode.setFlowItemPosition(positonInItemSpace);
+    if (rootIsFlow)
+        m_dragNode.setFlowItemPosition(positonInItemSpace);
 
     QList<QmlItemNode> nodeList;
     nodeList.append(m_dragNode);
@@ -244,7 +249,6 @@ void DragTool::dropEvent(const QList<QGraphicsItem *> &/*itemList*/, QGraphicsSc
 
         if (m_dragNode.isValid())
             view()->setSelectedModelNode(m_dragNode);
-
 
         m_dragNode = QmlItemNode();
 

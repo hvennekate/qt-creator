@@ -33,12 +33,12 @@
 
 #include <QGraphicsView>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class CurveItem;
 class CurveEditorModel;
 class Playhead;
-class PropertyTreeItem;
+class TreeItem;
 
 class GraphicsView : public QGraphicsView
 {
@@ -47,20 +47,18 @@ class GraphicsView : public QGraphicsView
     friend class Playhead;
 
 signals:
-    void notifyFrameChanged(int frame);
+    void currentFrameChanged(int frame, bool notify);
 
 public:
     GraphicsView(CurveEditorModel *model, QWidget *parent = nullptr);
+
+    ~GraphicsView() override;
 
     CurveEditorModel *model() const;
 
     CurveEditorStyle editorStyle() const;
 
-    bool hasActiveItem() const;
-
-    bool hasActiveHandle() const;
-
-    bool hasSelectedKeyframe() const;
+    bool dragging() const;
 
     int mapTimeToX(double time) const;
 
@@ -94,7 +92,9 @@ public:
 
     QRectF defaultRasterRect() const;
 
-    void setLocked(PropertyTreeItem *item);
+    void setLocked(TreeItem *item);
+
+    void setPinned(TreeItem *item);
 
     void setStyle(const CurveEditorStyle &style);
 
@@ -108,9 +108,11 @@ public:
 
     void reset(const std::vector<CurveItem *> &items);
 
-    void updateSelection(const std::vector<CurveItem *> &items);
+    void updateSelection();
 
     void setInterpolation(Keyframe::Interpolation interpol);
+
+    void toggleUnified();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -134,11 +136,7 @@ protected:
 private:
     void applyZoom(double x, double y, const QPoint &pivot = QPoint());
 
-    void insertKeyframe(double time, bool allVisibleCurves = false);
-
-    void deleteSelectedKeyframes();
-
-    void drawGrid(QPainter *painter, const QRectF &rect);
+    void drawGrid(QPainter *painter);
 
 #if 0
     void drawExtremaX(QPainter *painter, const QRectF &rect);
@@ -159,13 +157,15 @@ private:
     QRectF rangeMaxHandle(const QRectF &rect);
 
 private:
+    bool m_dragging;
+
     double m_zoomX;
 
     double m_zoomY;
 
     QTransform m_transform;
 
-    GraphicsScene m_scene;
+    GraphicsScene *m_scene;
 
     CurveEditorModel *m_model;
 
@@ -178,4 +178,4 @@ private:
     CurveEditorStyleDialog m_dialog;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

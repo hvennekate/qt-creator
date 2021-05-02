@@ -49,7 +49,7 @@ TestTreeItem *QuickTestParseResult::createTestTreeItem() const
     if (itemType == TestTreeItem::Root || itemType == TestTreeItem::TestDataTag)
         return nullptr;
 
-    QuickTestTreeItem *item = new QuickTestTreeItem(name, fileName, itemType);
+    QuickTestTreeItem *item = new QuickTestTreeItem(framework, name, fileName, itemType);
     item->setProFile(proFile);
     item->setLine(line);
     item->setColumn(column);
@@ -139,7 +139,7 @@ static QString quickTestName(const CPlusPlus::Document::Ptr &doc,
     return astVisitor.testBaseName();
 }
 
-QList<Document::Ptr> QuickTestParser::scanDirectoryForQuickTestQmlFiles(const QString &srcDir) const
+QList<Document::Ptr> QuickTestParser::scanDirectoryForQuickTestQmlFiles(const QString &srcDir)
 {
     QStringList dirs(srcDir);
     ModelManagerInterface *qmlJsMM = QmlJSTools::Internal::ModelManager::instance();
@@ -157,7 +157,8 @@ QList<Document::Ptr> QuickTestParser::scanDirectoryForQuickTestQmlFiles(const QS
         QFileInfo fi(it.fileInfo().canonicalFilePath());
         dirs.append(fi.filePath());
     }
-    emit updateWatchPaths(dirs);
+    QMetaObject::invokeMethod(this, [this, dirs] { QuickTestParser::doUpdateWatchPaths(dirs); },
+                              Qt::QueuedConnection);
 
     QList<Document::Ptr> foundDocs;
 
@@ -207,7 +208,7 @@ static bool checkQmlDocumentForQuickTestCode(QFutureInterface<TestParseResultPtr
             parseResult->column = testCase.m_locationAndType.m_column;
         }
 
-        for (auto function : testCase.m_functions) {
+        for (const auto &function : testCase.m_functions) {
             QuickTestParseResult *funcResult = new QuickTestParseResult(framework);
             funcResult->name = function.m_functionName;
             funcResult->displayName = function.m_functionName;
@@ -269,7 +270,7 @@ void QuickTestParser::handleDirectoryChanged(const QString &directory)
 {
     const QMap<QString, QDateTime> &filesAndDates = qmlFilesWithMTime(directory);
     const QMap<QString, QDateTime> &watched = m_watchedFiles.value(directory);
-    const QStringList &keys = watched.keys();
+    const QList<QString> &keys = watched.keys();
     if (filesAndDates.keys() != keys) { // removed or added files
         m_watchedFiles[directory] = filesAndDates;
         TestTreeModel::instance()->parser()->emitUpdateTestTree(this);
@@ -310,8 +311,6 @@ QuickTestParser::QuickTestParser(ITestFramework *framework)
     });
     connect(&m_directoryWatcher, &QFileSystemWatcher::directoryChanged,
             this, &QuickTestParser::handleDirectoryChanged);
-    connect(this, &QuickTestParser::updateWatchPaths,
-            this, &QuickTestParser::doUpdateWatchPaths, Qt::QueuedConnection);
 }
 
 void QuickTestParser::init(const QStringList &filesToParse, bool fullParse)

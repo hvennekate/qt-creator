@@ -302,7 +302,7 @@ bool GenericBuildSystem::saveRawList(const QStringList &rawList, const QString &
             stream << filePath << '\n';
         saver.setResult(&stream);
     }
-    bool result = saver.finalize(ICore::mainWindow());
+    bool result = saver.finalize(ICore::dialogParent());
     return result;
 }
 
@@ -442,7 +442,7 @@ void GenericBuildSystem::parse(RefreshOptions options)
 FilePath GenericBuildSystem::findCommonSourceRoot()
 {
     if (m_files.isEmpty())
-        return FilePath::fromFileInfo(QFileInfo(m_filesFileName).absolutePath());
+        return FilePath::fromFileInfo(QFileInfo(m_filesFileName));
 
     QString root = m_files.front();
     for (const QString &item : qAsConst(m_files)) {
@@ -655,7 +655,7 @@ void GenericProject::editFilesTriggered()
 {
     SelectableFilesDialogEditFiles sfd(projectDirectory(),
                                        files(Project::AllFiles),
-                                       ICore::mainWindow());
+                                       ICore::dialogParent());
     if (sfd.exec() == QDialog::Accepted) {
         if (Target *t = activeTarget()) {
             auto bs = static_cast<GenericBuildSystem *>(t->buildSystem());

@@ -26,6 +26,7 @@
 #pragma once
 
 #include "qmakeprojectmanager_global.h"
+
 #include "qmakenodes.h"
 #include "qmakeparsernodes.h"
 
@@ -35,7 +36,6 @@
 
 #include <QStringList>
 #include <QFutureInterface>
-#include <QFuture>
 
 QT_BEGIN_NAMESPACE
 class QMakeGlobals;
@@ -47,6 +47,7 @@ namespace ProjectExplorer { class DeploymentData; }
 namespace QtSupport { class ProFileReader; }
 
 namespace QmakeProjectManager {
+
 class QmakeBuildConfiguration;
 
 namespace Internal { class CentralizedFolderWatcher; }
@@ -61,7 +62,7 @@ public:
 
     ProjectExplorer::Tasks projectIssues(const ProjectExplorer::Kit *k) const final;
 
-    void configureAsExampleProject() final;
+    void configureAsExampleProject(ProjectExplorer::Kit *kit) final;
 
     ProjectExplorer::ProjectImporter *projectImporter() const final;
 
@@ -105,7 +106,7 @@ public:
     void triggerParsing() final;
 
     QStringList filesGeneratedFrom(const QString &file) const final;
-    QVariant additionalData(Core::Id id) const final;
+    QVariant additionalData(Utils::Id id) const final;
 
     void asyncUpdate();
     void buildFinished(bool success);
@@ -157,7 +158,7 @@ public:
     void watchFolders(const QStringList &l, QmakePriFile *file);
     void unwatchFolders(const QStringList &l, QmakePriFile *file);
 
-    static void proFileParseError(const QString &errorMessage);
+    static void proFileParseError(const QString &errorMessage, const Utils::FilePath &filePath);
 
     enum AsyncUpdateState { Base, AsyncFullUpdatePending, AsyncPartialUpdatePending, AsyncUpdateInProgress, ShuttingDown };
     AsyncUpdateState asyncUpdateState() const;
@@ -166,10 +167,19 @@ public:
 
     void notifyChanged(const Utils::FilePath &name);
 
-public:
+    enum Action { BUILD, REBUILD, CLEAN };
+    void buildHelper(Action action, bool isFileBuild,
+                     QmakeProFileNode *profile,
+                     ProjectExplorer::FileNode *buildableFile);
+
+    Utils::FilePath buildDir(const Utils::FilePath &proFilePath) const;
+    QmakeBuildConfiguration *qmakeBuildConfiguration() const;
+
+    void scheduleUpdateAllNowOrLater();
+
+private:
     void scheduleUpdateAll(QmakeProFile::AsyncUpdateDelay delay);
     void scheduleUpdateAllLater() { scheduleUpdateAll(QmakeProFile::ParseLater); }
-    void scheduleUpdateAllNowOrLater();
 
     mutable QSet<const QPair<Utils::FilePath, Utils::FilePath>> m_toolChainWarnings;
 
@@ -199,7 +209,6 @@ public:
     Internal::CentralizedFolderWatcher *m_centralizedFolderWatcher = nullptr;
 
     ProjectExplorer::BuildSystem::ParseGuard m_guard;
-    QmakeBuildConfiguration *m_buildConfiguration = nullptr;
     bool m_firstParseNeeded = true;
 };
 

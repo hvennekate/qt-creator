@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-project-wizards.html
     \page creator-version-control.html
     \nextpage creator-vcs-bazaar.html
@@ -59,6 +58,14 @@
             \li \l{Using CVS}{CVS}
             \li \l{http://www.nongnu.org/cvs/}
             \li
+        \row
+            \li \l{https://doc.qt.io/qtcreator/creator-vcs-fossil.html}{Fossil}
+            \li \l{https://fossil-scm.org/index.html/doc/trunk/www/index.wiki}
+            \li To use Fossil, you need to build the Fossil plugin from
+                \l{https://code.qt.io/cgit/qt-creator/plugin-fossil-scm.git/}
+                {sources}, and install Fossil as described in
+                \l{https://doc.qt.io/qtcreator/creator-vcs-fossil.html}
+                {Qt Creator Fossil Plugin Manual}.
         \row
             \li \l{Using Git}{Git}
             \li \l{http://git-scm.com/}
@@ -97,10 +104,10 @@
     You can also select \uicontrol Tools and then select \uicontrol {Create Repository}
     in the submenu for the version control system.
 
-    To import a project that is under version control, choose \uicontrol {File >
-    New File or Project > Project from Version Control} and select the
-    version control system that you use. Follow the instructions of the
-    wizard to import the project.
+    To import a project that is under version control, choose \uicontrol File >
+    \uicontrol {New File or Project} > \uicontrol {Project from Version Control}
+    and select the version control system that you use. Follow the instructions
+    of the wizard to import the project.
 
     \section1 Using Common Functions
 
@@ -114,6 +121,8 @@
         \li \l{Using Bazaar}
         \li \l{Using ClearCase}
         \li \l{Using CVS}
+        \li \l{https://doc.qt.io/qtcreator/creator-vcs-fossil.html}
+            {Qt Creator Fossil Plugin Manual}
         \li \l{Using Git}
         \li \l{Using Mercurial}
         \li \l{Using Perforce}
@@ -121,8 +130,8 @@
     \endlist
 
     The \uicontrol{Version Control} output pane displays the commands that are
-    executed, a timestamp, and the relevant output. Select \uicontrol {Window > Output
-    Panes > Version Control} to open the pane.
+    executed, a timestamp, and the relevant output. Select \uicontrol View >
+    \uicontrol {Output Panes} > \uicontrol {Version Control} to open the pane.
 
     \image qtcreator-vcs-pane.png
 

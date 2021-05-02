@@ -108,14 +108,7 @@ bool StorageSettings::removeTrailingWhitespace(const QString &fileName) const
         QRegularExpressionMatch match = iter.next();
         QString pattern = match.captured(1);
 
-        QString wildcardRegExp
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
-                = QRegularExpression::wildcardToRegularExpression(pattern);
-#else
-                = QRegExp(pattern, Utils::HostOsInfo::fileNameCaseSensitivity(),
-                          QRegExp::Wildcard).pattern();
-#endif
-        QRegularExpression patternRegExp(wildcardRegExp);
+        QRegularExpression patternRegExp(QRegularExpression::wildcardToRegularExpression(pattern));
         QRegularExpressionMatch patternMatch = patternRegExp.match(fileName);
         if (patternMatch.hasMatch()) {
             // if the filename has a pattern we want to ignore, then we need to return

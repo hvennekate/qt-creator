@@ -28,6 +28,7 @@
 #include <coreplugin/fileutils.h>
 #include <coreplugin/find/itemviewfind.h>
 
+#include <utils/algorithm.h>
 #include <utils/detailswidget.h>
 #include <utils/environment.h>
 #include <utils/environmentdialog.h>
@@ -37,6 +38,7 @@
 #include <utils/itemviews.h>
 #include <utils/namevaluevalidator.h>
 #include <utils/qtcassert.h>
+#include <utils/stringutils.h>
 #include <utils/tooltip/tooltip.h>
 
 #include <QDialogButtonBox>
@@ -56,6 +58,15 @@
 
 namespace ProjectExplorer {
 
+class PathTreeWidget : public QTreeWidget
+{
+public:
+    QSize sizeHint() const override
+    {
+        return QSize(800, 600);
+    }
+};
+
 class PathListDialog : public QDialog
 {
     Q_DECLARE_TR_FUNCTIONS(EnvironmentWidget)
@@ -65,7 +76,7 @@ public:
         const auto mainLayout = new QVBoxLayout(this);
         const auto viewLayout = new QHBoxLayout;
         const auto buttonsLayout = new QVBoxLayout;
-        const auto addButton = new QPushButton(tr("Add ..."));
+        const auto addButton = new QPushButton(tr("Add..."));
         const auto removeButton = new QPushButton(tr("Remove"));
         const auto editButton = new QPushButton(tr("Edit..."));
         buttonsLayout->addWidget(addButton);
@@ -80,8 +91,9 @@ public:
         mainLayout->addWidget(buttonBox);
 
         m_view.setHeaderLabel(varName);
+        m_view.setDragDropMode(QAbstractItemView::InternalMove);
         const QStringList pathList = paths.split(Utils::HostOsInfo::pathListSeparator(),
-                                                 QString::SkipEmptyParts);
+                                                 Qt::SkipEmptyParts);
         for (const QString &path : pathList)
             addPath(path);
 
@@ -117,18 +129,19 @@ public:
     {
         QStringList pathList;
         for (int i = 0; i < m_view.topLevelItemCount(); ++i)
-            pathList << QDir::fromNativeSeparators(m_view.topLevelItem(i)->text(0));
+            pathList << m_view.topLevelItem(i)->text(0);
         return pathList.join(Utils::HostOsInfo::pathListSeparator());
     }
 
 private:
     void addPath(const QString &path)
     {
-        const auto item = new QTreeWidgetItem(&m_view, {QDir::toNativeSeparators(path)});
-        item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable);
+        const auto item = new QTreeWidgetItem(&m_view, {path});
+        item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable
+                       | Qt::ItemIsDragEnabled);
     }
 
-    QTreeWidget m_view;
+    PathTreeWidget m_view;
 };
 
 class EnvironmentDelegate : public QStyledItemDelegate
@@ -386,9 +399,13 @@ void EnvironmentWidget::updateSummaryText()
                 text.append(tr("Unset <a href=\"%1\"><b>%1</b></a>").arg(item.name.toHtmlEscaped()));
                 break;
             case Utils::EnvironmentItem::SetEnabled:
-            case Utils::EnvironmentItem::Append:
-            case Utils::EnvironmentItem::Prepend:
                 text.append(tr("Set <a href=\"%1\"><b>%1</b></a> to <b>%2</b>").arg(item.name.toHtmlEscaped(), item.value.toHtmlEscaped()));
+                break;
+            case Utils::EnvironmentItem::Append:
+                text.append(tr("Append <b>%2</b> to <a href=\"%1\"><b>%1</b></a>").arg(item.name.toHtmlEscaped(), item.value.toHtmlEscaped()));
+                break;
+            case Utils::EnvironmentItem::Prepend:
+                text.append(tr("Prepend <b>%2</b> to <a href=\"%1\"><b>%1</b></a>").arg(item.name.toHtmlEscaped(), item.value.toHtmlEscaped()));
                 break;
             case Utils::EnvironmentItem::SetDisabled:
                 text.append(tr("Set <a href=\"%1\"><b>%1</b></a> to <b>%2</b> [disabled]").arg(item.name.toHtmlEscaped(), item.value.toHtmlEscaped()));
@@ -433,6 +450,12 @@ bool EnvironmentWidget::currentEntryIsPathList(const QModelIndex &current) const
         return true;
     if (Utils::HostOsInfo::isAnyUnixHost() && varName == "LD_LIBRARY_PATH")
         return true;
+    if (varName == "PKG_CONFIG_DIR")
+        return true;
+    if (Utils::HostOsInfo::isWindowsHost()
+        && QStringList{"INCLUDE", "LIB", "LIBPATH"}.contains(varName)) {
+        return true;
+    }
 
     // Now check the value: If it's a list of strings separated by the platform's path separator
     // and at least one of the strings is an existing directory, then that's enough proof for us.
@@ -440,14 +463,10 @@ bool EnvironmentWidget::currentEntryIsPathList(const QModelIndex &current) const
     if (valueIndex.column() == 0)
         valueIndex = valueIndex.siblingAtColumn(1);
     const QStringList entries = d->m_model->data(valueIndex).toString()
-            .split(Utils::HostOsInfo::pathListSeparator(), QString::SkipEmptyParts);
+            .split(Utils::HostOsInfo::pathListSeparator(), Qt::SkipEmptyParts);
     if (entries.length() < 2)
         return false;
-    for (const QString &potentialDir : entries) {
-        if (QFileInfo(potentialDir).isDir())
-            return true;
-    }
-    return false;
+    return Utils::anyOf(entries, [](const QString &d) { return QFileInfo(d).isDir(); });
 }
 
 void EnvironmentWidget::updateButtons()
@@ -492,40 +511,26 @@ void EnvironmentWidget::unsetEnvironmentButtonClicked()
         d->m_model->unsetVariable(name);
 }
 
-void EnvironmentWidget::amendPathList(const PathListModifier &modifier)
+void EnvironmentWidget::amendPathList(Utils::NameValueItem::Operation op)
 {
     const QString varName = d->m_model->indexToVariable(d->m_environmentView->currentIndex());
     const QString dir = QDir::toNativeSeparators(
                 QFileDialog::getExistingDirectory(this, tr("Choose Directory")));
     if (dir.isEmpty())
         return;
-    QModelIndex index = d->m_model->variableToIndex(varName);
-    if (!index.isValid())
-        return;
-    if (index.column() == 0)
-        index = index.siblingAtColumn(1);
-    const QString value = d->m_model->data(index).toString();
-    d->m_model->setData(index, modifier(value, dir));
+    Utils::NameValueItems changes = d->m_model->userChanges();
+    changes.append({varName, dir, op});
+    d->m_model->setUserChanges(changes);
 }
 
 void EnvironmentWidget::appendPathButtonClicked()
 {
-    amendPathList([](const QString &pathList, const QString &dir) {
-        QString newPathList = dir;
-        if (!pathList.isEmpty())
-            newPathList.prepend(Utils::HostOsInfo::pathListSeparator()).prepend(pathList);
-        return newPathList;
-    });
+    amendPathList(Utils::NameValueItem::Append);
 }
 
 void EnvironmentWidget::prependPathButtonClicked()
 {
-    amendPathList([](const QString &pathList, const QString &dir) {
-        QString newPathList = dir;
-        if (!pathList.isEmpty())
-            newPathList.append(Utils::HostOsInfo::pathListSeparator()).append(pathList);
-        return newPathList;
-    });
+    amendPathList(Utils::NameValueItem::Prepend);
 }
 
 void EnvironmentWidget::batchEditEnvironmentButtonClicked()

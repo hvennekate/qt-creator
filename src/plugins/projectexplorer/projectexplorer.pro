@@ -11,7 +11,6 @@ HEADERS += projectexplorer.h \
     abi.h \
     abiwidget.h \
     addrunconfigdialog.h \
-    ansifilterparser.h \
     buildaspects.h \
     buildinfo.h \
     buildpropertiessettings.h \
@@ -20,6 +19,7 @@ HEADERS += projectexplorer.h \
     buildtargettype.h \
     clangparser.h \
     configtaskhandler.h \
+    customparserssettingspage.h \
     desktoprunconfiguration.h \
     environmentaspect.h \
     environmentaspectwidget.h \
@@ -163,7 +163,6 @@ HEADERS += projectexplorer.h \
     projectmacro.h \
     makestep.h \
     parseissuesdialog.h \
-    projectconfigurationaspects.h \
     treescanner.h \
     rawprojectpart.h \
     simpleprojectwizard.h
@@ -172,12 +171,12 @@ SOURCES += projectexplorer.cpp \
     abi.cpp \
     abiwidget.cpp \
     addrunconfigdialog.cpp \
-    ansifilterparser.cpp \
     buildaspects.cpp \
     buildinfo.cpp \
     buildpropertiessettingspage.cpp \
     buildsystem.cpp \
     clangparser.cpp \
+    customparserssettingspage.cpp \
     configtaskhandler.cpp \
     desktoprunconfiguration.cpp \
     environmentaspect.cpp \
@@ -310,7 +309,6 @@ SOURCES += projectexplorer.cpp \
     projectmacro.cpp \
     makestep.cpp \
     parseissuesdialog.cpp \
-    projectconfigurationaspects.cpp \
     treescanner.cpp \
     rawprojectpart.cpp \
     simpleprojectwizard.cpp
@@ -325,7 +323,6 @@ FORMS += \
     devicesupport/devicesettingswidget.ui \
     devicesupport/devicetestdialog.ui \
     customparserconfigdialog.ui \
-    makestep.ui
 
 WINSOURCES += \
     windebuginterface.cpp \

@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2019 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt Creator documentation.
@@ -30,10 +30,13 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage creator-editor-functions.html
     \page creator-coding-navigating.html
+    \if defined(qtdesignstudio)
+    \nextpage creator-sidebars.html
+    \else
     \nextpage creator-highlighting.html
+    \endif
 
     \title Working in Edit Mode
 
@@ -123,6 +126,17 @@
 
     To switch between Windows line endings (CRLF) and Unix line endings (LF),
     select the ending style on the editor toolbar (6).
+
+    To set the line endings to use for all projects by default, select
+    \uicontrol Tools > \uicontrol Options > \uicontrol {Text Editor} >
+    \uicontrol Behavior, and then select the ending style in the
+    \uicontrol {Default line endings} field.
+
+    To set the line endings to use for a project, select \uicontrol Projects >
+    \uicontrol {Project Settings} > \uicontrol Editor.
+    \if defined(qtcreator)
+    For more information, see \l {Specifying Editor Settings}.
+    \endif
 
     \section1 Splitting the Editor View
 
@@ -285,5 +299,15 @@
     \QC underlines semantic errors in olive in the C++ code editor. To check the
     correct paths for includes that are not resolved or that are resolved to the
     wrong file, select \uicontrol {Project Parts} > \uicontrol {Header Paths}.
+    \endif
+
+    \if defined(qtdesignstudio)
+    \section1 Related Topics
+
+    \list
+        \li \l{Working with Sidebars}
+        \li \l{Browsing Project Contents}
+        \li \l{Viewing Output}
+    \endlist
     \endif
 */

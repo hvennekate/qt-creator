@@ -235,7 +235,7 @@ protected:
         m_scopeBuilder.pop();
     }
 
-    void processName(const QStringRef &name, SourceLocation location)
+    void processName(const QStringView &name, SourceLocation location)
     {
         if (name.isEmpty())
             return;
@@ -269,8 +269,11 @@ protected:
             }
         }
 
-        if (type != SemanticHighlighter::UnknownType)
-            addUse(location, type);
+        if (type != SemanticHighlighter::UnknownType) {
+            // do not add uses of length 0 - this messes up highlighting (e.g. anon functions)
+            if (location.length != 0)
+                addUse(location, type);
+        }
     }
 
     void processTypeId(UiQualifiedId *typeId)

@@ -40,11 +40,11 @@ class CMAKE_EXPORT CMakeKitAspect : public ProjectExplorer::KitAspect
 public:
     CMakeKitAspect();
 
-    static Core::Id id();
+    static Utils::Id id();
 
-    static Core::Id cmakeToolId(const ProjectExplorer::Kit *k);
+    static Utils::Id cmakeToolId(const ProjectExplorer::Kit *k);
     static CMakeTool *cmakeTool(const ProjectExplorer::Kit *k);
-    static void setCMakeTool(ProjectExplorer::Kit *k, const Core::Id id);
+    static void setCMakeTool(ProjectExplorer::Kit *k, const Utils::Id id);
 
     // KitAspect interface
     ProjectExplorer::Tasks validate(const ProjectExplorer::Kit *k) const final;
@@ -55,7 +55,9 @@ public:
 
     void addToMacroExpander(ProjectExplorer::Kit *k, Utils::MacroExpander *expander) const final;
 
-    QSet<Core::Id> availableFeatures(const ProjectExplorer::Kit *k) const final;
+    QSet<Utils::Id> availableFeatures(const ProjectExplorer::Kit *k) const final;
+
+    static QString msgUnsupportedVersion(const QByteArray &versionString);
 };
 
 class CMAKE_EXPORT CMakeGeneratorKitAspect : public ProjectExplorer::KitAspect
@@ -83,6 +85,7 @@ public:
     void upgrade(ProjectExplorer::Kit *k) final;
     ItemList toUserOutput(const ProjectExplorer::Kit *k) const final;
     ProjectExplorer::KitAspectWidget *createConfigWidget(ProjectExplorer::Kit *k) const final;
+    void addToEnvironment(const ProjectExplorer::Kit *k, Utils::Environment &env) const final;
 
 private:
     QVariant defaultValue(const ProjectExplorer::Kit *k) const;
@@ -99,6 +102,8 @@ public:
 
     static QStringList toStringList(const ProjectExplorer::Kit *k);
     static void fromStringList(ProjectExplorer::Kit *k, const QStringList &in);
+
+    static QStringList toArgumentsList(const ProjectExplorer::Kit *k);
 
     static CMakeConfig defaultConfiguration(const ProjectExplorer::Kit *k);
 

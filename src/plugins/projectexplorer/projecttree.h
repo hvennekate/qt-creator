@@ -60,6 +60,14 @@ public:
     static Node *currentNode();
     static Utils::FilePath currentFilePath();
 
+    class CurrentNodeKeeper {
+    public:
+        CurrentNodeKeeper();
+        ~CurrentNodeKeeper();
+    private:
+        const bool m_active = false;
+    };
+
     // Integration with ProjectTreeWidget
     static void registerWidget(Internal::ProjectTreeWidget *widget);
     static void unregisterWidget(Internal::ProjectTreeWidget *widget);
@@ -82,6 +90,8 @@ public:
     static Project *projectForNode(const Node *node);
     static Node *nodeForFile(const Utils::FilePath &fileName);
 
+    static const QList<Node *> siblingsWithSameBaseName(const Node *fileNode);
+
     void expandCurrentNodeRecursively();
 
     void collapseAll();
@@ -100,8 +110,7 @@ signals:
     // Emitted whenever the model needs to send a update signal.
     void subtreeChanged(ProjectExplorer::FolderNode *node);
 
-    void aboutToShowContextMenu(ProjectExplorer::Project *project,
-                                ProjectExplorer::Node *node);
+    void aboutToShowContextMenu(ProjectExplorer::Node *node);
 
     // Emitted on any change to the tree
     void treeChanged();
@@ -130,6 +139,7 @@ private:
     Node *m_currentNode = nullptr;
     Project *m_currentProject = nullptr;
     Internal::ProjectTreeWidget *m_focusForContextMenu = nullptr;
+    int m_keepCurrentNodeRequests = 0;
     Core::Context m_lastProjectContext;
 };
 

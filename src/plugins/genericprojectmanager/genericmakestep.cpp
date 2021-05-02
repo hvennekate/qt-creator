@@ -37,19 +37,19 @@ namespace Internal {
 class GenericMakeStep : public ProjectExplorer::MakeStep
 {
 public:
-    explicit GenericMakeStep(BuildStepList *parent, Core::Id id);
+    explicit GenericMakeStep(BuildStepList *parent, Utils::Id id);
 };
 
-GenericMakeStep::GenericMakeStep(BuildStepList *parent, Core::Id id)
+GenericMakeStep::GenericMakeStep(BuildStepList *parent, Utils::Id id)
     : MakeStep(parent, id)
 {
-    if (parent->id() == ProjectExplorer::Constants::BUILDSTEPS_BUILD) {
-        setBuildTarget("all");
-    } else if (parent->id() == ProjectExplorer::Constants::BUILDSTEPS_CLEAN) {
-        setBuildTarget("clean");
-        setClean(true);
-    }
     setAvailableBuildTargets({"all", "clean"});
+    if (parent->id() == ProjectExplorer::Constants::BUILDSTEPS_BUILD) {
+        setSelectedBuildTarget("all");
+    } else if (parent->id() == ProjectExplorer::Constants::BUILDSTEPS_CLEAN) {
+        setSelectedBuildTarget("clean");
+        setIgnoreReturnValue(true);
+    }
 }
 
 GenericMakeStepFactory::GenericMakeStepFactory()

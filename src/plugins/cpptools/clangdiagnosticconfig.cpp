@@ -32,12 +32,12 @@
 
 namespace CppTools {
 
-Core::Id ClangDiagnosticConfig::id() const
+Utils::Id ClangDiagnosticConfig::id() const
 {
     return m_id;
 }
 
-void ClangDiagnosticConfig::setId(const Core::Id &id)
+void ClangDiagnosticConfig::setId(const Utils::Id &id)
 {
     m_id = id;
 }
@@ -166,6 +166,7 @@ static const char diagnosticConfigsArrayKey[] = "ClangDiagnosticConfigs";
 static const char diagnosticConfigIdKey[] = "id";
 static const char diagnosticConfigDisplayNameKey[] = "displayName";
 static const char diagnosticConfigWarningsKey[] = "diagnosticOptions";
+static const char useBuildSystemFlagsKey[] = "useBuildSystemFlags";
 static const char diagnosticConfigsTidyChecksKey[] = "clangTidyChecks";
 static const char diagnosticConfigsTidyModeKey[] = "clangTidyMode";
 static const char diagnosticConfigsClazyModeKey[] = "clazyMode";
@@ -180,6 +181,7 @@ void diagnosticConfigsToSettings(QSettings *s, const ClangDiagnosticConfigs &con
         s->setValue(diagnosticConfigIdKey, config.id().toSetting());
         s->setValue(diagnosticConfigDisplayNameKey, config.displayName());
         s->setValue(diagnosticConfigWarningsKey, config.clangOptions());
+        s->setValue(useBuildSystemFlagsKey, config.useBuildSystemWarnings());
         s->setValue(diagnosticConfigsTidyModeKey, int(config.clangTidyMode()));
         s->setValue(diagnosticConfigsTidyChecksKey, config.clangTidyChecks());
         s->setValue(diagnosticConfigsClazyModeKey, int(config.clazyMode()));
@@ -197,9 +199,10 @@ ClangDiagnosticConfigs diagnosticConfigsFromSettings(QSettings *s)
         s->setArrayIndex(i);
 
         ClangDiagnosticConfig config;
-        config.setId(Core::Id::fromSetting(s->value(diagnosticConfigIdKey)));
+        config.setId(Utils::Id::fromSetting(s->value(diagnosticConfigIdKey)));
         config.setDisplayName(s->value(diagnosticConfigDisplayNameKey).toString());
         config.setClangOptions(s->value(diagnosticConfigWarningsKey).toStringList());
+        config.setUseBuildSystemWarnings(s->value(useBuildSystemFlagsKey, false).toBool());
         const int tidyModeValue = s->value(diagnosticConfigsTidyModeKey).toInt();
         if (tidyModeValue == 0) { // Convert from settings of <= Qt Creator 4.10
             config.setClangTidyMode(ClangDiagnosticConfig::TidyMode::UseCustomChecks);

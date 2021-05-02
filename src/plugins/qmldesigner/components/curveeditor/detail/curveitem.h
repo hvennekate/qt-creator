@@ -27,6 +27,7 @@
 
 #include "curveeditorstyle.h"
 #include "curvesegment.h"
+#include "handleitem.h"
 #include "keyframe.h"
 #include "selectableitem.h"
 #include "treeitem.h"
@@ -34,7 +35,7 @@
 #include <string>
 #include <QGraphicsObject>
 
-namespace DesignTools {
+namespace QmlDesigner {
 
 class AnimationCurve;
 class KeyframeItem;
@@ -46,6 +47,10 @@ class CurveItem : public CurveEditorItem
 
 signals:
     void curveChanged(unsigned int id, const AnimationCurve &curve);
+
+    void keyframeMoved(KeyframeItem *item, const QPointF &direction);
+
+    void handleMoved(KeyframeItem *frame, HandleItem::Slot slot, double angle, double deltaLength);
 
 public:
     CurveItem(QGraphicsItem *parent = nullptr);
@@ -68,11 +73,23 @@ public:
 
     bool isDirty() const;
 
-    bool hasSelection() const;
+    bool hasActiveKeyframe() const;
+
+    bool hasActiveHandle() const;
+
+    bool hasSelectedKeyframe() const;
+
+    bool hasEditableSegment(double time) const;
+
+    bool isFirst(const KeyframeItem *key) const;
+
+    bool isLast(const KeyframeItem *key) const;
+
+    int indexOf(const KeyframeItem *key) const;
 
     unsigned int id() const;
 
-    ValueType valueType() const;
+    PropertyTreeItem::ValueType valueType() const;
 
     PropertyTreeItem::Component component() const;
 
@@ -82,13 +99,21 @@ public:
 
     std::vector<AnimationCurve> curves() const;
 
+    QVector<KeyframeItem *> keyframes() const;
+
+    QVector<KeyframeItem *> selectedKeyframes() const;
+
+    QVector<HandleItem *> handles() const;
+
+    CurveSegment segment(const KeyframeItem *keyframe, HandleItem::Slot slot) const;
+
     void restore();
 
     void setDirty(bool dirty);
 
     void setHandleVisibility(bool visible);
 
-    void setValueType(ValueType type);
+    void setValueType(PropertyTreeItem::ValueType type);
 
     void setComponent(PropertyTreeItem::Component comp);
 
@@ -99,6 +124,8 @@ public:
     void setStyle(const CurveEditorStyle &style);
 
     void setInterpolation(Keyframe::Interpolation interpolation);
+
+    void toggleUnified();
 
     void connect(GraphicsScene *scene);
 
@@ -113,15 +140,15 @@ private:
 
     CurveItemStyleOption m_style;
 
-    ValueType m_type;
+    PropertyTreeItem::ValueType m_type;
 
     PropertyTreeItem::Component m_component;
 
     QTransform m_transform;
 
-    std::vector<KeyframeItem *> m_keyframes;
+    QVector<KeyframeItem *> m_keyframes;
 
     bool m_itemDirty;
 };
 
-} // End namespace DesignTools.
+} // End namespace QmlDesigner.

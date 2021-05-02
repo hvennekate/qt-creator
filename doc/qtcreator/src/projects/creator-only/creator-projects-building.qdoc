@@ -30,7 +30,6 @@
 // **********************************************************************
 
 /*!
-    \contentspage index.html
     \previouspage qt-design-viewer.html
     \page creator-building-targets.html
     \nextpage creator-running-targets.html
@@ -60,7 +59,8 @@
 
         \image qtcreator-kit-selector.png "Kit selector"
 
-        \li  Choose \uicontrol {Build > Build Project} or press \key {Ctrl+B}.
+        \li  Choose \uicontrol Build > \uicontrol {Build Project} or press
+             \key {Ctrl+B}.
 
              You can also select the \uicontrol Run button (2) to also deploy and run
              the application after building it.
@@ -122,8 +122,9 @@
 
     \QC automatically runs CMake when you make changes to \c {CMakeLists.txt}
     files. To disable this feature, select \uicontrol Tools >
-    \uicontrol Options > \uicontrol Kits > \uicontrol CMake >
-    \uicontrol {Autorun CMake}.
+    \uicontrol Options > \uicontrol Kits > \uicontrol CMake. Select the CMake
+    executable to edit, and then deselect the \uicontrol {Autorun CMake} check
+    box.
 
     For more information, see \l {Setting Up CMake}.
 

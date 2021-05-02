@@ -793,7 +793,7 @@ QVariant ResourceModel::data(const QModelIndex &index, int role) const
                 if (iconFileExtension(path))
                     file->icon = QIcon(path);
                 else
-                    file->icon = Core::FileIconProvider::icon(path);
+                    file->icon = Core::FileIconProvider::icon(QFileInfo(path));
             }
             if (!file->icon.isNull())
                 result = file->icon;
@@ -1251,7 +1251,7 @@ EntryBackup * RelativeResourceModel::removeEntry(const QModelIndex &index)
             deleteItem(index);
             return new FileEntryBackup(*this, prefixIndex.row(), index.row(), fileNameBackup, aliasBackup);
         }
-        Utils::RemoveFileDialog removeFileDialog(fileNameBackup, Core::ICore::mainWindow());
+        Utils::RemoveFileDialog removeFileDialog(fileNameBackup, Core::ICore::dialogParent());
         if (removeFileDialog.exec() == QDialog::Accepted) {
             deleteItem(index);
             Core::FileUtils::removeFile(fileNameBackup, removeFileDialog.isDeleteFileChecked());

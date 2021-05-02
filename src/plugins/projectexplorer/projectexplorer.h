@@ -40,7 +40,6 @@ QT_END_NAMESPACE
 
 namespace Core {
 class IMode;
-class Id;
 } // namespace Core
 
 namespace Utils {
@@ -50,6 +49,7 @@ class FilePath;
 
 namespace ProjectExplorer {
 class BuildPropertiesSettings;
+class CustomParserSettings;
 class RunControl;
 class RunConfiguration;
 class Project;
@@ -141,6 +141,11 @@ public:
     static const BuildPropertiesSettings &buildPropertiesSettings();
     static void showQtSettings();
 
+    static void setCustomParsers(const QList<CustomParserSettings> &settings);
+    static void addCustomParser(const CustomParserSettings &settings);
+    static void removeCustomParser(Utils::Id id);
+    static const QList<CustomParserSettings> customParsers();
+
     static void startRunControl(RunControl *runControl);
     static void showOutputPaneForRunControl(RunControl *runControl);
 
@@ -150,10 +155,10 @@ public:
     static bool isProjectFile(const Utils::FilePath &filePath);
     static QList<QPair<QString, QString> > recentProjects();
 
-    static bool canRunStartupProject(Core::Id runMode, QString *whyNot = nullptr);
-    static void runProject(Project *pro, Core::Id, const bool forceSkipDeploy = false);
-    static void runStartupProject(Core::Id runMode, bool forceSkipDeploy = false);
-    static void runRunConfiguration(RunConfiguration *rc, Core::Id runMode,
+    static bool canRunStartupProject(Utils::Id runMode, QString *whyNot = nullptr);
+    static void runProject(Project *pro, Utils::Id, const bool forceSkipDeploy = false);
+    static void runStartupProject(Utils::Id runMode, bool forceSkipDeploy = false);
+    static void runRunConfiguration(RunConfiguration *rc, Utils::Id runMode,
                              const bool forceSkipDeploy = false);
     static QList<QPair<Runnable, Utils::ProcessHandle>> runningRunControlProcesses();
     static QList<RunControl *> allRunControls();
@@ -161,8 +166,6 @@ public:
     static void addExistingFiles(FolderNode *folderNode, const QStringList &filePaths);
 
     static void initiateInlineRenaming();
-
-    static QString displayNameForStepId(Core::Id stepId);
 
     static QStringList projectFileGlobs();
 
@@ -178,7 +181,7 @@ public:
 
     static void updateActions();
 
-    static void activateProjectPanel(Core::Id panelId);
+    static void activateProjectPanel(Utils::Id panelId);
     static void clearRecentProjects();
     static void removeFromRecentProjects(const QString &fileName, const QString &displayName);
 
@@ -194,6 +197,7 @@ signals:
     void recentProjectsChanged();
 
     void settingsChanged();
+    void customParsersChanged();
 
     void runActionsUpdated();
 
@@ -229,7 +233,6 @@ private slots:
 
     void testGnuMakeParserParsing_data();
     void testGnuMakeParserParsing();
-    void testGnuMakeParserTaskMangling_data();
     void testGnuMakeParserTaskMangling();
 
     void testXcodebuildParserParsing_data();

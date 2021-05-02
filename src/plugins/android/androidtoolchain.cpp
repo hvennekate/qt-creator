@@ -35,7 +35,6 @@
 
 #include <QFileInfo>
 #include <QLoggingCategory>
-#include <QRegExp>
 
 
 namespace {
@@ -58,10 +57,10 @@ static const QHash<QString, Abi> ClangTargets = {
     {"aarch64-linux-android",
      Abi(Abi::ArmArchitecture, Abi::LinuxOS, Abi::AndroidLinuxFlavor, Abi::ElfFormat, 64)}};
 
-static const QList<Core::Id> LanguageIds = {ProjectExplorer::Constants::CXX_LANGUAGE_ID,
+static const QList<Utils::Id> LanguageIds = {ProjectExplorer::Constants::CXX_LANGUAGE_ID,
                                             ProjectExplorer::Constants::C_LANGUAGE_ID};
 
-static ToolChain *findToolChain(Utils::FilePath &compilerPath, Core::Id lang, const QString &target,
+static ToolChain *findToolChain(Utils::FilePath &compilerPath, Utils::Id lang, const QString &target,
                                 const ToolChainList &alreadyKnown)
 {
     ToolChain * tc = Utils::findOrDefault(alreadyKnown, [target, compilerPath, lang](ToolChain *tc) {
@@ -210,8 +209,6 @@ ToolChainList AndroidToolChainFactory::autodetectToolChainsFromNdks(
     const AndroidConfig config = AndroidConfigurations::currentConfig();
 
     for (const Utils::FilePath &ndkLocation : ndkLocations) {
-        qCDebug(androidTCLog) << "Detecting toolchains from Android NDK:" << ndkLocation;
-
         FilePath clangPath = config.clangPathFromNdk(ndkLocation);
         if (!clangPath.exists()) {
             qCDebug(androidTCLog) << "Clang toolchains detection fails. Can not find Clang"
@@ -219,7 +216,7 @@ ToolChainList AndroidToolChainFactory::autodetectToolChainsFromNdks(
             continue;
         }
 
-        for (const Core::Id &lang : LanguageIds) {
+        for (const Utils::Id &lang : LanguageIds) {
             FilePath compilerCommand = clangPath;
             if (lang == ProjectExplorer::Constants::CXX_LANGUAGE_ID)
                 compilerCommand = clangPlusPlusPath(clangPath);
@@ -242,12 +239,12 @@ ToolChainList AndroidToolChainFactory::autodetectToolChainsFromNdks(
                                                    AndroidConfig::displayName(abi),
                                                    config.ndkVersion(ndkLocation).toString()));
                 if (tc) {
-                    qCDebug(androidTCLog) << "Tool chain already known" << abi.toString() << lang;
                     // make sure to update the toolchain with current name format
                     if (tc->displayName() != displayName)
                         tc->setDisplayName(displayName);
                 } else {
-                    qCDebug(androidTCLog) << "New Clang toolchain found" << abi.toString() << lang;
+                    qCDebug(androidTCLog) << "New Clang toolchain found" << abi.toString() << lang
+                                          << "for NDK" << ndkLocation;
                     auto atc = new AndroidToolChain();
                     atc->setNdkLocation(ndkLocation);
                     atc->setOriginalTargetTriple(target);

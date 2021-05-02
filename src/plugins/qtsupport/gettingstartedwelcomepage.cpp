@@ -85,7 +85,7 @@ Id ExamplesWelcomePage::id() const
 QString ExamplesWelcomePage::copyToAlternativeLocation(const QFileInfo& proFileInfo, QStringList &filesToOpen, const QStringList& dependencies)
 {
     const QString projectDir = proFileInfo.canonicalPath();
-    QDialog d(ICore::mainWindow());
+    QDialog d(ICore::dialogParent());
     auto lay = new QGridLayout(&d);
     auto descrLbl = new QLabel;
     d.setWindowTitle(tr("Copy Project to writable Location?"));
@@ -125,15 +125,17 @@ QString ExamplesWelcomePage::copyToAlternativeLocation(const QFileInfo& proFileI
     int code = d.exec();
     if (code == Copy) {
         QString exampleDirName = proFileInfo.dir().dirName();
-        QString destBaseDir = chooser->path();
+        QString destBaseDir = chooser->filePath().toString();
         settings->setValue(QString::fromLatin1(C_FALLBACK_ROOT), destBaseDir);
         QDir toDirWithExamplesDir(destBaseDir);
         if (toDirWithExamplesDir.cd(exampleDirName)) {
             toDirWithExamplesDir.cdUp(); // step out, just to not be in the way
-            QMessageBox::warning(ICore::mainWindow(), tr("Cannot Use Location"),
+            QMessageBox::warning(ICore::dialogParent(),
+                                 tr("Cannot Use Location"),
                                  tr("The specified location already exists. "
                                     "Please specify a valid location."),
-                                 QMessageBox::Ok, QMessageBox::NoButton);
+                                 QMessageBox::Ok,
+                                 QMessageBox::NoButton);
             return QString();
         } else {
             QString error;
@@ -150,7 +152,9 @@ QString ExamplesWelcomePage::copyToAlternativeLocation(const QFileInfo& proFileI
                             .pathAppended(QDir(dependency).dirName());
                     if (!FileUtils::copyRecursively(FilePath::fromString(dependency), targetFile,
                             &error)) {
-                        QMessageBox::warning(ICore::mainWindow(), tr("Cannot Copy Project"), error);
+                        QMessageBox::warning(ICore::dialogParent(),
+                                             tr("Cannot Copy Project"),
+                                             error);
                         // do not fail, just warn;
                     }
                 }
@@ -158,7 +162,7 @@ QString ExamplesWelcomePage::copyToAlternativeLocation(const QFileInfo& proFileI
 
                 return targetDir + QLatin1Char('/') + proFileInfo.fileName();
             } else {
-                QMessageBox::warning(ICore::mainWindow(), tr("Cannot Copy Project"), error);
+                QMessageBox::warning(ICore::dialogParent(), tr("Cannot Copy Project"), error);
             }
 
         }
@@ -283,6 +287,10 @@ public:
             m_searcher->setPlaceholderText(ExamplesWelcomePage::tr("Search in Examples..."));
 
             auto exampleSetSelector = new QComboBox(this);
+            QPalette pal = exampleSetSelector->palette();
+            // for macOS dark mode
+            pal.setColor(QPalette::Text, Utils::creatorTheme()->color(Theme::Welcome_TextColor));
+            exampleSetSelector->setPalette(pal);
             exampleSetSelector->setMinimumWidth(GridProxyModel::GridItemWidth);
             exampleSetSelector->setMaximumWidth(GridProxyModel::GridItemWidth);
             ExampleSetModel *exampleSetModel = m_examplesModel->exampleSetModel();

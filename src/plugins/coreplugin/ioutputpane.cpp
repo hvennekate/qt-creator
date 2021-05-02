@@ -27,8 +27,11 @@
 
 #include "ioutputpane.h"
 
+namespace Core {
+
 /*!
     \class Core::IOutputPane
+    \inheaderfile coreplugin/ioutputpane.h
     \brief The IOutputPane class is an interface for providing \uicontrol Output panes.
 
     \ingroup mainclasses
@@ -258,3 +261,5 @@
     Displays \a number in the status bar button belonging to the output pane
     (for example, number of issues on building).
 */
+
+} // namespace Core

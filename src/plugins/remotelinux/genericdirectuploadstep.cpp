@@ -33,29 +33,30 @@
 #include <projectexplorer/runconfigurationaspects.h>
 
 using namespace ProjectExplorer;
+using namespace Utils;
 
 namespace RemoteLinux {
 
-GenericDirectUploadStep::GenericDirectUploadStep(BuildStepList *bsl, Core::Id id,
+GenericDirectUploadStep::GenericDirectUploadStep(BuildStepList *bsl, Utils::Id id,
                                                  bool offerIncrementalDeployment)
     : AbstractRemoteLinuxDeployStep(bsl, id)
 {
     auto service = createDeployService<GenericDirectUploadService>();
 
-    BaseBoolAspect *incremental = nullptr;
+    BoolAspect *incremental = nullptr;
     if (offerIncrementalDeployment) {
-        incremental = addAspect<BaseBoolAspect>();
+        incremental = addAspect<BoolAspect>();
         incremental->setSettingsKey("RemoteLinux.GenericDirectUploadStep.Incremental");
         incremental->setLabel(tr("Incremental deployment"),
-                              BaseBoolAspect::LabelPlacement::AtCheckBox);
+                              BoolAspect::LabelPlacement::AtCheckBox);
         incremental->setValue(true);
         incremental->setDefaultValue(true);
     }
 
-    auto ignoreMissingFiles = addAspect<BaseBoolAspect>();
+    auto ignoreMissingFiles = addAspect<BoolAspect>();
     ignoreMissingFiles->setSettingsKey("RemoteLinux.GenericDirectUploadStep.IgnoreMissingFiles");
     ignoreMissingFiles->setLabel(tr("Ignore missing files"),
-                                 BaseBoolAspect::LabelPlacement::AtCheckBox);
+                                 BoolAspect::LabelPlacement::AtCheckBox);
     ignoreMissingFiles->setValue(false);
 
     setInternalInitializer([incremental, ignoreMissingFiles, service] {
@@ -72,13 +73,11 @@ GenericDirectUploadStep::GenericDirectUploadStep(BuildStepList *bsl, Core::Id id
     setRunPreparer([this, service] {
         service->setDeployableFiles(target()->deploymentData().allFiles());
     });
-
-    setDefaultDisplayName(displayName());
 }
 
 GenericDirectUploadStep::~GenericDirectUploadStep() = default;
 
-Core::Id GenericDirectUploadStep::stepId()
+Utils::Id GenericDirectUploadStep::stepId()
 {
     return Constants::DirectUploadStepId;
 }

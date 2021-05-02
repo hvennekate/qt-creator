@@ -94,13 +94,11 @@ public:
                                              const Position &position,
                                              QmlVisualNode parentQmlItemNode);
 
-
-
-
     static QmlObjectNode createQmlObjectNode(AbstractView *view,
                                              const ItemLibraryEntry &itemLibraryEntry,
                                              const Position &position,
-                                             NodeAbstractProperty parentproperty);
+                                             NodeAbstractProperty parentProperty,
+                                             bool createInTransaction = true);
 
     static QmlVisualNode createQml3DNode(AbstractView *view,
                                              const ItemLibraryEntry &itemLibraryEntry,
@@ -109,8 +107,12 @@ public:
     static NodeListProperty findSceneNodeProperty(AbstractView *view, qint32 sceneRootId);
 
     static bool isFlowTransition(const ModelNode &node);
+    static bool isFlowDecision(const ModelNode &node);
+    static bool isFlowWildcard(const ModelNode &node);
 
     bool isFlowTransition() const;
+    bool isFlowDecision() const;
+    bool isFlowWildcard() const;
 
 private:
     void setDoubleProperty(const PropertyName &name, double value);

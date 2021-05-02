@@ -54,6 +54,16 @@ const char FORMEDITOR_SNAPPING[] = "QmlDesigner.FormEditor.Snapping";
 const char FORMEDITOR_NO_SNAPPING[] = "QmlDesigner.FormEditor.NoSnapping";
 const char FORMEDITOR_NO_SNAPPING_AND_ANCHORING[] = "QmlDesigner.FormEditor.NoSnappingAndAnchoring";
 const char FORMEDITOR_NO_SHOW_BOUNDING_RECTANGLE[] = "QmlDesigner.FormEditor.ShowBoundingRectangle";
+const char EDIT3D_SELECTION_MODE[] = "QmlDesigner.Editor3D.SelectionModeToggle";
+const char EDIT3D_MOVE_TOOL[]      = "QmlDesigner.Editor3D.MoveTool";
+const char EDIT3D_ROTATE_TOOL[]    = "QmlDesigner.Editor3D.RotateTool";
+const char EDIT3D_SCALE_TOOL[]     = "QmlDesigner.Editor3D.ScaleTool";
+const char EDIT3D_FIT_SELECTED[]   = "QmlDesigner.Editor3D.FitSelected";
+const char EDIT3D_EDIT_CAMERA[]    = "QmlDesigner.Editor3D.EditCameraToggle";
+const char EDIT3D_ORIENTATION[]    = "QmlDesigner.Editor3D.OrientationToggle";
+const char EDIT3D_EDIT_LIGHT[]     = "QmlDesigner.Editor3D.EditLightToggle";
+const char EDIT3D_EDIT_SHOW_GRID[] = "QmlDesigner.Editor3D.ToggleGrid";
+const char EDIT3D_RESET_VIEW[]     = "QmlDesigner.Editor3D.ResetView";
 
 const char QML_DESIGNER_SUBFOLDER[] = "/designer/";
 const char QUICK_3D_ASSETS_FOLDER[] = "/Quick3DAssets";
@@ -63,7 +73,27 @@ const char DEFAULT_ASSET_IMPORT_FOLDER[] = "/asset_imports";
 const char QT_QUICK_3D_MODULE_NAME[] = "QtQuick3D";
 
 // Menus
-const char M_WINDOW_WORKSPACES[] = "QmlDesigner.Menu.Window.Workspaces";
+const char M_VIEW_WORKSPACES[] = "QmlDesigner.Menu.View.Workspaces";
+
+const int MODELNODE_PREVIEW_IMAGE_DIMENSIONS = 150;
+
+const char EVENT_TIMELINE_ADDED[] = "Timeline Added";
+const char EVENT_TRANSITION_ADDED[] = "Transition Added";
+const char EVENT_STATE_ADDED[] = "State Added";
+const char EVENT_CONNECTION_ADDED[] = "Connection Added";
+const char EVENT_PROPERTY_ADDED[] = "Property Added";
+const char EVENT_ANNOTATION_ADDED[] = "Annotation Added";
+const char EVENT_RESOURCE_IMPORTED[] = "Resource Imported ";
+const char EVENT_ACTION_EXECUTED[] = "Action Executed ";
+const char EVENT_IMPORT_ADDED[] = "Import Added ";
+const char EVENT_IMPORT_ADDED_FLOWTAG[] = "Import Added FlowTag ";
+const char EVENT_BINDINGEDITOR_OPENED[] = "Binding Editor Opened";
+const char EVENT_RICHTEXT_OPENED[] = "Richtext Editor Opened";
+const char EVENT_FORMEDITOR_TIME[] = "Form Editor";
+const char EVENT_3DEDITOR_TIME[] = "3D Editor";
+const char EVENT_TIMELINE_TIME[] = "Timeline";
+const char EVENT_TRANSITIONEDITOR_TIME[] = "Transition Editor";
+const char EVENT_CURVEDITOR_TIME[] = "Curve Editor";
 
 namespace Internal {
     enum { debug = 0 };

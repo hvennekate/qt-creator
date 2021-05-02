@@ -27,9 +27,11 @@
 
 #include "autotest_global.h"
 
+#include "itemdatacache.h"
 #include "testconfiguration.h"
 #include "testtreeitem.h"
 
+#include <utils/algorithm.h>
 #include <utils/treemodel.h>
 
 #include <QSortFilterProxyModel>
@@ -61,11 +63,15 @@ public:
     bool hasTests() const;
     QList<TestConfiguration *> getAllTestCases() const;
     QList<TestConfiguration *> getSelectedTests() const;
+    QList<TestConfiguration *> getFailedTests() const;
     QList<TestConfiguration *> getTestsForFile(const Utils::FilePath &fileName) const;
     QList<TestTreeItem *> testItemsByName(const QString &testName);
     void synchronizeTestFrameworks();
-    void rebuild(const QList<Core::Id> &frameworkIds);
+    void rebuild(const QList<Utils::Id> &frameworkIds);
 
+    void updateCheckStateCache();
+    bool hasFailedTests() const;
+    void clearFailedMarks();
 #ifdef WITH_TESTS
     int autoTestsCount() const;
     int namedQuickTestsCount() const;
@@ -76,7 +82,7 @@ public:
     int gtestNamesCount() const;
     QMultiMap<QString, int> gtestNamesAndSets() const;
     int boostTestNamesCount() const;
-    QMultiMap<QString, int> boostTestSuitesAndTests() const;
+    QMap<QString, int> boostTestSuitesAndTests() const;
 #endif
 
     void markAllForRemoval();
@@ -92,6 +98,8 @@ signals:
 
 private:
     void onParseResultReady(const TestParseResultPtr result);
+    void onDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                       const QVector<int> &roles);
     void handleParseResult(const TestParseResult *result, TestTreeItem *rootNode);
     void removeAllTestItems();
     void removeFiles(const QStringList &files);
@@ -103,6 +111,8 @@ private:
     QList<TestTreeItem *> testItemsByName(TestTreeItem *root, const QString &testName);
 
     Internal::TestCodeParser *m_parser = nullptr;
+    Internal::ItemDataCache<Qt::CheckState> *m_checkStateCache = nullptr; // not owned
+    Internal::ItemDataCache<bool> m_failedStateCache;
 };
 
 namespace Internal {
