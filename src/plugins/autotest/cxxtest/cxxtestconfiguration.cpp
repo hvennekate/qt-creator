@@ -22,8 +22,8 @@
 namespace Autotest {
 	namespace Internal {
 
-		CxxTestConfiguration::CxxTestConfiguration(const QString &test, const QString &method)
-			: DebuggableTestConfiguration(), // TODO set mode properly
+		CxxTestConfiguration::CxxTestConfiguration(ITestFramework *framework, const QString &test, const QString &method)
+			: DebuggableTestConfiguration(framework), // TODO set mode properly
 			  test(test),
 			  method(method)
 		{}

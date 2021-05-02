@@ -38,7 +38,7 @@ namespace Autotest {
 			IFrameworkSettings *frameworkSettings() override;
 			QString groupingToolTip() const override;
 			ITestParser *createTestParser() override;
-			TestTreeItem *createRootNode() const override;
+			TestTreeItem *createRootNode() override;
 
 			QScopedPointer<CxxTestSettings> m_settings;
 			QScopedPointer<CxxTestSettingsPage> m_settingsPage;

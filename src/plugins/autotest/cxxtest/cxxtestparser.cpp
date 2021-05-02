@@ -29,7 +29,7 @@ namespace Autotest {
 		TestTreeItem *CxxTestParseResult::createTestTreeItem() const
 		{
 			if (itemType != TestTreeItem::TestCase && itemType != TestTreeItem::TestFunction) return nullptr;
-			auto item = new CxxTestTreeItem(name, fileName, itemType);
+			auto item = new CxxTestTreeItem(framework, name, fileName, itemType);
 			item->setProFile(proFile);
 			item->setLine(line);
 			item->setColumn(column);

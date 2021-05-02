@@ -27,7 +27,8 @@ namespace Autotest {
 		class CxxTestConfiguration : public DebuggableTestConfiguration
 		{
 		public:
-			explicit CxxTestConfiguration(const QString &test =  QString(),
+			explicit CxxTestConfiguration(ITestFramework *framework,
+						      const QString &test =  QString(),
 						      const QString &method = QString());
 
 			TestOutputReader *outputReader(const QFutureInterface<TestResultPtr> &fi, QProcess *app) const override;

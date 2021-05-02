@@ -40,7 +40,7 @@ namespace Autotest {
 		const TestTreeItem *CxxTestResult::findTestTreeItem() const
 		{
 			if (suite.isEmpty()) return nullptr;
-			auto id = Core::Id(Constants::FRAMEWORK_PREFIX).withSuffix(CxxTest::Constants::FRAMEWORK_NAME);
+			auto id = Utils::Id(Constants::FRAMEWORK_PREFIX).withSuffix(CxxTest::Constants::FRAMEWORK_NAME);
 			auto rootNode = TestFrameworkManager::frameworkForId(id)->rootNode();
 			if (!rootNode) return nullptr;
 			const auto suiteNode = rootNode->findAnyChild([this](const Utils::TreeItem *item) {

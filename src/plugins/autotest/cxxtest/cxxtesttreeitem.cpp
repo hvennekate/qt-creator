@@ -26,8 +26,8 @@
 namespace Autotest {
 	namespace Internal {
 
-		CxxTestTreeItem::CxxTestTreeItem(const QString &name, const QString &filePath, Type type)
-		    : TestTreeItem(name, filePath, type) {}
+		CxxTestTreeItem::CxxTestTreeItem(ITestFramework *framework, const QString &name, const QString &filePath, Type type)
+		    : TestTreeItem(framework, name, filePath, type) {}
 
 		QVariant CxxTestTreeItem::data(int column, int role) const
 		{
@@ -61,7 +61,7 @@ namespace Autotest {
 
 		TestTreeItem *CxxTestTreeItem::copyWithoutChildren()
 		{
-			auto copy = new CxxTestTreeItem;
+			auto copy = new CxxTestTreeItem(framework());
 			copy->copyBasicDataFrom(this);
 			return copy;
 		}
@@ -85,14 +85,14 @@ namespace Autotest {
 			switch (type()) {
 			case Root:
 				if (int count = childCount()) {
-					config = new CxxTestConfiguration(name());
+					config = new CxxTestConfiguration(framework(), name());
 					config->setTestCaseCount(count);
 					config->setProjectFile(proFile());
 					config->setProject(project);
 				}
 			case TestCase: {
 				if (int count = childCount()) {
-					config = new CxxTestConfiguration(name());
+					config = new CxxTestConfiguration(framework(), name());
 					config->setTestCases(QStringList(name()));
 					config->setTestCaseCount(count);
 					config->setProjectFile(proFile());
@@ -104,7 +104,7 @@ namespace Autotest {
 				CxxTestTreeItem *parent = dynamic_cast<CxxTestTreeItem *>(parentItem());
 				if (!parent)
 					return nullptr;
-				config = new CxxTestConfiguration(parent->name(), name());
+				config = new CxxTestConfiguration(framework(), parent->name(), name());
 				config->setTestCases(QStringList(parent->name() + " " + name()));
 				config->setProjectFile(proFile());
 				config->setProject(project);
@@ -185,7 +185,7 @@ namespace Autotest {
 					}
 				});
 
-				auto config = new CxxTestConfiguration;
+				auto config = new CxxTestConfiguration(item->framework());
 				config->setTestCases(testCases);
 				config->setProjectFile(item->proFile());
 				config->setProject(ProjectExplorer::SessionManager::startupProject());
@@ -312,7 +312,7 @@ namespace Autotest {
 		TestTreeItem *CxxTestTreeItem::createParentGroupNode() const
 		{
 			const QFileInfo absolutePath(QFileInfo(filePath()).absolutePath());
-			return new CxxTestTreeItem(absolutePath.baseName(), absolutePath.absolutePath(), TestTreeItem::GroupNode);
+			return new CxxTestTreeItem(framework(), absolutePath.baseName(), absolutePath.absolutePath(), TestTreeItem::GroupNode);
 		}
 	} // namespace Internal
 } // namespace Autotest

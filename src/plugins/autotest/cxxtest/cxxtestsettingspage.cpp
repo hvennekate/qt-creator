@@ -36,7 +36,7 @@ namespace Autotest {
 			// TODO apply settings
 		}
 
-		CxxTestSettingsPage::CxxTestSettingsPage(CxxTestSettings *settings, Core::Id settingsId)
+		CxxTestSettingsPage::CxxTestSettingsPage(CxxTestSettings *settings, Utils::Id settingsId)
 		{
 			setId(settingsId);
 			setCategory(Constants::AUTOTEST_SETTINGS_CATEGORY);

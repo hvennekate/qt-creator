@@ -1,3 +1,7 @@
+# NOTE: This file has been modified from its original version
+#       to support the addition of CxxTest support.
+#       See also the respective cxxtest*.h and cxxtest*.cpp files.
+
 add_qtc_plugin(AutoTest
   PLUGIN_DEPENDS Core CppTools Debugger ProjectExplorer QmlJSTools TextEditor
   PLUGIN_TEST_DEPENDS QmakeProjectManager QtSupport QbsProjectManager
@@ -77,6 +81,15 @@ add_qtc_plugin(AutoTest
     testtreeitemdelegate.cpp testtreeitemdelegate.h
     testtreemodel.cpp testtreemodel.h
     testtreeview.cpp testtreeview.h
+    cxxtest/cxxtestframework.cpp cxxtest/cxxtestframework.h
+    cxxtest/cxxtestsettings.cpp cxxtest/cxxtestsettings.h
+    cxxtest/cxxtestsettingspage.cpp cxxtest/cxxtestsettingspage.h
+    cxxtest/cxxtestparser.cpp cxxtest/cxxtestparser.h
+    cxxtest/cxxtesttreeitem.cpp cxxtest/cxxtesttreeitem.h
+    cxxtest/cxxtestconfiguration.cpp cxxtest/cxxtestconfiguration.h
+    cxxtest/cxxoutputreader.cpp cxxtest/cxxoutputreader.h
+    cxxtest/cxxtestresult.cpp cxxtest/cxxtestresult.h
+    cxxtest/cxxtestconstants.h
 )
 
 extend_qtc_plugin(AutoTest

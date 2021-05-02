@@ -58,9 +58,9 @@ namespace Autotest {
 			return new CxxTestParser(this);
 		}
 
-		TestTreeItem *CxxTestFramework::createRootNode() const
+		TestTreeItem *CxxTestFramework::createRootNode()
 		{
-			return new CxxTestTreeItem(
+			return new CxxTestTreeItem(this,
 			            QCoreApplication::translate("CxxTestFramework",
 			                                        CxxTest::Constants::FRAMEWORK_SETTINGS_CATEGORY),
 			            QString(), TestTreeItem::Root);

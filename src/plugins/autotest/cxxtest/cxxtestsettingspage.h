@@ -28,7 +28,7 @@ namespace Autotest {
 		class CxxTestSettingsPage : public Core::IOptionsPage
 		{
 		public:
-			CxxTestSettingsPage(CxxTestSettings* settings, Core::Id settingsId);
+			CxxTestSettingsPage(CxxTestSettings* settings, Utils::Id settingsId);
 		};
 
 	} // namespace Internal
